@@ -1,0 +1,399 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// CORE TABLES (Shared - DO NOT MODIFY)
+// ==========================================
+
+model Agency {
+  id        String   @id @default(uuid())
+  name      String
+  state     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  facilities       Facility[]
+  housingUnitTypes HousingUnitType[]
+  incarceratedPersons IncarceratedPerson[]
+  adminUsers       AdminUser[]
+  blockedNumbers   BlockedNumber[]
+  familyMembers    FamilyMember[]     @relation("BlockedAgencyRelation")
+
+  @@map("agencies")
+}
+
+model Facility {
+  id                   String  @id @default(uuid())
+  agencyId             String  @map("agency_id")
+  name                 String
+  announcementText     String  @map("announcement_text")
+  announcementAudioUrl String? @map("announcement_audio_url")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  agency            Agency             @relation(fields: [agencyId], references: [id])
+  housingUnits      HousingUnit[]
+  incarceratedPersons IncarceratedPerson[]
+  adminUsers        AdminUser[]
+  blockedNumbers    BlockedNumber[]
+  voiceCalls        VoiceCall[]
+  videoCalls        VideoCall[]
+  videoCallTimeSlots VideoCallTimeSlot[]
+
+  @@map("facilities")
+}
+
+model HousingUnitType {
+  id                      String @id @default(uuid())
+  agencyId                String @map("agency_id")
+  name                    String
+  voiceCallDurationMinutes Int    @default(30) @map("voice_call_duration_minutes")
+  videoCallDurationMinutes Int    @default(30) @map("video_call_duration_minutes")
+  callingHoursStart       String @default("08:00") @map("calling_hours_start")
+  callingHoursEnd         String @default("22:00") @map("calling_hours_end")
+  maxContacts             Int    @default(10) @map("max_contacts")
+  videoSlotDurationMinutes Int   @default(30) @map("video_slot_duration_minutes")
+  maxConcurrentVideoCalls Int    @default(5) @map("max_concurrent_video_calls")
+
+  agency       Agency        @relation(fields: [agencyId], references: [id])
+  housingUnits HousingUnit[]
+  videoCallTimeSlots VideoCallTimeSlot[]
+
+  @@map("housing_unit_types")
+}
+
+model HousingUnit {
+  id         String @id @default(uuid())
+  facilityId String @map("facility_id")
+  unitTypeId String @map("unit_type_id")
+  name       String
+
+  facility            Facility            @relation(fields: [facilityId], references: [id])
+  unitType            HousingUnitType     @relation(fields: [unitTypeId], references: [id])
+  incarceratedPersons IncarceratedPerson[]
+
+  @@map("housing_units")
+}
+
+// ==========================================
+// USER TABLES (Shared - DO NOT MODIFY)
+// ==========================================
+
+enum PersonStatus {
+  active
+  transferred
+  released
+  deactivated
+}
+
+model IncarceratedPerson {
+  id            String       @id @default(uuid())
+  agencyId      String       @map("agency_id")
+  facilityId    String       @map("facility_id")
+  housingUnitId String       @map("housing_unit_id")
+  firstName     String       @map("first_name")
+  lastName      String       @map("last_name")
+  pin           String
+  externalId    String?      @map("external_id")
+  status        PersonStatus @default(active)
+  admittedAt    DateTime     @default(now()) @map("admitted_at")
+  releasedAt    DateTime?    @map("released_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  agency           Agency            @relation(fields: [agencyId], references: [id])
+  facility         Facility          @relation(fields: [facilityId], references: [id])
+  housingUnit      HousingUnit       @relation(fields: [housingUnitId], references: [id])
+  approvedContacts ApprovedContact[]
+  voiceCalls       VoiceCall[]
+  videoCalls       VideoCall[]
+  conversations    Conversation[]
+
+  @@map("incarcerated_persons")
+}
+
+model FamilyMember {
+  id                 String   @id @default(uuid())
+  email              String   @unique
+  phone              String
+  firstName          String   @map("first_name")
+  lastName           String   @map("last_name")
+  passwordHash       String   @map("password_hash")
+  isBlockedAgencyWide Boolean @default(false) @map("is_blocked_agency_wide")
+  blockedAgencyId    String?  @map("blocked_agency_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  blockedAgency    Agency?           @relation("BlockedAgencyRelation", fields: [blockedAgencyId], references: [id])
+  approvedContacts ApprovedContact[]
+  voiceCalls       VoiceCall[]
+  videoCalls       VideoCall[]
+  conversations    Conversation[]
+
+  @@map("family_members")
+}
+
+enum AdminRole {
+  agency_admin
+  facility_admin
+}
+
+model AdminUser {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  firstName    String    @map("first_name")
+  lastName     String    @map("last_name")
+  role         AdminRole
+  agencyId     String    @map("agency_id")
+  facilityId   String?   @map("facility_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  agency               Agency            @relation(fields: [agencyId], references: [id])
+  facility             Facility?         @relation(fields: [facilityId], references: [id])
+  approvedContactsReviewed ApprovedContact[] @relation("ReviewedByAdmin")
+  blockedNumbers       BlockedNumber[]
+  terminatedVoiceCalls VoiceCall[]       @relation("TerminatedByAdmin")
+  approvedVideoCalls   VideoCall[]       @relation("ApprovedByAdmin")
+  terminatedVideoCalls VideoCall[]       @relation("TerminatedByAdmin")
+  blockedConversations Conversation[]    @relation("BlockedByAdmin")
+  reviewedMessages     Message[]         @relation("ReviewedByAdmin")
+
+  @@map("admin_users")
+}
+
+// ==========================================
+// RELATIONSHIP TABLES (Shared - DO NOT MODIFY)
+// ==========================================
+
+enum ContactStatus {
+  pending
+  approved
+  denied
+  removed
+}
+
+model ApprovedContact {
+  id                   String        @id @default(uuid())
+  incarceratedPersonId String        @map("incarcerated_person_id")
+  familyMemberId       String        @map("family_member_id")
+  relationship         String
+  isAttorney           Boolean       @default(false) @map("is_attorney")
+  status               ContactStatus @default(pending)
+  requestedAt          DateTime      @default(now()) @map("requested_at")
+  reviewedAt           DateTime?     @map("reviewed_at")
+  reviewedBy           String?       @map("reviewed_by")
+
+  incarceratedPerson IncarceratedPerson @relation(fields: [incarceratedPersonId], references: [id])
+  familyMember       FamilyMember       @relation(fields: [familyMemberId], references: [id])
+  reviewer           AdminUser?         @relation("ReviewedByAdmin", fields: [reviewedBy], references: [id])
+
+  @@unique([incarceratedPersonId, familyMemberId])
+  @@map("approved_contacts")
+}
+
+enum BlockedScope {
+  facility
+  agency
+}
+
+model BlockedNumber {
+  id          String       @id @default(uuid())
+  phoneNumber String       @map("phone_number")
+  scope       BlockedScope
+  facilityId  String?      @map("facility_id")
+  agencyId    String       @map("agency_id")
+  reason      String?
+  blockedBy   String       @map("blocked_by")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  facility Facility?  @relation(fields: [facilityId], references: [id])
+  agency   Agency     @relation(fields: [agencyId], references: [id])
+  admin    AdminUser  @relation(fields: [blockedBy], references: [id])
+
+  @@map("blocked_numbers")
+}
+
+// ==========================================
+// VOICE CALLS (Voice Team Owned)
+// ==========================================
+
+enum VoiceCallStatus {
+  ringing
+  connected
+  completed
+  missed
+  terminated_by_admin
+}
+
+enum CallEndedBy {
+  caller
+  receiver
+  time_limit
+  admin
+}
+
+model VoiceCall {
+  id                   String          @id @default(uuid())
+  incarceratedPersonId String          @map("incarcerated_person_id")
+  familyMemberId       String          @map("family_member_id")
+  facilityId           String          @map("facility_id")
+  status               VoiceCallStatus @default(ringing)
+  isLegal              Boolean         @default(false) @map("is_legal")
+  startedAt            DateTime        @default(now()) @map("started_at")
+  connectedAt          DateTime?       @map("connected_at")
+  endedAt              DateTime?       @map("ended_at")
+  durationSeconds      Int?            @map("duration_seconds")
+  endedBy              CallEndedBy?    @map("ended_by")
+  terminatedByAdminId  String?         @map("terminated_by_admin_id")
+
+  incarceratedPerson IncarceratedPerson @relation(fields: [incarceratedPersonId], references: [id])
+  familyMember       FamilyMember       @relation(fields: [familyMemberId], references: [id])
+  facility           Facility           @relation(fields: [facilityId], references: [id])
+  terminatedByAdmin  AdminUser?         @relation("TerminatedByAdmin", fields: [terminatedByAdminId], references: [id])
+
+  @@map("voice_calls")
+}
+
+// ==========================================
+// VIDEO CALLS (Video Team Owned)
+// ==========================================
+
+enum VideoCallStatus {
+  requested
+  approved
+  denied
+  scheduled
+  in_progress
+  completed
+  missed
+  terminated_by_admin
+}
+
+enum VideoEndedBy {
+  incarcerated
+  family
+  time_limit
+  admin
+}
+
+model VideoCall {
+  id                   String          @id @default(uuid())
+  incarceratedPersonId String          @map("incarcerated_person_id")
+  familyMemberId       String          @map("family_member_id")
+  facilityId           String          @map("facility_id")
+  status               VideoCallStatus @default(requested)
+  isLegal              Boolean         @default(false) @map("is_legal")
+  scheduledStart       DateTime        @map("scheduled_start")
+  scheduledEnd         DateTime        @map("scheduled_end")
+  actualStart          DateTime?       @map("actual_start")
+  actualEnd            DateTime?       @map("actual_end")
+  durationSeconds      Int?            @map("duration_seconds")
+  requestedBy          String          @map("requested_by")
+  approvedBy           String?         @map("approved_by")
+  endedBy              VideoEndedBy?   @map("ended_by")
+  terminatedByAdminId  String?         @map("terminated_by_admin_id")
+
+  incarceratedPerson IncarceratedPerson @relation(fields: [incarceratedPersonId], references: [id])
+  familyMember       FamilyMember       @relation(fields: [familyMemberId], references: [id])
+  facility           Facility           @relation(fields: [facilityId], references: [id])
+  approvedByAdmin    AdminUser?         @relation("ApprovedByAdmin", fields: [approvedBy], references: [id])
+  terminatedByAdmin  AdminUser?         @relation("TerminatedByAdmin", fields: [terminatedByAdminId], references: [id])
+
+  @@map("video_calls")
+}
+
+model VideoCallTimeSlot {
+  id                String @id @default(uuid())
+  facilityId        String @map("facility_id")
+  housingUnitTypeId String @map("housing_unit_type_id")
+  dayOfWeek         Int    @map("day_of_week")
+  startTime         String @map("start_time")
+  endTime           String @map("end_time")
+  maxConcurrent     Int    @map("max_concurrent")
+
+  facility        Facility        @relation(fields: [facilityId], references: [id])
+  housingUnitType HousingUnitType @relation(fields: [housingUnitTypeId], references: [id])
+
+  @@map("video_call_time_slots")
+}
+
+// ==========================================
+// MESSAGING (Messaging Team Owned)
+// ==========================================
+
+model Conversation {
+  id                   String   @id @default(uuid())
+  incarceratedPersonId String   @map("incarcerated_person_id")
+  familyMemberId       String   @map("family_member_id")
+  isBlocked            Boolean  @default(false) @map("is_blocked")
+  blockedBy            String?  @map("blocked_by")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  incarceratedPerson IncarceratedPerson @relation(fields: [incarceratedPersonId], references: [id])
+  familyMember       FamilyMember       @relation(fields: [familyMemberId], references: [id])
+  blockedByAdmin     AdminUser?         @relation("BlockedByAdmin", fields: [blockedBy], references: [id])
+  messages           Message[]
+
+  @@unique([incarceratedPersonId, familyMemberId])
+  @@map("conversations")
+}
+
+enum SenderType {
+  incarcerated
+  family
+}
+
+enum MessageStatus {
+  pending_review
+  approved
+  sent
+  delivered
+  read
+  blocked
+}
+
+model Message {
+  id             String        @id @default(uuid())
+  conversationId String        @map("conversation_id")
+  senderType     SenderType    @map("sender_type")
+  senderId       String        @map("sender_id")
+  body           String
+  status         MessageStatus @default(pending_review)
+  reviewedBy     String?       @map("reviewed_by")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  deliveredAt    DateTime?     @map("delivered_at")
+  readAt         DateTime?     @map("read_at")
+
+  conversation Conversation       @relation(fields: [conversationId], references: [id])
+  reviewer     AdminUser?         @relation("ReviewedByAdmin", fields: [reviewedBy], references: [id])
+  attachments  MessageAttachment[]
+
+  @@map("messages")
+}
+
+enum AttachmentType {
+  image
+}
+
+enum AttachmentStatus {
+  pending_review
+  approved
+  rejected
+}
+
+model MessageAttachment {
+  id            String           @id @default(uuid())
+  messageId     String           @map("message_id")
+  fileType      AttachmentType   @map("file_type")
+  fileUrl       String           @map("file_url")
+  fileSizeBytes Int              @map("file_size_bytes")
+  status        AttachmentStatus @default(pending_review)
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  message Message @relation(fields: [messageId], references: [id])
+
+  @@map("message_attachments")
+}

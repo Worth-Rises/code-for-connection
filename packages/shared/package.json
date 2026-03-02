@@ -1,0 +1,29 @@
+{
+  "name": "@openconnect/shared",
+  "version": "1.0.0",
+  "description": "Shared types, utilities, and middleware for Open Connect",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./types": "./dist/types/index.js",
+    "./auth": "./dist/auth/index.js",
+    "./db": "./dist/db/index.js",
+    "./utils": "./dist/utils/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.8.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/express": "^4.17.21",
+    "typescript": "^5.3.3"
+  }
+}

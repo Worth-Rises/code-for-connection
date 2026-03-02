@@ -1,0 +1,45 @@
+{
+  "name": "code-for-connection",
+  "version": "1.0.0",
+  "description": "Hackathon starter app for building a communication platform for incarcerated persons and their families",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "apps/*",
+    "guilds/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:services\" \"npm run dev:web\"",
+    "dev:services": "concurrently \"npm run dev:signaling\" \"npm run dev:api\"",
+    "dev:api": "npm run dev -w @openconnect/api-gateway",
+    "dev:signaling": "npm run dev -w @openconnect/signaling",
+    "dev:web": "npm run dev -w @openconnect/web",
+    "build": "npm run build -w @openconnect/shared && npm run build -w @openconnect/ui && npm run build --workspaces --if-present",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "prisma migrate reset --force",
+    "db:studio": "prisma studio",
+    "clean": "rm -rf node_modules **/node_modules **/dist **/.turbo"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "prisma": "^5.8.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

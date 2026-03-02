@@ -1,0 +1,19 @@
+{
+  "name": "@openconnect/video",
+  "version": "1.0.0",
+  "description": "Video calling component for Open Connect",
+  "main": "api/routes.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@openconnect/shared": "*",
+    "socket.io-client": "^4.7.4"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/react": "^18.2.48",
+    "typescript": "^5.3.3"
+  }
+}

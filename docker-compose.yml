@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: openconnect-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: openconnect
+      POSTGRES_USER: openconnect
+      POSTGRES_PASSWORD: hackathon2026
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openconnect -d openconnect"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: openconnect-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  signaling:
+    build: ./services/signaling
+    container_name: openconnect-signaling
+    ports:
+      - "3001:3001"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - PORT=3001
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:

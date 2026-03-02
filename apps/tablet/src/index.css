@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  width: 1280px;
+  height: 800px;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input, textarea {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+button, a, [role="button"] {
+  min-height: 48px;
+  min-width: 48px;
+  cursor: pointer;
+}
+
+input, select, textarea {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+@layer utilities {
+  .tablet-safe-area {
+    width: 1280px;
+    height: 800px;
+    overflow: hidden;
+  }
+  
+  .touch-target {
+    min-height: 48px;
+    min-width: 48px;
+  }
+}
