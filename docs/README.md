@@ -6,7 +6,7 @@ Welcome to the Code for Connection hackathon! This documentation will help you g
 
 - [API Contracts](./api-contracts.md) - Cross-team API specifications
 - [Database Schema](./database-schema.md) - Shared database reference
-- [Team Guides](./team-guides.md) - Per-team setup and feature guides
+- [Guild Guides](./guild-guides.md) - Per-guild setup and feature guides
 
 ## Getting Started
 
@@ -84,8 +84,8 @@ code-for-connection/
 
 ## Rules
 
-1. **Work in your team's directory**: `guilds/<your-team>/`
-2. **Work on your team's branch**: `guild/voice`, `guild/video`, etc.
+1. **Work in your guild's directory**: `guilds/<your-guild>/`
+2. **Work on your guild's branch**: `guild/voice`, `guild/video`, etc.
 3. **Don't modify shared files** without coordination
 4. **Use the shared Prisma client** from `@openconnect/shared`
 5. **Commit and push often**

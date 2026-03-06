@@ -84,9 +84,9 @@ Links incarcerated persons to family members.
 - `facility_id`, `agency_id`
 - `reason`, `blocked_by`, `created_at`
 
-## Team-Owned Tables
+## Guild-Owned Tables
 
-### voice_calls (Voice Team)
+### voice_calls (Voice Guild)
 - `id` (UUID) - Primary key
 - `incarcerated_person_id`, `family_member_id`, `facility_id`
 - `status` - ringing, connected, completed, missed, terminated_by_admin
@@ -95,7 +95,7 @@ Links incarcerated persons to family members.
 - `duration_seconds`
 - `ended_by` - caller, receiver, time_limit, admin
 
-### video_calls (Video Team)
+### video_calls (Video Guild)
 - `id` (UUID) - Primary key
 - `incarcerated_person_id`, `family_member_id`, `facility_id`
 - `status` - requested, approved, denied, scheduled, in_progress, completed, missed, terminated_by_admin
@@ -104,18 +104,18 @@ Links incarcerated persons to family members.
 - `actual_start`, `actual_end`, `duration_seconds`
 - `requested_by`, `approved_by`, `ended_by`
 
-### video_call_time_slots (Video Team)
+### video_call_time_slots (Video Guild)
 - `facility_id`, `housing_unit_type_id`
 - `day_of_week` - 0-6
 - `start_time`, `end_time`
 - `max_concurrent`
 
-### conversations (Messaging Team)
+### conversations (Messaging Guild)
 - `id` (UUID) - Primary key
 - `incarcerated_person_id`, `family_member_id`
 - `is_blocked`, `blocked_by`
 
-### messages (Messaging Team)
+### messages (Messaging Guild)
 - `id` (UUID) - Primary key
 - `conversation_id`
 - `sender_type` - incarcerated or family
@@ -124,7 +124,7 @@ Links incarcerated persons to family members.
 - `status` - pending_review, approved, sent, delivered, read, blocked
 - `reviewed_by`
 
-### message_attachments (Messaging Team)
+### message_attachments (Messaging Guild)
 - `message_id`
 - `file_type` - image
 - `file_url`, `file_size_bytes`

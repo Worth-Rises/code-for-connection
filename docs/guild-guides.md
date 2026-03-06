@@ -1,6 +1,6 @@
-# Team Guides
+# Guild Guides
 
-## Voice Team
+## Voice Guild
 
 ### Your Directory
 `guilds/voice/`
@@ -31,23 +31,23 @@
 
 ---
 
-## Video Team
+## Video Guild
 
 ### Your Directory
 `guilds/video/`
 - `api/routes.ts` - Express routes for `/api/video/*`
-- `ui/incarcerated/` - Tablet UI for video visits
+- `ui/incarcerated/` - Tablet UI for video calls
 - `ui/family/` - Family app UI for scheduling/joining
 - `ui/admin/` - Admin dashboard for approval/monitoring
 
 ### Required Features
-- [ ] View scheduled visits
+- [ ] View scheduled video calls
 - [ ] Join scheduled video call
 - [ ] Camera/mic controls
 - [ ] Call timer with warnings
 - [ ] Auto-disconnect at time limit
-- [ ] Family: Request video visit
-- [ ] Family: View scheduled visits
+- [ ] Family: Request video call
+- [ ] Family: View scheduled video calls
 - [ ] Admin: Approve/deny requests
 - [ ] Admin: View active calls
 - [ ] Admin: Terminate call
@@ -58,7 +58,7 @@
 
 ---
 
-## Messaging Team
+## Messaging Guild
 
 ### Your Directory
 `guilds/messaging/`
@@ -83,7 +83,7 @@
 
 ---
 
-## Admin Platform Team
+## Admin Platform Guild
 
 ### Your Directory
 `guilds/admin/`
@@ -95,7 +95,7 @@
 - [ ] User profiles view
 - [ ] Facility configuration
 - [ ] Blocked numbers management
-- [ ] Dashboard with stats from all teams
+- [ ] Dashboard with stats from all guilds
 
 ### Key Endpoints You Provide
 - `GET /api/admin/contacts/:incarceratedPersonId`

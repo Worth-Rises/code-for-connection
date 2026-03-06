@@ -31,7 +31,7 @@ Error responses:
 }
 ```
 
-## Admin Platform API (Other Teams Consume)
+## Admin Platform API (Other Guilds Consume)
 
 ### GET /api/admin/contacts/:incarceratedPersonId
 Returns approved contacts for an incarcerated person.
@@ -43,7 +43,7 @@ Query: `?incarceratedPersonId=X&familyMemberId=Y`
 
 Returns: `{ approved: boolean, isAttorney: boolean }`
 
-**Used by**: All communication teams (before connecting)
+**Used by**: All communication guilds (before connecting)
 
 ### GET /api/admin/facility/:facilityId
 Returns facility info including announcement text/audio.
@@ -67,7 +67,7 @@ Returns: `{ blocked: boolean, scope: 'facility' | 'agency' }`
 
 ---
 
-## Voice Team API
+## Voice Guild API
 
 ### GET /api/voice/active-calls
 Query: `?facilityId=X`
@@ -91,7 +91,7 @@ Returns: `{ activeCalls: number, todayTotal: number }`
 
 ---
 
-## Video Team API
+## Video Guild API
 
 ### GET /api/video/active-calls
 Query: `?facilityId=X`
@@ -125,7 +125,7 @@ Returns: `{ activeCalls: number, todayTotal: number, pendingRequests: number }`
 
 ---
 
-## Messaging Team API
+## Messaging Guild API
 
 ### GET /api/messaging/logs
 Query: `?facilityId=X&startDate=Y&endDate=Z&userId=W&page=1&pageSize=20`
