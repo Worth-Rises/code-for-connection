@@ -25,7 +25,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
     "db:studio": "prisma studio",
-    "clean": "rm -rf node_modules **/node_modules **/dist **/.turbo",
+    "clean": "rm -rf node_modules **/node_modules **/dist **/.turbo"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
