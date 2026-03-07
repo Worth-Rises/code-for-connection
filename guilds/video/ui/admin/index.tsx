@@ -188,7 +188,12 @@ function VideoDashboard() {
               <ApprovalRequest
                 key={request.id}
                 name={`${request.familyMember?.firstName} ${request.familyMember?.lastName}`}
-                details={`Scheduled: ${new Date(request.scheduledStart).toLocaleString()}`}
+                requestedTime={request.createdAt || new Date().toISOString()}
+                startTime={request.scheduledStart}
+                endTime={request.scheduledEnd}
+                incarceratedPerson={`${request.incarceratedPerson?.firstName} ${request.incarceratedPerson?.lastName}`}
+                isAttorney={request.incarceratedPerson?.approvedContacts?.[0]?.isAttorney || false}
+                isLegal={request.isLegal || false}
                 onApprove={() => handleApprove(request.id, `${request.familyMember?.firstName} ${request.familyMember?.lastName}`)}
                 onDeny={() => handleDeny(request.id)}
                 isLoading={loadingStates[request.id] || false}
