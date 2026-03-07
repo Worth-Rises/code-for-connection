@@ -23,6 +23,7 @@ model Agency {
   adminUsers       AdminUser[]
   blockedNumbers   BlockedNumber[]
   familyMembers    FamilyMember[]     @relation("BlockedAgencyRelation")
+  keywordAlerts    KeywordAlert[]
 
   @@map("agencies")
 }
@@ -34,6 +35,9 @@ model Facility {
   announcementText     String  @map("announcement_text")
   announcementAudioUrl String? @map("announcement_audio_url")
   createdAt            DateTime @default(now()) @map("created_at")
+  timezone             String   @default("America/New_York")
+  maxVisitorsPerResident Int    @default(5) @map("max_visitors_per_resident")
+  messageReviewRequired Boolean @default(true) @map("message_review_required")
 
   agency            Agency             @relation(fields: [agencyId], references: [id])
   housingUnits      HousingUnit[]
@@ -43,6 +47,7 @@ model Facility {
   voiceCalls        VoiceCall[]
   videoCalls        VideoCall[]
   videoCallTimeSlots VideoCallTimeSlot[]
+  keywordAlerts     KeywordAlert[]
 
   @@map("facilities")
 }
@@ -102,6 +107,9 @@ model IncarceratedPerson {
   status        PersonStatus @default(active)
   admittedAt    DateTime     @default(now()) @map("admitted_at")
   releasedAt    DateTime?    @map("released_at")
+  riskLevel     RiskLevel    @default(low) @map("risk_level")
+  notes         String?
+  profileImageUrl String?    @map("profile_image_url")
   createdAt     DateTime     @default(now()) @map("created_at")
 
   agency           Agency            @relation(fields: [agencyId], references: [id])
@@ -111,6 +119,7 @@ model IncarceratedPerson {
   voiceCalls       VoiceCall[]
   videoCalls       VideoCall[]
   conversations    Conversation[]
+  visitorLinks     VisitorResident[]
 
   @@map("incarcerated_persons")
 }
@@ -125,6 +134,8 @@ model FamilyMember {
   isBlockedAgencyWide Boolean @default(false) @map("is_blocked_agency_wide")
   blockedAgencyId    String?  @map("blocked_agency_id")
   createdAt          DateTime @default(now()) @map("created_at")
+  backgroundCheckStatus BackgroundCheckStatus? @map("background_check_status")
+  backgroundCheckDate   DateTime?              @map("background_check_date")
 
   blockedAgency    Agency?           @relation("BlockedAgencyRelation", fields: [blockedAgencyId], references: [id])
   approvedContacts ApprovedContact[]
@@ -150,6 +161,8 @@ model AdminUser {
   agencyId     String    @map("agency_id")
   facilityId   String?   @map("facility_id")
   createdAt    DateTime  @default(now()) @map("created_at")
+  lastLoginAt  DateTime? @map("last_login_at")
+  isActive     Boolean   @default(true) @map("is_active")
 
   agency               Agency            @relation(fields: [agencyId], references: [id])
   facility             Facility?         @relation(fields: [facilityId], references: [id])
@@ -160,6 +173,13 @@ model AdminUser {
   terminatedVideoCalls VideoCall[]       @relation("TerminatedByAdmin")
   blockedConversations Conversation[]    @relation("BlockedByAdmin")
   reviewedMessages     Message[]         @relation("ReviewedByAdmin")
+  auditLogs            AuditLog[]
+  entityChanges        EntityHistory[]
+  keywordAlerts        KeywordAlert[]
+  flaggedContentReviews FlaggedContent[] @relation("FlaggedContentReviewer")
+  permissions          AdminPermission[] @relation("AdminPermissions")
+  permissionsGranted   AdminPermission[] @relation("PermissionGranter")
+  visitorApprovals     VisitorResident[] @relation("VisitorApprovedByAdmin")
 
   @@map("admin_users")
 }
@@ -396,4 +416,237 @@ model MessageAttachment {
   message Message @relation(fields: [messageId], references: [id])
 
   @@map("message_attachments")
+}
+
+// ==========================================
+// ADMIN OPS ENUMS
+// ==========================================
+
+enum VisitorType {
+  family
+  friend
+  attorney
+  clergy
+  other
+}
+
+enum BackgroundCheckStatus {
+  pending
+  passed
+  failed
+  expired
+}
+
+enum VisitorResidentStatus {
+  pending
+  approved
+  denied
+  suspended
+}
+
+enum RiskLevel {
+  low
+  medium
+  high
+  critical
+}
+
+enum AuditAction {
+  login
+  logout
+  view_resident
+  update_resident_status
+  update_risk_level
+  transfer_resident
+  approve_contact
+  deny_contact
+  remove_contact
+  approve_visitor
+  deny_visitor
+  suspend_visitor
+  approve_message
+  block_message
+  block_conversation
+  terminate_voice_call
+  approve_video_call
+  deny_video_call
+  terminate_video_call
+  create_keyword_alert
+  update_keyword_alert
+  delete_keyword_alert
+  review_flagged_content
+  update_permissions
+  update_facility_config
+  create_blocked_number
+  delete_blocked_number
+  move_resident
+  export_report
+}
+
+enum FlaggedContentType {
+  message
+  attachment
+}
+
+enum FlagReason {
+  keyword_match
+  manual_flag
+  ai_detection
+}
+
+enum FlaggedContentStatus {
+  pending
+  reviewed
+  escalated
+  dismissed
+}
+
+enum AlertSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum PermissionType {
+  manage_residents
+  manage_contacts
+  manage_visitors
+  manage_housing
+  monitor_voice
+  monitor_video
+  monitor_messaging
+  manage_keyword_alerts
+  manage_permissions
+  view_audit_log
+  export_reports
+}
+
+// ==========================================
+// ADMIN OPS (Admin Guild Owned)
+// ==========================================
+
+model Visitor {
+  id                    String               @id @default(uuid())
+  firstName             String               @map("first_name")
+  lastName              String               @map("last_name")
+  email                 String?
+  phone                 String?
+  visitorType           VisitorType          @map("visitor_type")
+  backgroundCheckStatus BackgroundCheckStatus @default(pending) @map("background_check_status")
+  backgroundCheckDate   DateTime?            @map("background_check_date")
+  governmentIdNumber    String?              @map("government_id_number")
+  notes                 String?
+  isActive              Boolean              @default(true) @map("is_active")
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+
+  linkedResidents VisitorResident[]
+
+  @@map("visitors")
+}
+
+model VisitorResident {
+  id                   String               @id @default(uuid())
+  visitorId            String               @map("visitor_id")
+  incarceratedPersonId String               @map("incarcerated_person_id")
+  status               VisitorResidentStatus @default(pending)
+  approvedBy           String?              @map("approved_by")
+  approvedAt           DateTime?            @map("approved_at")
+  createdAt            DateTime             @default(now()) @map("created_at")
+
+  visitor            Visitor            @relation(fields: [visitorId], references: [id])
+  incarceratedPerson IncarceratedPerson @relation(fields: [incarceratedPersonId], references: [id])
+  approvedByAdmin    AdminUser?         @relation("VisitorApprovedByAdmin", fields: [approvedBy], references: [id])
+
+  @@unique([visitorId, incarceratedPersonId])
+  @@map("visitor_residents")
+}
+
+model AuditLog {
+  id          String      @id @default(uuid())
+  adminUserId String      @map("admin_user_id")
+  action      AuditAction
+  entityType  String      @map("entity_type")
+  entityId    String      @map("entity_id")
+  details     Json?
+  ipAddress   String?     @map("ip_address")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id])
+
+  @@index([adminUserId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model EntityHistory {
+  id          String   @id @default(uuid())
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  field       String
+  oldValue    String?  @map("old_value")
+  newValue    String?  @map("new_value")
+  changedBy   String   @map("changed_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  changedByAdmin AdminUser @relation(fields: [changedBy], references: [id])
+
+  @@index([entityType, entityId])
+  @@map("entity_histories")
+}
+
+model KeywordAlert {
+  id         String        @id @default(uuid())
+  keyword    String
+  isRegex    Boolean       @default(false) @map("is_regex")
+  severity   AlertSeverity @default(medium)
+  facilityId String?       @map("facility_id")
+  agencyId   String        @map("agency_id")
+  isActive   Boolean       @default(true) @map("is_active")
+  createdBy  String        @map("created_by")
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  facility       Facility?       @relation(fields: [facilityId], references: [id])
+  agency         Agency          @relation(fields: [agencyId], references: [id])
+  createdByAdmin AdminUser       @relation(fields: [createdBy], references: [id])
+  flaggedContent FlaggedContent[]
+
+  @@map("keyword_alerts")
+}
+
+model FlaggedContent {
+  id             String               @id @default(uuid())
+  contentType    FlaggedContentType   @map("content_type")
+  contentId      String               @map("content_id")
+  keywordAlertId String?              @map("keyword_alert_id")
+  flagReason     FlagReason           @map("flag_reason")
+  matchedText    String?              @map("matched_text")
+  status         FlaggedContentStatus @default(pending)
+  reviewedBy     String?              @map("reviewed_by")
+  reviewedAt     DateTime?            @map("reviewed_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  keywordAlert    KeywordAlert? @relation(fields: [keywordAlertId], references: [id])
+  reviewedByAdmin AdminUser?    @relation("FlaggedContentReviewer", fields: [reviewedBy], references: [id])
+
+  @@index([contentType, contentId])
+  @@index([status])
+  @@map("flagged_content")
+}
+
+model AdminPermission {
+  id             String         @id @default(uuid())
+  adminUserId    String         @map("admin_user_id")
+  permissionType PermissionType @map("permission_type")
+  grantedBy      String         @map("granted_by")
+  grantedAt      DateTime       @default(now()) @map("granted_at")
+
+  adminUser      AdminUser @relation("AdminPermissions", fields: [adminUserId], references: [id])
+  grantedByAdmin AdminUser @relation("PermissionGranter", fields: [grantedBy], references: [id])
+
+  @@unique([adminUserId, permissionType])
+  @@map("admin_permissions")
 }
