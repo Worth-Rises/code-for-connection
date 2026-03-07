@@ -21,9 +21,22 @@ interface CallRoom {
   callType: 'voice' | 'video';
   participants: Map<string, RoomParticipant>;
   createdAt: Date;
+  scheduledEndTimer?: ReturnType<typeof setTimeout>;
 }
 
 const rooms = new Map<string, CallRoom>();
+
+function forceEndRoom(roomId: string, reason: string) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  io.to(roomId).emit('call-ended', { reason });
+  room.participants.forEach((_, socketId) => {
+    io.sockets.sockets.get(socketId)?.leave(roomId);
+  });
+  if (room.scheduledEndTimer) clearTimeout(room.scheduledEndTimer);
+  rooms.delete(roomId);
+  console.log(`Room ${roomId} force-ended: ${reason}`);
+}
 
 const httpServer = createServer();
 
@@ -60,8 +73,9 @@ io.on('connection', (socket: Socket) => {
     userId: string;
     userRole: 'incarcerated' | 'family';
     callType: 'voice' | 'video';
+    scheduledEnd?: string;
   }) => {
-    const { roomId, userId, userRole, callType } = data;
+    const { roomId, userId, userRole, callType, scheduledEnd } = data;
     
     let room = rooms.get(roomId);
     if (!room) {
@@ -71,6 +85,21 @@ io.on('connection', (socket: Socket) => {
         participants: new Map(),
         createdAt: new Date(),
       };
+
+      // Server-side scheduled-end enforcement — safety net if client timers fail
+      if (scheduledEnd) {
+        const msRemaining = new Date(scheduledEnd).getTime() - Date.now();
+        if (msRemaining <= 0) {
+          // Window already closed — reject immediately
+          socket.emit('call-ended', { reason: 'time_limit' });
+          return;
+        }
+        room.scheduledEndTimer = setTimeout(() => {
+          forceEndRoom(roomId, 'time_limit');
+        }, msRemaining);
+        console.log(`Room ${roomId}: scheduled-end timer set for ${msRemaining}ms`);
+      }
+
       rooms.set(roomId, room);
     }
 
@@ -101,42 +130,27 @@ io.on('connection', (socket: Socket) => {
     console.log(`User ${userId} joined room ${roomId}`);
   });
 
-  socket.on('offer', (data: {
-    roomId: string;
-    targetSocketId: string;
-    sdp: RTCSessionDescriptionInit;
-  }) => {
-    const { roomId, targetSocketId, sdp } = data;
-    io.to(targetSocketId).emit('offer', {
-      roomId,
+  socket.on('offer', (data: { roomId: string; sdp: any }) => {
+    socket.to(data.roomId).emit('offer', {
+      roomId: data.roomId,
       senderSocketId: socket.id,
-      sdp,
+      sdp: data.sdp,
     });
   });
 
-  socket.on('answer', (data: {
-    roomId: string;
-    targetSocketId: string;
-    sdp: RTCSessionDescriptionInit;
-  }) => {
-    const { roomId, targetSocketId, sdp } = data;
-    io.to(targetSocketId).emit('answer', {
-      roomId,
+  socket.on('answer', (data: { roomId: string; sdp: any }) => {
+    socket.to(data.roomId).emit('answer', {
+      roomId: data.roomId,
       senderSocketId: socket.id,
-      sdp,
+      sdp: data.sdp,
     });
   });
 
-  socket.on('ice-candidate', (data: {
-    roomId: string;
-    targetSocketId: string;
-    candidate: RTCIceCandidateInit;
-  }) => {
-    const { roomId, targetSocketId, candidate } = data;
-    io.to(targetSocketId).emit('ice-candidate', {
-      roomId,
+  socket.on('ice-candidate', (data: { roomId: string; candidate: any }) => {
+    socket.to(data.roomId).emit('ice-candidate', {
+      roomId: data.roomId,
       senderSocketId: socket.id,
-      candidate,
+      candidate: data.candidate,
     });
   });
 
@@ -154,6 +168,7 @@ io.on('connection', (socket: Socket) => {
     
     const room = rooms.get(roomId);
     if (room) {
+      if (room.scheduledEndTimer) clearTimeout(room.scheduledEndTimer);
       room.participants.forEach((_, socketId) => {
         io.sockets.sockets.get(socketId)?.leave(roomId);
       });
