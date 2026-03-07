@@ -62,6 +62,16 @@ voiceUserRouter.get('/token', requireAuth, async (req: Request, res: Response) =
  */
 voiceUserRouter.get('/call-status/:callId', requireAuth, async (req: Request, res: Response) => {
   const { callId } = req.params;
+  const userId = req.user!.id;
+
+  // Verify ownership
+  const call = await prisma.voiceCall.findFirst({
+    where: { id: callId, incarceratedPersonId: userId },
+  });
+  if (!call) {
+    return res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Call not found' }));
+  }
+
   const metadata = callMetadata.get(callId);
 
   if (!metadata?.phoneSid) {
@@ -367,6 +377,14 @@ voiceUserRouter.post('/end-call/:callId', requireAuth, async (req: Request, res:
       return res.status(404).json(createErrorResponse({
         code: 'NOT_FOUND',
         message: 'Call not found',
+      }));
+    }
+
+    // Verify ownership
+    if (call.incarceratedPersonId !== req.user!.id) {
+      return res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'Not your call',
       }));
     }
 
