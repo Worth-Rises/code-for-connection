@@ -18,12 +18,13 @@ interface DataTableProps<T> {
 
 export function DataTable<T>({
   columns,
-  data,
+  data: rawData,
   onRowClick,
   loading = false,
   emptyMessage = 'No data found.',
   keyExtractor,
 }: DataTableProps<T>) {
+  const data = Array.isArray(rawData) ? rawData : [];
   const getKey = (item: T, index: number): string => {
     if (keyExtractor) return keyExtractor(item);
     if (item && typeof item === 'object' && 'id' in item) {

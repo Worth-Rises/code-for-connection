@@ -1,0 +1,88 @@
+Admin Platform Guild Scope Guide
+=================================
+
+What You're Building
+
+Your guild is building the central nervous system of Open Connect. This is a smaller guild (1-2
+teams) because the work is more focused: configuration, user management, and integration
+rather than building multiple real-time communication interfaces.
+
+Your platform has two layers: agency-level configuration (rules that apply across all facilities)
+and facility-level operations (day-to-day management). You manage the incarcerated user
+profiles, the contact approval system, facility settings, and the unified dashboard that shows
+activity across voice, video, and messaging.
+
+Important context: Your work is the glue that holds the other guilds' components together. The
+contacts you approve flow through to every communication type. The rules you configure
+determine call durations, scheduling windows, and capacity limits.
+
+How Your Work Connects to Other Guilds
+
+- You own the approved_contacts system that all three communication types depend on.
+- You own the incarcerated_persons and family_members user tables.
+- You own the housing_unit_types configuration that determines rules for Voice and Video.
+- You own the video_call_time_slots that the Video feature reads from.
+- Your dashboard pulls from voice_calls, video_calls, and messages tables owned by other components.
+- You are the integration point. If something touches multiple components, it probably goes through you.
+
+Required Scope
+==============
+
+Agency-Level Configuration
+--------------------------
+
+1. Set calling hours - When phones are active, by housing unit type
+2. Set call duration limit - Max call length, by housing unit type
+3. Set video call duration - Max video call length, by housing unit type
+4. Set video time slots - Available scheduling windows, by housing unit type
+5. Define housing unit types - Create categories (general population, solitary, etc.) with rules
+6. Set contact list limits - Max approved contacts per person
+7. Agency-wide block list - Numbers/people blocked across all facilities
+8. Auto-create user profiles - Incarcerated person profile is created through integration with case management system (from seed data for hackathon)
+9. Housing assignment - System knows each person's facility and unit through integration with case management system
+
+Facility-Level Configuration
+-----------------------------
+
+10. Set facility name - Name used in facility disclaimer audio
+11. Dashboard view: Active communications - Count of calls and video calls in progress
+12. Dashboard view: Today's activity - Summary across voice, video, and messaging
+13. Dashboard view: Recent activity feed - Stream of recent events
+14. View incarcerated user profile - All info about one person: housing, contacts, communication history
+15. Edit incarcerated user - Update name, housing unit, status
+16. Deactivate incarcerated user - Remove access without deleting
+17. Search incarcerated users - Find by name, ID, or unit
+18. List all incarcerated users - Paginated directory
+19. Assign/reset PIN for incarcerated users - Generate or reset PINs
+20. View incarcerated user's contacts - Approved contact list for a specific person
+21. View incarcerated user's communication history - Unified view of all calls, video calls, and messages
+22. View all pending contact approvals - Queue across all users at this facility
+23. Approve contact - Approve connection between specific incarcerated person and specific outside person
+24. Deny contact - Reject a connection request
+25. View contact details - Name, address, phone, relationship
+26. Edit contact - Update contact information
+27. Remove contact - Delete from a person's approved list
+28. Global block list (facility) - Numbers blocked for all users at this facility
+29. Verify attorney - Mark contact as verified legal counsel
+30. Block outside person agency-wide - Block someone across all facilities
+
+Optional Scope
+==============
+
+31. Handle transfers - Update when someone moves facility/unit
+32. Handle releases - Deactivate access on release
+33. Set contact list change frequency - Monthly, quarterly, etc.
+34. Bulk user import - Upload CSV
+35. Export data - Download logs as CSV
+36. Audit log - Who did what, when
+37. Usage reports - Detailed statistics
+
+Your Demo Should Show
+=====================
+
+1. Agency admin configures calling hours, call duration limits, and video time slots by unit type
+2. Incarcerated user profiles exist with correct housing assignments
+3. Facility admin reviews and approves a contact request, linking a specific incarcerated person to a specific outside person
+4. That contact approval flows through to all communication types (voice, video, messaging)
+5. Facility admin views a unified dashboard showing activity across all communication types
+6. Facility admin can search for and find specific users or communications

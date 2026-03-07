@@ -8,6 +8,7 @@
 - [ ] [H.T] Confirm pending GitHub collaborator invites accepted (sarahtrefethen, geocas38, DumbInACan, albarrentine)
 - [ ] [H.T] Push latest commit (3f0573e) to fork remote
 - [ ] [H.T] Add housing-unit-scoped call termination (admin can lock down calls for a specific unit or entire facility)
+- [ ] [H.T] Fix cross-browser compatibility (Safari blanks out the admin portal)
 - [ ] [H.T] Add WebRTC TURN/STUN server configuration (signaling server only does offer/answer relay; NAT traversal needed for real deployment)
 
 ## Someday

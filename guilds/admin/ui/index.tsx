@@ -1,6 +1,5 @@
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
-import { AdminSidebar } from './components/AdminSidebar';
 
 // Existing pages
 import ContactsPage from './pages/ContactsPage';
@@ -25,10 +24,7 @@ import SystemStatusPage from './settings/SystemStatusPage';
 
 export default function AdminPortal() {
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <AdminSidebar />
-      <main className="flex-1 p-6 ml-64">
-        <Routes>
+    <Routes>
           <Route index element={<DashboardPage />} />
           <Route path="contacts" element={<ContactsPage />} />
           <Route path="blocked-numbers" element={<BlockedNumbersPage />} />
@@ -46,8 +42,6 @@ export default function AdminPortal() {
           <Route path="audit-log" element={<AuditLogPage />} />
           <Route path="settings/permissions" element={<PermissionsPage />} />
           <Route path="settings/system" element={<SystemStatusPage />} />
-        </Routes>
-      </main>
-    </div>
+    </Routes>
   );
 }

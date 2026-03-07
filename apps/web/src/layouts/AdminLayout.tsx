@@ -20,20 +20,49 @@ export default function AdminLayout() {
       ],
     },
     {
-      title: 'Management',
-      items: [
-        { path: '/admin/contacts', label: 'Contacts', icon: '👥' },
-        { path: '/admin/users', label: 'Users', icon: '👤' },
-        { path: '/admin/blocked-numbers', label: 'Blocked Numbers', icon: '🚫' },
-        { path: '/admin/facility', label: 'Facility Config', icon: '🏢' },
-      ],
-    },
-    {
       title: 'Communication',
       items: [
         { path: '/admin/voice', label: 'Voice Calls', icon: '📞' },
         { path: '/admin/video', label: 'Video Calls', icon: '📹' },
         { path: '/admin/messaging', label: 'Messages', icon: '💬' },
+      ],
+    },
+    {
+      title: 'People',
+      items: [
+        { path: '/admin/residents', label: 'Residents', icon: '👤' },
+        { path: '/admin/visitors', label: 'Visitors', icon: '🧑' },
+        { path: '/admin/contacts', label: 'Contacts', icon: '👥' },
+      ],
+    },
+    {
+      title: 'Facility',
+      items: [
+        { path: '/admin/housing', label: 'Housing', icon: '🏠' },
+        { path: '/admin/blocked-numbers', label: 'Blocked Numbers', icon: '🚫' },
+      ],
+    },
+    {
+      title: 'Monitoring',
+      items: [
+        { path: '/admin/search', label: 'Search', icon: '🔍' },
+        { path: '/admin/keyword-alerts', label: 'Keyword Alerts', icon: '⚠️' },
+      ],
+    },
+    {
+      title: 'Reports',
+      items: [
+        { path: '/admin/reports', label: 'Reports', icon: '📈' },
+        { path: '/admin/audit-log', label: 'Audit Log', icon: '📋' },
+      ],
+    },
+    {
+      title: 'Settings',
+      items: [
+        { path: '/admin/facility', label: 'Facility Config', icon: '🏢' },
+        { path: '/admin/settings/permissions', label: 'Permissions', icon: '🔐' },
+        { path: '/admin/settings/system', label: 'System Status', icon: '⚙️' },
+        { path: '/admin/users', label: 'Admin Users', icon: '👤' },
       ],
     },
   ];

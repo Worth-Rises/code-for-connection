@@ -1,9 +1,9 @@
-.PHONY: help open dev build db seed studio clean generate install setup
+.PHONY: help open run dev build db seed studio clean generate install setup
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
-open: ## Start dev servers and open the web app
+open run: ## Start dev servers and open the web app
 	@sleep 4 && open http://localhost:5173 &
 	npm run dev
 

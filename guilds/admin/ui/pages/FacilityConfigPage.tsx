@@ -4,16 +4,22 @@ import { useAdminApi } from '../hooks/useAdminApi';
 import { useFacilityScope } from '../hooks/useFacilityScope';
 import { FacilitySelector } from '../components/FacilitySelector';
 
+interface UnitType {
+  id: string;
+  name: string;
+  voiceCallDurationMinutes: number;
+  videoCallDurationMinutes: number;
+  callingHoursStart: string;
+  callingHoursEnd: string;
+  maxContacts: number;
+  videoSlotDurationMinutes: number;
+  maxConcurrentVideoCalls: number;
+}
+
 interface HousingUnitWithType {
   id: string;
   name: string;
-  unitType: {
-    name: string;
-    voiceCallDurationMinutes: number;
-    callingHoursStart: string;
-    callingHoursEnd: string;
-    maxContacts: number;
-  };
+  unitType: UnitType;
 }
 
 interface FacilityConfig {
@@ -33,6 +39,7 @@ export default function FacilityConfigPage() {
   const [saving, setSaving] = useState(false);
   const [announcementText, setAnnouncementText] = useState('');
   const [announcementAudioUrl, setAnnouncementAudioUrl] = useState('');
+  const [unitTypes, setUnitTypes] = useState<UnitType[]>([]);
 
   const fetchConfig = useCallback(async () => {
     if (!facilityId) {
@@ -53,9 +60,29 @@ export default function FacilityConfigPage() {
     }
   }, [get, facilityId]);
 
+  const fetchUnitTypes = useCallback(async () => {
+    try {
+      const res = await get('/housing/unit-types');
+      setUnitTypes(res.data ?? []);
+    } catch {
+      setUnitTypes([]);
+    }
+  }, [get]);
+
   useEffect(() => {
     fetchConfig();
-  }, [fetchConfig]);
+    fetchUnitTypes();
+  }, [fetchConfig, fetchUnitTypes]);
+
+  const saveUnitType = async (typeId: string, updates: Record<string, unknown>) => {
+    try {
+      await patch(`/housing/unit-types/${typeId}`, updates);
+      fetchUnitTypes();
+      fetchConfig();
+    } catch {
+      // silently handle
+    }
+  };
 
   const handleSave = async () => {
     if (!facilityId) return;
@@ -135,6 +162,76 @@ export default function FacilityConfigPage() {
               </div>
             </div>
           </Card>
+
+          {unitTypes.length > 0 && (
+            <Card padding="lg">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Housing Unit Type Settings</h2>
+              <p className="text-sm text-gray-500 mb-4">Configure calling hours, call durations, video time slots, and contact limits per housing unit type.</p>
+              <div className="space-y-6">
+                {unitTypes.map((ut) => (
+                  <div key={ut.id} className="border border-gray-200 rounded-lg p-4">
+                    <h3 className="font-semibold text-gray-900 mb-3">{ut.name}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Calling Hours Start</label>
+                        <input
+                          type="time"
+                          defaultValue={ut.callingHoursStart}
+                          onBlur={(e) => saveUnitType(ut.id, { callingHoursStart: e.target.value })}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Calling Hours End</label>
+                        <input
+                          type="time"
+                          defaultValue={ut.callingHoursEnd}
+                          onBlur={(e) => saveUnitType(ut.id, { callingHoursEnd: e.target.value })}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Voice Call Duration (min)</label>
+                        <input
+                          type="number"
+                          defaultValue={ut.voiceCallDurationMinutes}
+                          onBlur={(e) => saveUnitType(ut.id, { voiceCallDurationMinutes: parseInt(e.target.value) })}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Video Call Duration (min)</label>
+                        <input
+                          type="number"
+                          defaultValue={ut.videoCallDurationMinutes}
+                          onBlur={(e) => saveUnitType(ut.id, { videoCallDurationMinutes: parseInt(e.target.value) })}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Max Contacts per Person</label>
+                        <input
+                          type="number"
+                          defaultValue={ut.maxContacts}
+                          onBlur={(e) => saveUnitType(ut.id, { maxContacts: parseInt(e.target.value) })}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Video Slot Duration (min)</label>
+                        <input
+                          type="number"
+                          defaultValue={ut.videoSlotDurationMinutes}
+                          onBlur={(e) => saveUnitType(ut.id, { videoSlotDurationMinutes: parseInt(e.target.value) })}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           {config.housingUnits && config.housingUnits.length > 0 && (
             <Card padding="lg">

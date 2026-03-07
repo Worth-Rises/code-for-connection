@@ -121,20 +121,20 @@ function ActiveCallsTab({
   const [terminateLoading, setTerminateLoading] = useState(false);
 
   const fetchActive = useCallback(
-    () =>
-      api.get(
+    async () => {
+      const res = await api.get(
         `/active-calls${facilityId ? `?facilityId=${facilityId}` : ''}`,
-      ),
+      );
+      return res.data ?? [];
+    },
     [api, facilityId],
   );
 
-  const { data, loading, refresh } = usePolling<VoiceCall[]>(
+  const { data: calls = [], loading, refresh } = usePolling<VoiceCall[]>(
     fetchActive,
     15000,
     [facilityId],
   );
-
-  const calls = data ?? [];
 
   const handleTerminate = async () => {
     if (!terminatingId) return;
@@ -259,11 +259,11 @@ function CallHistoryTab({
       if (dateTo) params.set('dateTo', dateTo);
       if (statusFilter) params.set('status', statusFilter);
 
-      const res: CallLogsResponse = await api.get(
+      const res = await api.get(
         `/call-logs?${params.toString()}`,
       );
       setCalls(res.data ?? []);
-      setTotalPages(res.totalPages ?? 1);
+      setTotalPages(res.pagination?.totalPages ?? 1);
     } finally {
       setLoading(false);
     }
@@ -385,8 +385,10 @@ function VoiceDashboard() {
   const api = useGuildApi('/api/voice');
 
   const fetchStats = useCallback(
-    () =>
-      api.get(`/stats${facilityId ? `?facilityId=${facilityId}` : ''}`),
+    async () => {
+      const res = await api.get(`/stats${facilityId ? `?facilityId=${facilityId}` : ''}`);
+      return res.data ?? {};
+    },
     [api, facilityId],
   );
 
