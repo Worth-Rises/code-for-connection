@@ -14,6 +14,7 @@ Welcome to the Code for Connection hackathon! This documentation will help you g
 - [Guild Guides](./guild-guides.md) - Per-guild setup and feature guides
 
 ## Getting Started
+//test
 
 ### Prerequisites
 
