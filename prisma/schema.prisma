@@ -43,6 +43,7 @@ model Facility {
   voiceCalls        VoiceCall[]
   videoCalls        VideoCall[]
   videoCallTimeSlots VideoCallTimeSlot[]
+  flaggedKeywords   FlaggedKeyword[]
 
   @@map("facilities")
 }
@@ -160,6 +161,7 @@ model AdminUser {
   terminatedVideoCalls VideoCall[]       @relation("TerminatedByAdmin")
   blockedConversations Conversation[]    @relation("BlockedByAdmin")
   reviewedMessages     Message[]         @relation("ReviewedByAdmin")
+  flaggedKeywords      FlaggedKeyword[]
 
   @@map("admin_users")
 }
@@ -396,4 +398,19 @@ model MessageAttachment {
   message Message @relation(fields: [messageId], references: [id])
 
   @@map("message_attachments")
+}
+
+model FlaggedKeyword {
+  id         String   @id @default(uuid())
+  facilityId String   @map("facility_id")
+  phrase     String
+  createdBy  String   @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  facility Facility  @relation(fields: [facilityId], references: [id])
+  admin    AdminUser @relation(fields: [createdBy], references: [id])
+
+  @@unique([facilityId, phrase])
+  @@map("flagged_keywords")
 }

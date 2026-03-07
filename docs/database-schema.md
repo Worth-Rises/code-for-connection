@@ -124,6 +124,15 @@ Links incarcerated persons to family members.
 - `status` - pending_review, approved, sent, delivered, read, blocked
 - `reviewed_by`
 
+### flagged_keywords (Messaging Guild)
+Configurable per-facility keyword list for automatic message screening. Messages matching any phrase are held as `pending_review`; all others are auto-set to `sent`.
+- `id` (UUID) - Primary key
+- `facility_id` - FK to facilities
+- `phrase` - Lowercased word or phrase to match (case-insensitive)
+- `created_by` - FK to admin_users
+- `created_at`, `updated_at`
+- Unique constraint on `(facility_id, phrase)`
+
 ### message_attachments (Messaging Guild)
 - `message_id`
 - `file_type` - image
