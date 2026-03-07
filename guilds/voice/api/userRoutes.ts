@@ -440,7 +440,7 @@ voiceUserRouter.post('/end-call/:callId', requireAuth, async (req: Request, res:
       data: {
         status: 'completed',
         endedAt: new Date(),
-        endedBy: 'caller',
+        endedBy: (req.query.endedBy === 'receiver' ? 'receiver' : 'caller') as string,
         durationSeconds,
       },
       include: {
