@@ -314,12 +314,12 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
         }));
       }
 
-      // Update call status
+      // Call is now ringing — don't mark as 'connected' yet.
+      // The status callback (or UI polling) will update to 'connected' when phone answers.
       const updatedCall = await prisma.voiceCall.update({
         where: { id: voiceCall.id },
         data: {
-          status: 'connected',
-          connectedAt: new Date(),
+          status: 'ringing',
         },
         include: {
           familyMember: {
@@ -378,36 +378,37 @@ voiceUserRouter.post('/end-call/:callId', requireAuth, async (req: Request, res:
     }
 
     // End the conference (this terminates ALL participants)
-    const metadata = callMetadata.get(callId);
-    if (metadata) {
-      try {
-        const client = twilio(
-          process.env.TWILIO_ACCOUNT_SID,
-          process.env.TWILIO_AUTH_TOKEN,
-        );
+    const conferenceName = `call-${callId}`;
+    try {
+      const client = twilio(
+        process.env.TWILIO_ACCOUNT_SID,
+        process.env.TWILIO_AUTH_TOKEN,
+      );
 
-        // Terminate the conference itself — ends all call legs
-        console.log(`[voice] Ending conference ${metadata.conferenceName}`);
-        const conferences = await client.conferences.list({
-          friendlyName: metadata.conferenceName,
-          status: 'in-progress',
-        });
-        for (const conf of conferences) {
-          await conf.update({ status: 'completed' });
-          console.log(`[voice] Conference ${conf.sid} terminated`);
-        }
+      // Terminate the conference by friendly name — works even without callMetadata
+      console.log(`[voice] Ending conference ${conferenceName}`);
+      const conferences = await client.conferences.list({
+        friendlyName: conferenceName,
+        status: 'in-progress',
+      });
+      for (const conf of conferences) {
+        await conf.update({ status: 'completed' });
+        console.log(`[voice] Conference ${conf.sid} terminated`);
+      }
 
-        // Also explicitly end any individual call legs as fallback
+      // Also explicitly end any individual call legs if we have the SIDs
+      const metadata = callMetadata.get(callId);
+      if (metadata) {
         if (metadata.clientSid) {
           try { await client.calls(metadata.clientSid).update({ status: 'completed' }); } catch { /* may already be ended */ }
         }
         if (metadata.phoneSid) {
           try { await client.calls(metadata.phoneSid).update({ status: 'completed' }); } catch { /* may already be ended */ }
         }
-      } catch (twilioError) {
-        console.error('[voice] Error ending conference/calls:', twilioError);
+        callMetadata.delete(callId);
       }
-      callMetadata.delete(callId);
+    } catch (twilioError) {
+      console.error('[voice] Error ending conference/calls:', twilioError);
     }
 
 
@@ -451,8 +452,21 @@ voiceUserRouter.post('/status-callback/:callId', async (req: Request, res: Respo
 
   console.log(`[voice] Status callback: callId=${callId} CallStatus=${CallStatus} CallSid=${CallSid}`);
 
-  if (CallStatus === 'completed' || CallStatus === 'busy' || CallStatus === 'no-answer' || CallStatus === 'failed' || CallStatus === 'canceled') {
-    try {
+  try {
+    // Phone answered → mark call as connected with timestamp
+    if (CallStatus === 'in-progress' || CallStatus === 'answered') {
+      const call = await prisma.voiceCall.findUnique({ where: { id: callId } });
+      if (call && call.status === 'ringing') {
+        await prisma.voiceCall.update({
+          where: { id: callId },
+          data: { status: 'connected', connectedAt: new Date() },
+        });
+        console.log(`[voice] Call ${callId} marked as connected (phone answered)`);
+      }
+    }
+
+  // Call ended → mark as completed/missed
+    if (CallStatus === 'completed' || CallStatus === 'busy' || CallStatus === 'no-answer' || CallStatus === 'failed' || CallStatus === 'canceled') {
       const call = await prisma.voiceCall.findUnique({ where: { id: callId } });
       if (call && ['ringing', 'connected'].includes(call.status)) {
         const durationSeconds = call.connectedAt
@@ -470,9 +484,9 @@ voiceUserRouter.post('/status-callback/:callId', async (req: Request, res: Respo
         });
         console.log(`[voice] Call ${callId} marked as ended by receiver (${CallStatus})`);
       }
-    } catch (err) {
-      console.error(`[voice] Error processing status callback for call ${callId}:`, err);
     }
+  } catch (err) {
+    console.error(`[voice] Error processing status callback for call ${callId}:`, err);
   }
 
   // Twilio expects 200 OK
