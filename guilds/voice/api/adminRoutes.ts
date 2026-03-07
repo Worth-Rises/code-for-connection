@@ -111,65 +111,82 @@ voiceAdminRouter.post('/terminate-calls', requireAuth, requireRole('facility_adm
       }));
     }
 
+    // Fetch all requested calls in one query
+    const calls = await prisma.voiceCall.findMany({
+      where: { id: { in: callIds } },
+    });
+    type VoiceCallRecord = Awaited<ReturnType<typeof prisma.voiceCall.findMany>>[number];
+    const callMap = new Map<string, VoiceCallRecord>();
+    for (const c of calls) callMap.set(c.id, c);
+
     const client = twilio(
       process.env.TWILIO_ACCOUNT_SID,
       process.env.TWILIO_AUTH_TOKEN,
     );
 
+    // Determine which calls are eligible and which aren't
+    const eligible: VoiceCallRecord[] = [];
     const results: Array<{ callId: string; success: boolean; error?: string }> = [];
 
     for (const callId of callIds) {
-      try {
-        const call = await prisma.voiceCall.findUnique({ where: { id: callId } });
+      const call = callMap.get(callId);
+      if (!call) {
+        results.push({ callId, success: false, error: 'Call not found' });
+      } else if (!['ringing', 'connected'].includes(call.status)) {
+        results.push({ callId, success: false, error: 'Call is not active' });
+      } else {
+        eligible.push(call);
+      }
+    }
 
-        if (!call) {
-          results.push({ callId, success: false, error: 'Call not found' });
-          continue;
-        }
+    // Fire off all Twilio conference terminations in parallel
+    const twilioResults = await Promise.allSettled(
+      eligible.map(async (call) => {
+        const conferenceName = `call-${call.id}`;
+        const conferences = await client.conferences.list({
+          friendlyName: conferenceName,
+          status: 'in-progress',
+        });
+        await Promise.all(
+          conferences.map(conf => {
+            console.log(`[voice] Admin terminate: conference ${conf.sid} terminating`);
+            return conf.update({ status: 'completed' });
+          }),
+        );
+        return call.id;
+      }),
+    );
 
-        if (!['ringing', 'connected'].includes(call.status)) {
-          results.push({ callId, success: false, error: 'Call is not active' });
-          continue;
-        }
+    // Log any Twilio failures (but don't block DB update)
+    for (const result of twilioResults) {
+      if (result.status === 'rejected') {
+        console.error('[voice] Twilio conference termination failed:', result.reason);
+      }
+    }
 
-        // Terminate the Twilio conference
-        const conferenceName = `call-${callId}`;
-        try {
-          const conferences = await client.conferences.list({
-            friendlyName: conferenceName,
-            status: 'in-progress',
-          });
-          for (const conf of conferences) {
-            await conf.update({ status: 'completed' });
-            console.log(`[voice] Admin terminate: conference ${conf.sid} terminated`);
-          }
-        } catch (twilioError) {
-          console.error(`[voice] Error ending Twilio conference for call ${callId}:`, twilioError);
-          // Continue to update DB even if Twilio cleanup fails
-        }
-
-        // Update the DB record
+    // Bulk-update all eligible calls in the DB
+    const now = new Date();
+    await Promise.all(
+      eligible.map(call => {
         const durationSeconds = call.connectedAt
-          ? Math.floor((Date.now() - call.connectedAt.getTime()) / 1000)
+          ? Math.floor((now.getTime() - call.connectedAt.getTime()) / 1000)
           : 0;
-
-        await prisma.voiceCall.update({
-          where: { id: callId },
+        return prisma.voiceCall.update({
+          where: { id: call.id },
           data: {
             status: 'terminated_by_admin',
-            endedAt: new Date(),
+            endedAt: now,
             endedBy: 'admin',
             terminatedByAdminId: req.user!.id,
             durationSeconds,
           },
         });
+      }),
+    );
 
-        results.push({ callId, success: true });
-      } catch (err) {
-        console.error(`[voice] Error terminating call ${callId}:`, err);
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        results.push({ callId, success: false, error: message });
-      }
+    // Mark all eligible as success
+    for (const call of eligible) {
+      results.push({ callId: call.id, success: true });
     }
 
     res.json(createSuccessResponse({ results }));
