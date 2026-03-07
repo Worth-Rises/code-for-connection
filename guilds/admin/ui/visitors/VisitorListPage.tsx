@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Modal } from '@openconnect/ui';
-import { useAdminApi } from '../../hooks/useAdminApi';
+import { useAdminApi } from '../hooks/useAdminApi';
 import { usePagination } from '../../hooks/usePagination';
 import { useFacilityScope } from '../../hooks/useFacilityScope';
 import { DataTable } from '../../components/DataTable';

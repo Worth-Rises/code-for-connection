@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Button } from '@openconnect/ui';
-import { useAdminApi } from '../../hooks/useAdminApi';
+import { useAdminApi } from '../hooks/useAdminApi';
 
 interface ServiceHealth {
   status: string;

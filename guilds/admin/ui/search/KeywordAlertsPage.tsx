@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button, Modal } from '@openconnect/ui';
-import { useAdminApi } from '../../hooks/useAdminApi';
+import { useAdminApi } from '../hooks/useAdminApi';
 import { useFacilityScope } from '../../hooks/useFacilityScope';
 import { DataTable } from '../../components/DataTable';
 import { StatusBadge } from '../../components/StatusBadge';

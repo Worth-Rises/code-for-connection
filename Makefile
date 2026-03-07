@@ -1,40 +1,34 @@
-.PHONY: open dev build db seed studio clean
+.PHONY: help open dev build db seed studio clean generate install setup
 
-# Start dev servers and open the web app in browser
-open:
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+
+open: ## Start dev servers and open the web app
 	@sleep 4 && open http://localhost:5173 &
 	npm run dev
 
-# Start development servers (API + signaling + web)
-dev:
+dev: ## Start development servers (API + signaling + web)
 	npm run dev
 
-# Build all packages
-build:
+build: ## Build all packages
 	npm run build
 
-# Run database migrations
-db:
+db: ## Run database migrations
 	npm run db:migrate
 
-# Seed the database with test data
-seed:
+seed: ## Seed the database with test data
 	npm run db:seed
 
-# Open Prisma Studio
-studio:
+studio: ## Open Prisma Studio (database browser)
 	npm run db:studio
 
-# Generate Prisma client
-generate:
+generate: ## Generate Prisma client from schema
 	npx prisma generate
 
-# Install dependencies
-install:
+install: ## Install dependencies
 	npm install
 
-# Full setup: install, build shared packages, start postgres/redis, migrate, seed
-setup:
+setup: ## Full setup: install, build, start DB, migrate, seed
 	npm install
 	npm run build -w @openconnect/shared
 	npm run build -w @openconnect/ui
@@ -43,6 +37,5 @@ setup:
 	npm run db:migrate
 	npm run db:seed
 
-# Clean all build artifacts
-clean:
+clean: ## Clean all build artifacts and node_modules
 	npm run clean
