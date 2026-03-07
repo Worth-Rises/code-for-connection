@@ -11,6 +11,9 @@ import { facilityRouter } from './facility.js';
 import { usersRouter } from './users.js';
 import { dashboardRouter } from './dashboard.js';
 import { monitoringRouter } from './monitoring.routes.js';
+import { residentsRouter } from './residents.routes.js';
+import { visitorsRouter } from './visitors.routes.js';
+import { housingRouter } from './housing.routes.js';
 
 export const adminRouter = Router();
 
@@ -22,6 +25,9 @@ adminRouter.use('/users', usersRouter);
 adminRouter.use('/user', usersRouter);
 adminRouter.use('/dashboard', dashboardRouter);
 adminRouter.use('/monitoring', monitoringRouter);
+adminRouter.use('/residents', residentsRouter);
+adminRouter.use('/visitors', visitorsRouter);
+adminRouter.use('/housing', housingRouter);
 
 adminRouter.get('/housing-unit-type/:unitTypeId', requireAuth, async (req: Request, res: Response) => {
   try {

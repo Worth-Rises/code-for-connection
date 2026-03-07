@@ -10,6 +10,12 @@ import UsersPage from './pages/UsersPage';
 
 // New pages
 import DashboardPage from './dashboard/DashboardPage';
+import ResidentListPage from './residents/ResidentListPage';
+import ResidentProfilePage from './residents/ResidentProfilePage';
+import VisitorListPage from './visitors/VisitorListPage';
+import VisitorProfilePage from './visitors/VisitorProfilePage';
+import HousingDashboardPage from './housing/HousingDashboardPage';
+import UnitRosterPage from './housing/UnitRosterPage';
 
 // Placeholder for pages not yet built
 function PlaceholderPage({ title }: { title: string }) {
@@ -32,12 +38,12 @@ export default function AdminPortal() {
           <Route path="blocked-numbers" element={<BlockedNumbersPage />} />
           <Route path="facility" element={<FacilityConfigPage />} />
           <Route path="users" element={<UsersPage />} />
-          <Route path="residents" element={<PlaceholderPage title="Residents" />} />
-          <Route path="residents/:id" element={<PlaceholderPage title="Resident Profile" />} />
-          <Route path="visitors" element={<PlaceholderPage title="Visitors" />} />
-          <Route path="visitors/:id" element={<PlaceholderPage title="Visitor Profile" />} />
-          <Route path="housing" element={<PlaceholderPage title="Housing" />} />
-          <Route path="housing/:unitId" element={<PlaceholderPage title="Unit Roster" />} />
+          <Route path="residents" element={<ResidentListPage />} />
+          <Route path="residents/:id" element={<ResidentProfilePage />} />
+          <Route path="visitors" element={<VisitorListPage />} />
+          <Route path="visitors/:id" element={<VisitorProfilePage />} />
+          <Route path="housing" element={<HousingDashboardPage />} />
+          <Route path="housing/:unitId" element={<UnitRosterPage />} />
           <Route path="search" element={<PlaceholderPage title="Search" />} />
           <Route path="keyword-alerts" element={<PlaceholderPage title="Keyword Alerts" />} />
           <Route path="reports" element={<PlaceholderPage title="Reports" />} />

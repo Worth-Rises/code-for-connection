@@ -9,6 +9,7 @@ import {
   createPaginationInfo,
 } from '@openconnect/shared';
 import { buildFacilityFilter } from './helpers.js';
+import { auditLog, getClientIp } from './audit.js';
 
 export const contactsRouter = Router();
 
@@ -49,6 +50,119 @@ contactsRouter.get('/check', requireAuth, async (req: Request, res: Response) =>
 
 // All routes below require admin role
 contactsRouter.use(requireAuth, requireRole('facility_admin', 'agency_admin'));
+
+// PATCH /:contactId/attorney-flag - Toggle attorney status
+contactsRouter.patch('/:contactId/attorney-flag', async (req: Request, res: Response) => {
+  try {
+    const { contactId } = req.params;
+    const { isAttorney } = req.body;
+
+    const contact = await prisma.approvedContact.findUnique({ where: { id: contactId } });
+    if (!contact) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Contact not found' }));
+      return;
+    }
+
+    const updated = await prisma.approvedContact.update({
+      where: { id: contactId },
+      data: { isAttorney: Boolean(isAttorney) },
+    });
+
+    await auditLog(req.user!.id, 'approve_contact', 'ApprovedContact', contactId, {
+      field: 'isAttorney',
+      value: isAttorney,
+    }, getClientIp(req));
+
+    res.json(createSuccessResponse(updated));
+  } catch (error) {
+    console.error('Error updating attorney flag:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to update attorney flag',
+    }));
+  }
+});
+
+// GET /:contactId/communication-history - Communication history between pair
+contactsRouter.get('/:contactId/communication-history', async (req: Request, res: Response) => {
+  try {
+    const { contactId } = req.params;
+    const { skip, take, page, pageSize } = getPagination({
+      page: Number(req.query.page) || undefined,
+      pageSize: Number(req.query.pageSize) || undefined,
+    });
+
+    const contact = await prisma.approvedContact.findUnique({ where: { id: contactId } });
+    if (!contact) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Contact not found' }));
+      return;
+    }
+
+    const { incarceratedPersonId, familyMemberId } = contact;
+
+    const [voiceCalls, messages] = await Promise.all([
+      prisma.voiceCall.findMany({
+        where: { incarceratedPersonId, familyMemberId },
+        orderBy: { startedAt: 'desc' },
+        take: 100,
+      }),
+      prisma.message.findMany({
+        where: {
+          conversation: { incarceratedPersonId, familyMemberId },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        include: { conversation: true },
+      }),
+    ]);
+
+    const combined: Array<{
+      type: string;
+      date: string;
+      details: Record<string, unknown>;
+    }> = [];
+
+    for (const call of voiceCalls) {
+      combined.push({
+        type: 'voice_call',
+        date: call.startedAt.toISOString(),
+        details: {
+          id: call.id,
+          status: call.status,
+          durationSeconds: call.durationSeconds,
+          isLegal: call.isLegal,
+        },
+      });
+    }
+
+    for (const msg of messages) {
+      combined.push({
+        type: 'message',
+        date: msg.createdAt.toISOString(),
+        details: {
+          id: msg.id,
+          senderType: msg.senderType,
+          status: msg.status,
+          body: msg.body,
+        },
+      });
+    }
+
+    combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    const paginated = combined.slice(skip, skip + take);
+    res.json(createSuccessResponse({
+      data: paginated,
+      pagination: createPaginationInfo(page, pageSize, combined.length),
+    }));
+  } catch (error) {
+    console.error('Error fetching communication history:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch communication history',
+    }));
+  }
+});
 
 // GET / - paginated contact list
 contactsRouter.get('/', async (req: Request, res: Response) => {

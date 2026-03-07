@@ -5,6 +5,7 @@ import { usePagination } from '../hooks/usePagination';
 import { useFacilityScope } from '../hooks/useFacilityScope';
 import { FacilitySelector } from '../components/FacilitySelector';
 import { Pagination } from '../components/Pagination';
+import { StatusBadge } from '../components/StatusBadge';
 
 type StatusFilter = 'pending' | 'approved' | 'denied' | 'removed' | 'all';
 
@@ -17,6 +18,12 @@ interface Contact {
   requestedAt: string;
 }
 
+interface CommHistoryItem {
+  type: string;
+  date: string;
+  details: Record<string, unknown>;
+}
+
 export default function ContactsPage() {
   const { get, patch } = useAdminApi();
   const { facilityId, setFacilityId, isAgencyAdmin } = useFacilityScope();
@@ -26,6 +33,10 @@ export default function ContactsPage() {
   const [loading, setLoading] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ id: string; action: string } | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [attorneyLoading, setAttorneyLoading] = useState<string | null>(null);
+  const [historyContactId, setHistoryContactId] = useState<string | null>(null);
+  const [commHistory, setCommHistory] = useState<CommHistoryItem[]>([]);
+  const [commHistoryLoading, setCommHistoryLoading] = useState(false);
 
   const tabs: StatusFilter[] = ['pending', 'approved', 'denied', 'removed', 'all'];
 
@@ -60,6 +71,31 @@ export default function ContactsPage() {
       // keep modal open on error
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleToggleAttorney = async (contact: Contact) => {
+    setAttorneyLoading(contact.id);
+    try {
+      await patch(`/contacts/${contact.id}/attorney-flag`, { isAttorney: !contact.isAttorney });
+      fetchContacts();
+    } catch {
+      // ignore
+    } finally {
+      setAttorneyLoading(null);
+    }
+  };
+
+  const handleShowHistory = async (contactId: string) => {
+    setHistoryContactId(contactId);
+    setCommHistoryLoading(true);
+    try {
+      const res = await get(`/contacts/${contactId}/communication-history?pageSize=50`);
+      setCommHistory(res.data?.data || []);
+    } catch {
+      setCommHistory([]);
+    } finally {
+      setCommHistoryLoading(false);
     }
   };
 
@@ -132,10 +168,23 @@ export default function ContactsPage() {
                         </>
                       )}
                       {c.status === 'approved' && (
-                        <Button size="sm" variant="danger" onClick={() => setConfirmAction({ id: c.id, action: 'remove' })}>
-                          Remove
-                        </Button>
+                        <>
+                          <Button size="sm" variant="danger" onClick={() => setConfirmAction({ id: c.id, action: 'remove' })}>
+                            Remove
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleToggleAttorney(c)}
+                            loading={attorneyLoading === c.id}
+                          >
+                            {c.isAttorney ? 'Remove Attorney' : 'Mark Attorney'}
+                          </Button>
+                        </>
                       )}
+                      <Button size="sm" variant="secondary" onClick={() => handleShowHistory(c.id)}>
+                        History
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -166,6 +215,53 @@ export default function ContactsPage() {
             loading={actionLoading}
           >
             {confirmAction?.action ? confirmAction.action.charAt(0).toUpperCase() + confirmAction.action.slice(1) : ''}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!historyContactId}
+        onClose={() => { setHistoryContactId(null); setCommHistory([]); }}
+        title="Communication History"
+        size="lg"
+      >
+        {commHistoryLoading ? (
+          <p className="text-gray-500 text-center py-4">Loading history...</p>
+        ) : commHistory.length === 0 ? (
+          <p className="text-gray-500 text-center py-4">No communication history found.</p>
+        ) : (
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {commHistory.map((item, i) => (
+              <div key={i} className="flex items-start justify-between border-b border-gray-100 pb-2 last:border-0">
+                <div>
+                  <StatusBadge
+                    status={item.type === 'voice_call' ? 'voice call' : 'message'}
+                    colorMap={{
+                      'voice call': 'bg-blue-100 text-blue-800',
+                      message: 'bg-purple-100 text-purple-800',
+                    }}
+                  />
+                  {item.details?.status && (
+                    <span className="ml-2">
+                      <StatusBadge status={String(item.details.status)} />
+                    </span>
+                  )}
+                  {item.details?.body && (
+                    <p className="text-xs text-gray-600 mt-1 truncate max-w-md">
+                      {String(item.details.body)}
+                    </p>
+                  )}
+                </div>
+                <span className="text-xs text-gray-400 whitespace-nowrap ml-4">
+                  {new Date(item.date).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex justify-end mt-4">
+          <Button variant="secondary" onClick={() => { setHistoryContactId(null); setCommHistory([]); }}>
+            Close
           </Button>
         </div>
       </Modal>
