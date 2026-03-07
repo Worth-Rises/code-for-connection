@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import {voiceAdminRouter} from "./admin";
-import { voiceContactRouter } from "./contacts";
-import { voiceUserRouter } from "./users";
+import {voiceAdminRouter} from "./adminRoutes";
+import { voiceContactRouter } from "./contactRoutes";
+import { voiceUserRouter } from "./userRoutes";
 
 export const voiceRouter = Router();
 
