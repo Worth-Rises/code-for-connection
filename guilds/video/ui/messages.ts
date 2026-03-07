@@ -36,8 +36,11 @@ export const familyMessages = {
   scheduled: {
     title: 'Scheduled Calls',
     loadErrorFallback: 'Failed to load scheduled calls',
+    cancelErrorFallback: 'Failed to cancel call',
     noScheduledCalls: 'No scheduled calls',
     scheduleCallButton: 'Schedule a Call',
+    cancelCallButton: 'Cancel call',
+    cancelingCallButton: 'Canceling...',
     durationLabel: 'Duration: 30 minutes',
     statusLabels: {
       requested: 'Requested',

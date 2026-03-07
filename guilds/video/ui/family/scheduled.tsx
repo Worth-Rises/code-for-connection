@@ -16,9 +16,12 @@ interface VideoCall {
 
 export default function ScheduledCalls() {
   const { contactId } = useParams<{ contactId: string }>();
+  const manageContactPath = contactId ? `/family/video/manage_contact/${contactId}` : '/family/video';
+  const schedulePath = contactId ? `/family/video/manage_contact/${contactId}/schedule` : '/family/video';
   const [calls, setCalls] = useState<VideoCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cancelingCallId, setCancelingCallId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -74,9 +77,35 @@ export default function ScheduledCalls() {
     );
   };
 
+  const canCancelCall = (status: string) => ['requested', 'scheduled'].includes(status);
+
+  const handleCancelCall = async (callId: string) => {
+    setError(null);
+    setCancelingCallId(callId);
+    try {
+      // @ts-ignore
+      const token: string | null = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+      const res = await fetch(`/api/video/cancel-call/${callId}`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (!res.ok) {
+        const json: any = await res.json();
+        throw new Error(json.error?.message || `HTTP ${res.status}`);
+      }
+
+      setCalls((prev) => prev.filter((c) => c.id !== callId));
+    } catch (err: any) {
+      setError(err.message || familyMessages.scheduled.cancelErrorFallback);
+    } finally {
+      setCancelingCallId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <Link to=".." className="text-blue-600 hover:text-blue-700">&larr; {familyMessages.common.back}</Link>
+      <Link to={manageContactPath} className="text-blue-600 hover:text-blue-700">&larr; {familyMessages.common.back}</Link>
       
       <h1 className="text-2xl font-bold text-gray-900">{familyMessages.scheduled.title}</h1>
 
@@ -90,7 +119,7 @@ export default function ScheduledCalls() {
               <div className="text-4xl mb-2">📅</div>
               <div className="text-gray-500">{familyMessages.scheduled.noScheduledCalls}</div>
               <Link
-                to="../schedule"
+                to={schedulePath}
                 className="mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
                 {familyMessages.scheduled.scheduleCallButton}
@@ -115,6 +144,20 @@ export default function ScheduledCalls() {
                 <div className="text-xs text-gray-500">
                   {familyMessages.scheduled.durationLabel}
                 </div>
+                {canCancelCall(call.status) && (
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => handleCancelCall(call.id)}
+                      disabled={cancelingCallId === call.id}
+                      className="px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded hover:bg-red-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {cancelingCallId === call.id
+                        ? familyMessages.scheduled.cancelingCallButton
+                        : familyMessages.scheduled.cancelCallButton}
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
