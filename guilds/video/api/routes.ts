@@ -9,6 +9,59 @@ import {
 
 export const videoRouter = Router();
 
+const TEST_MODE = process.env.TEST_MODE === 'true';
+const ADMIN_APPROVAL_REQUIRED = process.env.ADMIN_APPROVAL_REQUIRED === 'true';
+
+// ─── TEST ENDPOINT (only available when TEST_MODE=true) ──────────────────────
+if (TEST_MODE) {
+  videoRouter.post('/test/create-call', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const role = req.user!.role;
+
+      if (role !== 'family') {
+        res.status(400).json(createErrorResponse({ code: 'BAD_REQUEST', message: 'Only family members can create test calls' }));
+        return;
+      }
+
+      const { incarceratedPersonId } = req.body;
+
+      const contact = await prisma.approvedContact.findFirst({
+        where: { familyMemberId: userId, incarceratedPersonId, status: 'approved' },
+        include: { incarceratedPerson: { include: { housingUnit: { include: { unitType: true } } } } },
+      });
+
+      if (!contact) {
+        res.status(403).json(createErrorResponse({ code: 'FORBIDDEN', message: 'Not an approved contact' }));
+        return;
+      }
+
+      const now = new Date();
+      const durationMs = (contact.incarceratedPerson.housingUnit?.unitType?.videoCallDurationMinutes ?? 30) * 60 * 1000;
+      const end = new Date(now.getTime() + durationMs);
+
+      const call = await prisma.videoCall.create({
+        data: {
+          incarceratedPersonId,
+          familyMemberId: userId,
+          facilityId: contact.incarceratedPerson.facilityId,
+          status: 'scheduled',
+          isLegal: false,
+          scheduledStart: now,
+          scheduledEnd: end,
+          requestedBy: userId,
+        },
+        include: { incarceratedPerson: true, familyMember: true },
+      });
+
+      res.status(201).json(createSuccessResponse(call));
+    } catch (error) {
+      console.error('Error creating test call:', error);
+      res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to create test call' }));
+    }
+  });
+}
+
 videoRouter.get('/active-calls', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const { facilityId } = req.query;
@@ -440,9 +493,9 @@ videoRouter.post('/request', requireAuth, async (req: Request, res: Response) =>
       return;
     }
 
-    // Validate time is in the future
+    // Validate time is in the future (skipped in TEST_MODE)
     const startTime = new Date(scheduledStart);
-    if (startTime <= new Date()) {
+    if (!TEST_MODE && startTime <= new Date()) {
       res.status(400).json(createErrorResponse({
         code: 'VALIDATION_ERROR',
         message: 'Scheduled time must be in the future',
@@ -450,7 +503,10 @@ videoRouter.post('/request', requireAuth, async (req: Request, res: Response) =>
       return;
     }
 
-    // Create video call request
+    // Auto-approve if contact is approved and admin approval is not required
+    const isAutoApproved = contact.status === 'approved' && !ADMIN_APPROVAL_REQUIRED;
+
+    // Create video call — 'scheduled' if auto-approved, 'requested' if needs admin review
     const call = await prisma.videoCall.create({
       data: {
         incarceratedPersonId,
@@ -458,7 +514,7 @@ videoRouter.post('/request', requireAuth, async (req: Request, res: Response) =>
         facilityId: contact.incarceratedPerson.facilityId,
         scheduledStart: new Date(scheduledStart),
         scheduledEnd: new Date(scheduledEnd),
-        status: 'requested',
+        status: isAutoApproved ? 'scheduled' : 'requested',
         requestedBy: familyMemberId,
       },
       include: {
