@@ -6,8 +6,15 @@ import {
   createErrorResponse,
   prisma,
 } from '@openconnect/shared';
+import { keywordAlertsRouter } from './keyword-alerts.routes.js';
+import { flaggedContentRouter } from './flagged-content.routes.js';
+import { sessionLimitsRouter } from './session-limits.routes.js';
 
 export const adminRouter = Router();
+
+adminRouter.use('/keyword-alerts', keywordAlertsRouter);
+adminRouter.use('/flagged-content', flaggedContentRouter);
+adminRouter.use('/session-limits', sessionLimitsRouter);
 
 adminRouter.get('/contacts/:incarceratedPersonId', requireAuth, async (req: Request, res: Response) => {
   try {

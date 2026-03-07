@@ -1,4 +1,4 @@
-import { PrismaClient, PersonStatus, AdminRole, ContactStatus, BlockedScope, VoiceCallStatus, CallEndedBy, VideoCallStatus, VideoEndedBy, SenderType, MessageStatus } from '@prisma/client';
+import { PrismaClient, PersonStatus, AdminRole, ContactStatus, BlockedScope, VoiceCallStatus, CallEndedBy, VideoCallStatus, VideoEndedBy, SenderType, MessageStatus, ClearanceLevel, WordTier, WordCategory, AlertSeverity } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -15,6 +15,9 @@ async function main() {
   console.log('🌱 Starting seed...');
 
   // Clear existing data
+  await prisma.flaggedContent.deleteMany();
+  await prisma.keywordAlert.deleteMany();
+  await prisma.dailyUsage.deleteMany();
   await prisma.messageAttachment.deleteMany();
   await prisma.message.deleteMany();
   await prisma.conversation.deleteMany();
@@ -55,6 +58,7 @@ async function main() {
       maxContacts: 25,
       videoSlotDurationMinutes: 30,
       maxConcurrentVideoCalls: 10,
+      clearanceLevel: ClearanceLevel.general,
     },
   });
 
@@ -69,6 +73,7 @@ async function main() {
       maxContacts: 30,
       videoSlotDurationMinutes: 45,
       maxConcurrentVideoCalls: 15,
+      clearanceLevel: ClearanceLevel.minimum,
     },
   });
 
@@ -83,6 +88,7 @@ async function main() {
       maxContacts: 5,
       videoSlotDurationMinutes: 15,
       maxConcurrentVideoCalls: 2,
+      clearanceLevel: ClearanceLevel.restricted,
     },
   });
 
@@ -757,6 +763,522 @@ async function main() {
       blockedBy: agencyAdmin.id,
     },
   });
+
+  console.log('🔍 Creating keyword alerts...');
+
+  await Promise.all([
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'heroin',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'fentanyl',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'methamphetamine',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'cocaine',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'crack',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'molly',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'ecstasy',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'xanax',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'percocet',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'oxycodone',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'suboxone',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'marijuana',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'kush',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'edibles',
+        isRegex: false,
+        severity: AlertSeverity.low,
+        tier: WordTier.blacklist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'shank',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.blacklist,
+        category: WordCategory.violence,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'shiv',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.blacklist,
+        category: WordCategory.violence,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'weapon',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.blacklist,
+        category: WordCategory.violence,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'gun',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.blacklist,
+        category: WordCategory.violence,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'knife',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.blacklist,
+        category: WordCategory.violence,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'kill',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.blacklist,
+        category: WordCategory.violence,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'murder',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.blacklist,
+        category: WordCategory.violence,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'stab',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.blacklist,
+        category: WordCategory.violence,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'take care of',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.greylist,
+        category: WordCategory.coded_threat,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'handle the situation',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.greylist,
+        category: WordCategory.coded_threat,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'deal with him',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.greylist,
+        category: WordCategory.coded_threat,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'make it right',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.greylist,
+        category: WordCategory.coded_threat,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'send him a message',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.greylist,
+        category: WordCategory.coded_threat,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'green light',
+        isRegex: false,
+        severity: AlertSeverity.high,
+        tier: WordTier.greylist,
+        category: WordCategory.coded_threat,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'candy',
+        isRegex: false,
+        severity: AlertSeverity.low,
+        tier: WordTier.greylist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'snow',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.greylist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'ice',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.greylist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'package',
+        isRegex: false,
+        severity: AlertSeverity.low,
+        tier: WordTier.greylist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'care package',
+        isRegex: false,
+        severity: AlertSeverity.low,
+        tier: WordTier.greylist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'vitamins',
+        isRegex: false,
+        severity: AlertSeverity.low,
+        tier: WordTier.greylist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'supplements',
+        isRegex: false,
+        severity: AlertSeverity.low,
+        tier: WordTier.greylist,
+        category: WordCategory.drug,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'throw it over',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.greylist,
+        category: WordCategory.contraband,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'the bird',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.greylist,
+        category: WordCategory.contraband,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'drone',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.greylist,
+        category: WordCategory.contraband,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'drop',
+        isRegex: false,
+        severity: AlertSeverity.low,
+        tier: WordTier.greylist,
+        category: WordCategory.contraband,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'mailroom',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.greylist,
+        category: WordCategory.contraband,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'hood',
+        isRegex: false,
+        severity: AlertSeverity.low,
+        tier: WordTier.watchlist,
+        category: WordCategory.gang,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'set',
+        isRegex: false,
+        severity: AlertSeverity.low,
+        tier: WordTier.watchlist,
+        category: WordCategory.gang,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'gang',
+        isRegex: false,
+        severity: AlertSeverity.medium,
+        tier: WordTier.watchlist,
+        category: WordCategory.gang,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'turf',
+        isRegex: false,
+        severity: AlertSeverity.low,
+        tier: WordTier.watchlist,
+        category: WordCategory.gang,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'colors',
+        isRegex: false,
+        severity: AlertSeverity.low,
+        tier: WordTier.watchlist,
+        category: WordCategory.gang,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+    prisma.keywordAlert.create({
+      data: {
+        keyword: 'represent',
+        isRegex: false,
+        severity: AlertSeverity.low,
+        tier: WordTier.watchlist,
+        category: WordCategory.gang,
+        agencyId: agency.id,
+        createdBy: agencyAdmin.id,
+      },
+    }),
+  ]);
 
   console.log('✅ Seed completed successfully!');
   console.log('');

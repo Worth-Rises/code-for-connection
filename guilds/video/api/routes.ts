@@ -199,4 +199,120 @@ videoRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency_adm
   }
 });
 
+videoRouter.get('/check-limit/:incarceratedPersonId', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { incarceratedPersonId } = req.params;
+
+    const person = await prisma.incarceratedPerson.findUnique({
+      where: { id: incarceratedPersonId },
+      include: {
+        housingUnit: {
+          include: {
+            unitType: {
+              select: {
+                videoCallsEnabled: true,
+                maxWeeklyVideoRequests: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!person) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Incarcerated person not found',
+      }));
+      return;
+    }
+
+    const { unitType } = person.housingUnit;
+
+    if (!unitType.videoCallsEnabled) {
+      res.json(createSuccessResponse({
+        allowed: false,
+        reason: 'Video calls are disabled for this housing unit type',
+        remaining: 0,
+      }));
+      return;
+    }
+
+    if (unitType.maxWeeklyVideoRequests === null) {
+      res.json(createSuccessResponse({
+        allowed: true,
+        reason: null,
+        remaining: null,
+      }));
+      return;
+    }
+
+    const now = new Date();
+    const day = now.getDay();
+    const distanceFromMonday = (day + 6) % 7;
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - distanceFromMonday);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    const weeklyRequests = await prisma.videoCall.count({
+      where: {
+        incarceratedPersonId,
+        scheduledStart: { gte: weekStart, lte: weekEnd },
+        status: { not: 'denied' },
+      },
+    });
+
+    const remaining = Math.max(unitType.maxWeeklyVideoRequests - weeklyRequests, 0);
+    const allowed = weeklyRequests < unitType.maxWeeklyVideoRequests;
+
+    res.json(createSuccessResponse({
+      allowed,
+      reason: allowed ? null : 'Weekly video request limit reached',
+      remaining,
+    }));
+  } catch (error) {
+    console.error('Error checking video call limit:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to check video call limit',
+    }));
+  }
+});
+
+videoRouter.post('/record-usage/:incarceratedPersonId', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { incarceratedPersonId } = req.params;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const usage = await prisma.dailyUsage.upsert({
+      where: {
+        incarceratedPersonId_date: {
+          incarceratedPersonId,
+          date: today,
+        },
+      },
+      update: {
+        videoCallCount: { increment: 1 },
+      },
+      create: {
+        incarceratedPersonId,
+        date: today,
+        videoCallCount: 1,
+      },
+    });
+
+    res.json(createSuccessResponse({ recorded: true, usage }));
+  } catch (error) {
+    console.error('Error recording video usage:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to record video usage',
+    }));
+  }
+});
+
 export default videoRouter;

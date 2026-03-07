@@ -99,6 +99,7 @@ io.on('connection', (socket: Socket) => {
     });
 
     console.log(`User ${userId} joined room ${roomId}`);
+    notifyAdminsOfRoomChange();
   });
 
   socket.on('offer', (data: {
@@ -161,6 +162,7 @@ io.on('connection', (socket: Socket) => {
     }
     
     console.log(`Call ended in room ${roomId}, reason: ${reason}`);
+    notifyAdminsOfRoomChange();
   });
 
   socket.on('mute-toggle', (data: {
@@ -187,6 +189,128 @@ io.on('connection', (socket: Socket) => {
   });
 });
 
+// ==========================================
+// ADMIN NAMESPACE — Live Call Management
+// ==========================================
+
+const adminNamespace = io.of('/admin');
+
+adminNamespace.on('connection', (socket: Socket) => {
+  console.log(`Admin connected: ${socket.id}`);
+
+  // Admin requests list of active rooms
+  socket.on('get-active-rooms', () => {
+    const activeRooms = Array.from(rooms.entries()).map(([roomId, room]) => ({
+      roomId,
+      callType: room.callType,
+      participantCount: room.participants.size,
+      participants: Array.from(room.participants.values()).map(p => ({
+        userId: p.odUserId,
+        userRole: p.odUserRole,
+        joinedAt: p.odJoinedAt,
+      })),
+      createdAt: room.createdAt,
+    }));
+
+    socket.emit('active-rooms', activeRooms);
+  });
+
+  // Admin terminates a call
+  socket.on('admin-terminate-call', (data: {
+    roomId: string;
+    adminId: string;
+    reason?: string;
+  }) => {
+    const { roomId, adminId, reason } = data;
+    const room = rooms.get(roomId);
+
+    if (!room) {
+      socket.emit('terminate-error', { roomId, error: 'Room not found' });
+      return;
+    }
+
+    // Notify all participants the call was terminated by admin
+    io.to(roomId).emit('call-ended', { reason: 'admin' });
+
+    // Force all participants out of the room
+    room.participants.forEach((participant, socketId) => {
+      const participantSocket = io.sockets.sockets.get(socketId);
+      if (participantSocket) {
+        participantSocket.leave(roomId);
+      }
+    });
+
+    // Clean up the room
+    rooms.delete(roomId);
+
+    // Confirm termination to the admin
+    socket.emit('call-terminated', {
+      roomId,
+      adminId,
+      terminatedAt: new Date(),
+      participantCount: room.participants.size,
+    });
+
+    // Broadcast updated room list to all connected admins
+    const activeRooms = Array.from(rooms.entries()).map(([id, r]) => ({
+      roomId: id,
+      callType: r.callType,
+      participantCount: r.participants.size,
+      participants: Array.from(r.participants.values()).map(p => ({
+        userId: p.odUserId,
+        userRole: p.odUserRole,
+        joinedAt: p.odJoinedAt,
+      })),
+      createdAt: r.createdAt,
+    }));
+    adminNamespace.emit('active-rooms', activeRooms);
+
+    console.log(`Admin ${adminId} terminated call in room ${roomId}${reason ? `: ${reason}` : ''}`);
+  });
+
+  // Admin blocks a conversation (messaging)
+  socket.on('admin-block-conversation', (data: {
+    conversationId: string;
+    adminId: string;
+  }) => {
+    const { conversationId, adminId } = data;
+
+    // Broadcast to any connected clients in this conversation
+    io.emit('conversation-blocked', {
+      conversationId,
+      blockedBy: adminId,
+    });
+
+    socket.emit('conversation-block-confirmed', {
+      conversationId,
+      adminId,
+      blockedAt: new Date(),
+    });
+
+    console.log(`Admin ${adminId} blocked conversation ${conversationId}`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`Admin disconnected: ${socket.id}`);
+  });
+});
+
+// Broadcast room changes to admin namespace when participants join/leave
+function notifyAdminsOfRoomChange() {
+  const activeRooms = Array.from(rooms.entries()).map(([roomId, room]) => ({
+    roomId,
+    callType: room.callType,
+    participantCount: room.participants.size,
+    participants: Array.from(room.participants.values()).map(p => ({
+      userId: p.odUserId,
+      userRole: p.odUserRole,
+      joinedAt: p.odJoinedAt,
+    })),
+    createdAt: room.createdAt,
+  }));
+  adminNamespace.emit('active-rooms', activeRooms);
+}
+
 function handleLeaveRoom(socket: Socket, roomId: string) {
   const room = rooms.get(roomId);
   if (!room) return;
@@ -207,6 +331,7 @@ function handleLeaveRoom(socket: Socket, roomId: string) {
       rooms.delete(roomId);
       console.log(`Room ${roomId} deleted (empty)`);
     }
+    notifyAdminsOfRoomChange();
   }
 }
 

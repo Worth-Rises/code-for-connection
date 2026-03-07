@@ -151,4 +151,151 @@ voiceRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency_adm
   }
 });
 
+// Session limit check — can this person make a voice call?
+voiceRouter.get('/check-limit/:incarceratedPersonId', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { incarceratedPersonId } = req.params;
+
+    const person = await prisma.incarceratedPerson.findUnique({
+      where: { id: incarceratedPersonId },
+      include: {
+        housingUnit: { include: { unitType: true } },
+      },
+    });
+
+    if (!person) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Person not found',
+      }));
+      return;
+    }
+
+    const unitType = person.housingUnit.unitType;
+
+    // Check if voice calls are enabled for this unit type
+    if (!unitType.voiceCallsEnabled) {
+      res.json(createSuccessResponse({
+        allowed: false,
+        reason: 'Voice calls are disabled for this housing unit type',
+        limits: {
+          voiceCallsEnabled: false,
+          maxDailyVoiceCalls: unitType.maxDailyVoiceCalls,
+          voiceCallDurationMinutes: unitType.voiceCallDurationMinutes,
+        },
+      }));
+      return;
+    }
+
+    // Check calling hours
+    const now = new Date();
+    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    if (currentTime < unitType.callingHoursStart || currentTime > unitType.callingHoursEnd) {
+      res.json(createSuccessResponse({
+        allowed: false,
+        reason: `Voice calls are only available between ${unitType.callingHoursStart} and ${unitType.callingHoursEnd}`,
+        limits: {
+          voiceCallsEnabled: true,
+          callingHoursStart: unitType.callingHoursStart,
+          callingHoursEnd: unitType.callingHoursEnd,
+        },
+      }));
+      return;
+    }
+
+    // Check daily limit if configured
+    if (unitType.maxDailyVoiceCalls !== null) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const usage = await prisma.dailyUsage.findUnique({
+        where: {
+          incarceratedPersonId_date: {
+            incarceratedPersonId,
+            date: today,
+          },
+        },
+      });
+
+      const currentCount = usage?.voiceCallCount ?? 0;
+      const remaining = unitType.maxDailyVoiceCalls - currentCount;
+
+      if (remaining <= 0) {
+        res.json(createSuccessResponse({
+          allowed: false,
+          reason: `Daily voice call limit reached (${unitType.maxDailyVoiceCalls} per day)`,
+          limits: {
+            voiceCallsEnabled: true,
+            maxDailyVoiceCalls: unitType.maxDailyVoiceCalls,
+            usedToday: currentCount,
+            remaining: 0,
+          },
+        }));
+        return;
+      }
+
+      res.json(createSuccessResponse({
+        allowed: true,
+        limits: {
+          voiceCallsEnabled: true,
+          maxDailyVoiceCalls: unitType.maxDailyVoiceCalls,
+          voiceCallDurationMinutes: unitType.voiceCallDurationMinutes,
+          usedToday: currentCount,
+          remaining,
+        },
+      }));
+      return;
+    }
+
+    // No daily limit configured — allowed
+    res.json(createSuccessResponse({
+      allowed: true,
+      limits: {
+        voiceCallsEnabled: true,
+        maxDailyVoiceCalls: null,
+        voiceCallDurationMinutes: unitType.voiceCallDurationMinutes,
+      },
+    }));
+  } catch (error) {
+    console.error('Error checking voice call limit:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to check voice call limit',
+    }));
+  }
+});
+
+// Increment daily usage after a call starts
+voiceRouter.post('/record-usage/:incarceratedPersonId', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { incarceratedPersonId } = req.params;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const usage = await prisma.dailyUsage.upsert({
+      where: {
+        incarceratedPersonId_date: {
+          incarceratedPersonId,
+          date: today,
+        },
+      },
+      update: {
+        voiceCallCount: { increment: 1 },
+      },
+      create: {
+        incarceratedPersonId,
+        date: today,
+        voiceCallCount: 1,
+      },
+    });
+
+    res.json(createSuccessResponse({ success: true, usage }));
+  } catch (error) {
+    console.error('Error recording usage:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to record usage',
+    }));
+  }
+});
 export default voiceRouter;
