@@ -373,6 +373,93 @@ videoRouter.get('/scheduled-calls', requireAuth, async (req: Request, res: Respo
   }
 });
 
+// Family-facing: reschedule a requested or scheduled video call
+videoRouter.post('/reschedule-call/:callId', requireAuth, requireRole('family'), async (req: Request, res: Response) => {
+  try {
+    const { callId } = req.params;
+    const { scheduledStart, scheduledEnd } = req.body;
+    const familyMemberId = req.user!.id;
+
+    if (!scheduledStart || !scheduledEnd) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'scheduledStart and scheduledEnd are required',
+      }));
+      return;
+    }
+
+    const start = new Date(scheduledStart);
+    const end = new Date(scheduledEnd);
+
+    if (start <= new Date()) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'Scheduled time must be in the future',
+      }));
+      return;
+    }
+
+    if (end <= start) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'scheduledEnd must be after scheduledStart',
+      }));
+      return;
+    }
+
+    const existingCall = await prisma.videoCall.findFirst({
+      where: {
+        id: callId,
+        familyMemberId,
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (!existingCall) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Call not found',
+      }));
+      return;
+    }
+
+    if (!['requested', 'scheduled'].includes(existingCall.status)) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'Only requested or scheduled calls can be rescheduled',
+      }));
+      return;
+    }
+
+    const updatedCall = await prisma.videoCall.update({
+      where: { id: existingCall.id },
+      data: {
+        scheduledStart: start,
+        scheduledEnd: end,
+        // scheduled calls must be re-approved after reschedule.
+        // requested calls stay requested.
+        status: 'requested',
+        approvedBy: null,
+      },
+      include: {
+        incarceratedPerson: true,
+        familyMember: true,
+      },
+    });
+
+    res.json(createSuccessResponse(updatedCall));
+  } catch (error) {
+    console.error('Error rescheduling video call:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to reschedule video call',
+    }));
+  }
+});
+
 // Family-facing: cancel a requested or scheduled video call
 videoRouter.post('/cancel-call/:callId', requireAuth, requireRole('family'), async (req: Request, res: Response) => {
   try {
