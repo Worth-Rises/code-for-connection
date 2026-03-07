@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button, Input, Card } from '@openconnect/ui';
 
@@ -18,7 +18,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      navigate('/');
+      navigate('/admin');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -31,7 +31,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Open Connect</h1>
-          <p className="text-gray-600 mt-2">Sign in to your account</p>
+          <p className="text-gray-600 mt-2">Admin Portal</p>
         </div>
 
         <Card padding="lg">
@@ -66,28 +66,7 @@ export default function LoginPage() {
               Sign In
             </Button>
           </form>
-
-          <div className="mt-6 pt-6 border-t border-gray-200 text-center space-y-3">
-            <Link
-              to="/pin-login"
-              className="block text-sm text-blue-600 hover:underline"
-            >
-              Incarcerated User? Login with PIN
-            </Link>
-            <p className="text-sm text-gray-600">
-              Don't have an account?{' '}
-              <Link to="/register" className="text-blue-600 hover:underline">
-                Register
-              </Link>
-            </p>
-          </div>
         </Card>
-
-        <div className="mt-8 text-center text-sm text-gray-500">
-          <p>Demo Credentials:</p>
-          <p className="mt-1">Family: alice@example.com / password123</p>
-          <p>Admin: admin@nydocs.gov / admin123</p>
-        </div>
       </div>
     </div>
   );
