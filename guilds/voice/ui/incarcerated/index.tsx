@@ -128,7 +128,7 @@ function ActiveCallScreen({ contact, onCallEnded }: ActiveCallProps) {
 
     async function initiateCall() {
       try {
-        const resp = await fetch(`${API_BASE}/voice/initiate-call`, {
+        const resp = await fetch(`${API_BASE}/voice/users/initiate-call`, {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({ contactId: contact.id }),
@@ -174,7 +174,7 @@ function ActiveCallScreen({ contact, onCallEnded }: ActiveCallProps) {
 
     if (callId) {
       try {
-        await fetch(`${API_BASE}/voice/end-call/${callId}`, {
+        await fetch(`${API_BASE}/voice/users/end-call/${callId}`, {
           method: 'POST',
           headers: getAuthHeaders(),
         });
@@ -385,7 +385,7 @@ function VoiceHome() {
   useEffect(() => {
     async function fetchContacts() {
       try {
-        const resp = await fetch(`${API_BASE}/voice/contacts`, {
+        const resp = await fetch(`${API_BASE}/voice/users/contacts`, {
           headers: getAuthHeaders(),
         });
         const data = await resp.json();
