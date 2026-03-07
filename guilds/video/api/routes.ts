@@ -199,4 +199,37 @@ videoRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency_adm
   }
 });
 
+// Family-facing: get approved contacts for the authenticated family member
+videoRouter.get('/approved-contacts', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const familyMemberId = req.user!.id;
+
+    const contacts = await prisma.approvedContact.findMany({
+      where: {
+        familyMemberId,
+        status: 'approved',
+      },
+      include: {
+        incarceratedPerson: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            facilityId: true,
+          },
+        },
+      },
+      orderBy: { requestedAt: 'desc' },
+    });
+
+    res.json(createSuccessResponse(contacts));
+  } catch (error) {
+    console.error('Error fetching approved contacts:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch approved contacts',
+    }));
+  }
+});
+
 export default videoRouter;
