@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import { Card } from '@openconnect/ui';
 import ManageContact from './manage_contact';
+import ScheduleCall from './schedule';
+import ScheduledCalls from './scheduled';
 
 interface IncarceratedPerson {
   id: string;
@@ -88,6 +90,8 @@ export default function VideoFamily() {
     <Routes>
       <Route index element={<VideoHome />} />
       <Route path="manage_contact/:contactId" element={<ManageContact />} />
+      <Route path="manage_contact/:contactId/schedule" element={<ScheduleCall />} />
+      <Route path="manage_contact/:contactId/scheduled" element={<ScheduledCalls />} />
     </Routes>
   );
 }
