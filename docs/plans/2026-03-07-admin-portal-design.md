@@ -462,25 +462,31 @@ enum PermissionType {
 
 ### Modifications to Existing Models
 
-#### IncarceratedPerson — add fields:
+#### IncarceratedPerson — existing fields leveraged:
 ```prisma
-  riskLevel       RiskLevel    @default(low) @map("risk_level")
-  notes           String?
-  profileImageUrl String?      @map("profile_image_url")
-  // add relation:
-  visitorLinks    VisitorResident[]
+  // ALREADY IN SCHEMA — spec now plans screens for these:
+  pin           String               // Assign/reset PIN workflow
+  status        PersonStatus         // Deactivation + release workflows
+  releasedAt    DateTime?            // Release handling
 ```
 
+#### IncarceratedPerson — add fields:
 ```prisma
-enum RiskLevel {
-  low
-  medium
-  high
-}
+  deactivatedBy    String?    @map("deactivated_by")   // admin who deactivated
+  deactivationReason String?  @map("deactivation_reason")
+  releaseReason    String?    @map("release_reason")    // release notes
+  releasedBy       String?    @map("released_by")       // admin who processed release
+  lastContactChangeAt DateTime? @map("last_contact_change_at") // for change frequency enforcement
+```
+
+#### HousingUnitType — add field:
+```prisma
+  contactChangeFrequencyDays  Int?  @map("contact_change_frequency_days")  // min days between contact list changes (null = unlimited)
 ```
 
 #### FamilyMember — add fields:
 ```prisma
+  address                String?
   backgroundCheckStatus  BackgroundCheckStatus? @map("background_check_status")
   backgroundCheckDate    DateTime?              @map("background_check_date")
 ```
@@ -492,7 +498,6 @@ enum RiskLevel {
   messageReviewRequired   Boolean  @default(true) @map("message_review_required")
   // add relations:
   keywordAlerts           KeywordAlert[]
-```
 
 #### AdminUser — add fields:
 ```prisma
@@ -552,7 +557,7 @@ Both roles can have individual permissions toggled on/off via `AdminPermission`.
 
 ## 6. Screen Inventory
 
-### 23 Screens + Modals
+### 23 Screens + 1 Utility Page + Modals
 
 #### Dashboard
 | Screen | Purpose | Key Components |
@@ -562,8 +567,8 @@ Both roles can have individual permissions toggled on/off via `AdminPermission`.
 #### Management
 | Screen | Purpose | Key Components |
 |--------|---------|----------------|
-| **ResidentListPage** | Browse/search all residents | Search bar, filter (facility, unit, status, risk level), sortable table, pagination |
-| **ResidentProfilePage** | Full resident detail | Header (name, ID, status badge, risk badge, housing), tabs: Activity (timeline), Contacts, Housing, Notes |
+| **ResidentListPage** | Browse/search all residents | Search bar, filter (facility, unit, status), sortable table, pagination |
+| **ResidentProfilePage** | Full resident detail | Header (name, ID, status badge, housing), tabs: Activity (timeline), Contacts, Housing. PIN management section. Deactivate/Release actions. |
 | **ContactListPage** | Manage contact requests and approved contacts | Tabs: Pending (badge count), Approved, Denied/Removed. Table with inline actions. Slideout detail panel. |
 | **ContactDetailPanel** | View contact pair details + history | Resident and family member info, relationship, attorney flag, communication history between pair |
 | **VisitorListPage** | Manage visitor applications | Tabs: Applications (pending), Approved, Suspended. Table with document preview. |
@@ -572,9 +577,9 @@ Both roles can have individual permissions toggled on/off via `AdminPermission`.
 #### Monitoring
 | Screen | Purpose | Key Components |
 |--------|---------|----------------|
-| **VoiceMonitoringPage** | Active calls + call history | Tabs: Active Calls (auto-refresh, live duration counter), History (filterable table) |
+| **VoiceMonitoringPage** | Active calls + call history | Tabs: Active Calls (manual refresh button, live duration counter), History (filterable table) |
 | **CallDetailView** | Single call detail | Metadata sidebar, call timeline (started→connected→ended), keyword matches, admin notes |
-| **VideoMonitoringPage** | Video requests, schedule, active sessions, history | Tabs: Pending Requests (badge), Schedule (calendar/timeline), Active Sessions, History |
+| **VideoMonitoringPage** | Video requests, schedule, active sessions, history | Tabs: Pending Requests (badge), Schedule (calendar/timeline), Active Sessions (manual refresh button), History |
 | **VideoDetailView** | Single video call detail | Same pattern as CallDetailView + scheduled vs actual times, approved-by |
 | **MessageReviewPage** | Message moderation queue | Tabs: Pending (badge, sorted oldest-first), Attachments (flagged images). Inline expand for full message + thread context. |
 | **ConversationView** | Full conversation thread | Chronological messages with status indicators, block/unblock action, link to both profiles |
@@ -597,6 +602,7 @@ Both roles can have individual permissions toggled on/off via `AdminPermission`.
 | **BlockedNumbersPage** | Manage blocked phone numbers | Table: number, scope, reason, blocked by, date. Add/remove modals. |
 | **PermissionsPage** | Admin user permission management | Admin user list → click → permission toggle matrix |
 | **SystemStatusPage** | Health checks | Database, signaling, API gateway, Redis status indicators |
+| **BulkImportPage** | CSV upload for bulk user creation | File upload area, column mapping preview, validation results table, import confirmation |
 
 ### Shared Modals
 
@@ -606,6 +612,11 @@ Both roles can have individual permissions toggled on/off via `AdminPermission`.
 | **ConfirmDenyModal** | Contacts, Visitors, Video Requests | Reason (required), confirm button |
 | **ConfirmBlockModal** | Messages, Conversations, Numbers | Reason (required), scope selector (for numbers), confirm button |
 | **ApproveContactModal** | Contacts | Review details, approve button |
+| **EditContactModal** | Contacts | Edit phone, email, address, relationship. Save updates. |
+| **DeactivateResidentModal** | Resident Profile | Reason (required), confirm deactivation. Status → deactivated, access removed. |
+| **ReleaseResidentModal** | Resident Profile | Release reason, release date, confirm. Status → released, access removed. |
+| **ResetPinModal** | Resident Profile | Generate new PIN, display to admin, confirm. |
+| **BulkImportPreviewModal** | Bulk Import | Shows parsed rows, validation errors, confirm import count |
 | **AttorneyFlagModal** | Contacts | Bar number, jurisdiction, confirm |
 | **MoveResidentModal** | Housing, Resident Profile | Target unit selector (shows capacity), reason, confirm |
 | **TransferResidentModal** | Resident Profile (agency admin) | Target facility, target unit, reason, confirm |
@@ -635,17 +646,20 @@ Both roles can have individual permissions toggled on/off via `AdminPermission`.
 | J5 | View communication timeline | Resident Profile → Activity tab → Chronological calls/messages/moves |
 | J6 | View contacts & visitors | Resident Profile → Contacts tab → Two sections: comms contacts + visitors |
 | J7 | Change resident status | Profile → Status dropdown → Confirm with reason → Audit logged |
-| J8 | Update risk level | Profile → Risk badge → Select level + note → Saved |
+| J8 | Assign/reset PIN | Profile → PIN section → Reset PIN → Modal shows new PIN → Admin communicates to resident |
 | J9 | View housing history | Profile → Housing tab → Movement history table |
+| J10 | Deactivate resident | Profile → Deactivate → Modal with reason → Status set to deactivated, all comms access removed, audit logged |
+| J11 | Process release | Profile → Release → Modal with reason + date → Status set to released, `releasedAt` recorded, comms access removed, audit logged |
 
 ### C. Contact Management
 
 | ID | Journey | Trigger → Resolution |
 |----|---------|---------------------|
-| J10 | Review pending contact request | Contacts → Pending tab → Detail panel → Approve/Deny with notes |
-| J11 | Remove approved contact | Contacts → Approved tab → Remove → Modal with reason → Audit logged |
-| J12 | Flag contact as attorney | Contact Detail → Attorney toggle → Bar number modal → Recording suppressed |
-| J13 | View communication history between pair | Contact Detail → History section → All calls/messages between the two |
+| J12 | Review pending contact request | Contacts → Pending tab → Detail panel → Approve/Deny with notes |
+| J13 | Remove approved contact | Contacts → Approved tab → Remove → Modal with reason → Audit logged |
+| J14 | Edit contact info | Contacts → Approved tab → Edit → Modal with phone/email/address → Save → Audit logged |
+| J15 | Flag contact as attorney | Contact Detail → Attorney toggle → Confirm modal → Recording suppressed |
+| J16 | View communication history between pair | Contact Detail → History section → All calls/messages between the two |
 
 ### D. Visitor Management
 
@@ -660,7 +674,7 @@ Both roles can have individual permissions toggled on/off via `AdminPermission`.
 
 | ID | Journey | Trigger → Resolution |
 |----|---------|---------------------|
-| J18 | Monitor active calls | Voice → Active tab → Real-time table with duration counters |
+| J20 | Monitor active calls | Voice → Active tab → Table with duration counters → Manual Refresh button to update |
 | J19 | Terminate active call | Active tab → Terminate button → Confirm modal → Call ended, audit logged |
 | J20 | Browse call history | Voice → History tab → Filter/search → Paginated results |
 | J21 | View call detail | History → Click row → Metadata sidebar, timeline, keyword matches |
@@ -672,7 +686,7 @@ Both roles can have individual permissions toggled on/off via `AdminPermission`.
 |----|---------|---------------------|
 | J23 | Approve video call request | Video → Pending tab → Review details → Approve/Deny |
 | J24 | View today's schedule | Video → Schedule tab → Timeline view with capacity utilization |
-| J25 | Monitor active video sessions | Video → Active tab → Session list with terminate capability |
+| J27 | Monitor active video sessions | Video → Active tab → Session list with terminate capability → Manual Refresh button to update |
 | J26 | Terminate video session | Active tab → Terminate → Confirm → Session ended |
 | J27 | Review video call history | Video → History tab → Filter/search → Paginated results |
 
@@ -740,6 +754,9 @@ Both roles can have individual permissions toggled on/off via `AdminPermission`.
 | J55 | Attorney-client privilege | Contact flagged attorney → Calls auto-unrecorded → Audit trail |
 | J56 | Resident transfer | Agency admin → Transfer → New facility/unit → History follows |
 | J57 | Blocked number enforcement | Number blocked → Call attempt rejected → Blocked attempt logged |
+| J58 | Bulk user import | Settings/Residents → Bulk Import → Upload CSV → Preview parsed rows → Fix validation errors → Confirm import → Users created, audit logged |
+| J59 | Manual refresh active calls | Voice/Video → Active tab → Click Refresh button → Table re-fetches current active calls |
+| J60 | Contact change frequency enforcement | Admin tries to edit contact list → System checks `lastContactChangeAt` vs `contactChangeFrequencyDays` → If too recent, shows error with next eligible date |
 
 ---
 
@@ -759,14 +776,15 @@ GET /api/admin/dashboard/recent-activity?facilityId=X&limit=20
 
 ### Residents
 ```
-GET    /api/admin/residents?facilityId=X&search=Y&status=Z&riskLevel=W&housingUnitId=V&page=1&pageSize=20
+GET    /api/admin/residents?facilityId=X&search=Y&status=Z&housingUnitId=V&page=1&pageSize=20
 GET    /api/admin/residents/:id                           → full profile with housing, contacts
 PATCH  /api/admin/residents/:id/status                    → { status, reason }
-PATCH  /api/admin/residents/:id/risk-level                → { riskLevel, notes }
+POST   /api/admin/residents/:id/deactivate                → { reason }
+POST   /api/admin/residents/:id/release                   → { reason, releaseDate? }
+POST   /api/admin/residents/:id/reset-pin                  → { } → returns { newPin }
 POST   /api/admin/residents/:id/transfer                  → { targetFacilityId, targetHousingUnitId, reason }
 GET    /api/admin/residents/:id/timeline?page=1&pageSize=50  → interleaved calls/messages/moves/actions
-GET    /api/admin/residents/:id/history                   → EntityHistory[]
-```
+POST   /api/admin/residents/bulk-import                    → multipart/form-data CSV upload → { imported, skipped, errors[] }
 
 ### Contacts (extends existing)
 ```
@@ -778,6 +796,8 @@ POST   /api/admin/contacts/:id/remove                     → { reason }
 PATCH  /api/admin/contacts/:id/attorney-flag               → { isAttorney, barNumber?, jurisdiction? }
 GET    /api/admin/contacts/:id/communication-history?page=1&pageSize=20
 ```
+PATCH  /api/admin/contacts/:id                            → { phone?, email?, address?, relationship? }  // edit contact info
+GET    /api/admin/contacts/change-eligibility/:residentId  → { eligible, nextEligibleDate?, daysSinceLastChange }
 
 ### Visitors (new)
 ```

@@ -18,9 +18,9 @@
 │  🤝 Contacts │  │       3          │ │       47         │ │    12m       │ │    1    │ │
 │  🚪 Visitors │  └──────────────────┘ └──────────────────┘ └──────────────┘ └─────────┘ │
 │              ├──────────────────────────────────────────────────────────────────────────┤
-│  MONITORING  │  [ Active Calls (3) ]  [ Call History ]                                  │
+│  MONITORING  │  [ Active Calls (3) ]  [ Call History ]              [↻ Refresh]  │
 │ >>📞 Voice   ├──────────────────────────────────────────────────────────────────────────┤
-│  📹 Video    │  ⟳ Refreshing every 5s                                    Last: 9:17:42  │
+│  📹 Video    │  ⟳ Auto-refresh: 5s   [↻ Refresh Now]              Last: 9:17:42  │
 │  💬 Messages │                                                                          │
 │              │  ┌──────────────┬──────────────┬─────────┬──────────┬──────────┬───────┐│
 │  INTELLIGENCE│  │ Resident     │ Contact      │ Started │ Duration │ Status   │Actions││
@@ -45,7 +45,8 @@
 - Duration column ticks up live via Socket.io — displayed as M:SS format.
 - [Term.] = [Terminate] button. Clicking opens a confirmation modal before ending the call.
 - Attorney calls show "ATTY" status badge and the Terminate button is disabled (greyed out).
-- "⟳ Refreshing every 5s" shows last-refresh timestamp. Clicking the icon forces an immediate refresh.
+- "⟳ Auto-refresh: 5s" shows the auto-refresh interval. [↻ Refresh Now] forces an immediate data fetch. Last-refresh timestamp shown at far right.
+- Manual [↻ Refresh Now] is always available and does NOT reset the auto-refresh timer. Useful when admin wants instant data without waiting for next auto-cycle.
 
 ---
 

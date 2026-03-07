@@ -124,7 +124,7 @@
 │  MONITORING  │  [ Pending Requests {5} ]  [ Schedule ]  [ Active Sessions (2) ]         │
 │  📞 Voice    │  [ History ]                                                             │
 │ >>📹 Video   ├──────────────────────────────────────────────────────────────────────────┤
-│  💬 Messages │  ⟳ Refreshing every 5s                                    Last: 9:17:42  │
+│  💬 Messages │  ⟳ Auto-refresh: 5s   [↻ Refresh Now]              Last: 9:17:42  │
 │              │                                                                          │
 │  INTELLIGENCE│  ┌──────────────┬──────────────┬──────────────┬──────────┬──────┬──────┐│
 │  🔍 Search   │  │ Resident     │ Contact      │ Sched. Start │ Actual   │ Dur. │Action││
@@ -146,6 +146,8 @@
 - Duration ticks up live. A warning indicator appears when a session approaches the 30-minute limit.
 - [Term] = [Terminate] button. Clicking opens a confirmation modal.
 - Auto-termination at 35 minutes is a system rule. The admin can terminate early at any time.
+- "⟳ Auto-refresh: 5s" shows the auto-refresh interval. [↻ Refresh Now] forces an immediate data fetch. Last-refresh timestamp shown at far right.
+- Manual [↻ Refresh Now] is always available and does NOT reset the auto-refresh timer. Useful when admin wants instant data without waiting for next auto-cycle.
 
 ---
 

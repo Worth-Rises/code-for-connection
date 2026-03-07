@@ -16,24 +16,24 @@
 │  📊 Dashboard│  [*Pending {7}*]  [ Approved ]  [ Denied / Removed ]                   │
 │              │  ─────────────────────────────────────────────────────────────────────  │
 │  MANAGEMENT  │                                                                          │
-│  👥 Residents│  [Search: ________________________________]  [Facility ▼]  [Sort by ▼]  │
-│ >>🤝 Contacts │                                                                          │
-│  🚪 Visitors │  ┌──────────────────┬──────────────────┬──────────────┬────────────────┐ │
-│              │  │ Contact Name     │ Resident         │ Relationship │ Requested      │ │
-│  MONITORING  │  ├──────────────────┼──────────────────┼──────────────┼────────────────┤ │
-│  📞 Voice    │  │ Sarah Doe        │ Doe, John #4821  │ Wife         │ Mar 05, 2026   │ │
-│  📹 Video    │  │ Patricia Smith   │ Smith, M. #3307  │ Mother       │ Mar 04, 2026   │ │
-│  💬 Messages │  │ Kevin Williams   │ Williams, C.#5519│ Brother      │ Mar 04, 2026   │ │
-│              │  │ Angela Johnson   │ Johnson, R.#2244 │ Sister       │ Mar 03, 2026   │ │
-│  INTELLIGENCE│  │ Tanya Davis      │ Davis, M. #6631  │ Girlfriend   │ Mar 02, 2026   │ │
-│  🔍 Search   │  │ Robert Brown     │ Brown, A. #1198  │ Father       │ Mar 01, 2026   │ │
+│  👥 Residents│  ┌──────────────────────────────────────────────────────────────────┐   │
+│ >>🤝 Contacts │  │  ℹ  Contact list changes allowed every 90 days.                        │   │
+│  🚪 Visitors │  │     Last changed: Jan 15, 2026.  Next eligible: Apr 15, 2026.        │   │
+│              │  │     [Edit] and [Remove] are disabled until Apr 15, 2026.             │   │
+│  MONITORING  │  └──────────────────────────────────────────────────────────────────┘   │
+│  📞 Voice    │                                                                          │
+│  📹 Video    │  [Search: ________________________________]  [Facility ▼]  [Sort by ▼]  │
+│  💬 Messages │                                                                          │
+│              │  ┌──────────────────┬──────────────────┬──────────────┬────────────────┐ │
+│  INTELLIGENCE│  │ Contact Name     │ Resident         │ Relationship │ Requested      │ │
+│  🔍 Search   │  ├──────────────────┼──────────────────┼──────────────┼────────────────┤ │
+│              │  │ Sarah Doe        │ Doe, John #4821  │ Wife         │ Mar 05, 2026   │ │
+│  OPERATIONS  │  │ Patricia Smith   │ Smith, M. #3307  │ Mother       │ Mar 04, 2026   │ │
+│  🏠 Housing  │  │ Kevin Williams   │ Williams, C.#5519│ Brother      │ Mar 04, 2026   │ │
+│  📈 Reports  │  │ Angela Johnson   │ Johnson, R.#2244 │ Sister       │ Mar 03, 2026   │ │
+│  📋 Audit Log│  │ Tanya Davis      │ Davis, M. #6631  │ Girlfriend   │ Mar 02, 2026   │ │
+│  ⚙️ Settings │  │ Robert Brown     │ Brown, A. #1198  │ Father       │ Mar 01, 2026   │ │
 │              │  │ Carmen Garcia    │ Garcia, L. #7742 │ Wife         │ Feb 28, 2026   │ │
-│  OPERATIONS  │  └──────────────────┴──────────────────┴──────────────┴────────────────┘ │
-│  🏠 Housing  │                                                                          │
-│  📈 Reports  │  Showing 7 of 7 pending requests                                        │
-│  📋 Audit Log│                                                                          │
-│  ⚙️ Settings │  NOTE: Click any row to open the detail panel on the right.             │
-│              │                                                                          │
 └──────────────┴──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -163,6 +163,46 @@
 
 ---
 
+
+---
+
+## Screen E: Edit Contact Modal
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                         │
+│   ┌─────────────────────────────────────────────────────────────────────────────────┐  │
+│   │  Edit Contact — Alice Johnson                                              [X] │  │
+│   ├─────────────────────────────────────────────────────────────────────────────────┤  │
+│   │                                                                                 │  │
+│   │  First Name                          Last Name                                  │  │
+│   │  ┌─────────────────────────────────┐  ┌─────────────────────────────────┐  │  │
+│   │  │  Alice                          │  │  Johnson                        │  │  │
+│   │  └─────────────────────────────────┘  └─────────────────────────────────┘  │  │
+│   │                                                                                 │  │
+│   │  Phone                               Email                                      │  │
+│   │  ┌─────────────────────────────────┐  ┌─────────────────────────────────┐  │  │
+│   │  │  +1-555-0142                    │  │  alice@example.com               │  │  │
+│   │  └─────────────────────────────────┘  └─────────────────────────────────┘  │  │
+│   │                                                                                 │  │
+│   │  Address                                                                        │  │
+│   │  ┌─────────────────────────────────────────────────────────────────────────┐   │  │
+│   │  │  123 Main St, New York, NY 10001                                         │   │  │
+│   │  └─────────────────────────────────────────────────────────────────────────┘   │  │
+│   │                                                                                 │  │
+│   │  Relationship                                                                   │  │
+│   │  ┌─────────────────────────────────┐                                                   │  │
+│   │  │  Sister                      ▼ │                                                   │  │
+│   │  └─────────────────────────────────┘                                                   │  │
+│   │                                                                                 │  │
+│   │                                          [Cancel]  [Save Changes]               │  │
+│   └─────────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Annotations
 
 **Tab Bar**
@@ -185,3 +225,13 @@
 - Action buttons at the bottom are context-sensitive: Pending contacts show [Approve] and [Deny]; Approved contacts show [Remove] and [Flag as Attorney].
 - [Flag as Attorney] toggles the attorney status and shows a confirmation prompt.
 - Communication history links open in a new tab or modal, not in the panel itself.
+
+**Contact Change Frequency Banner**
+- The 90-day window is calculated from the date of the last approved contact list change (add or remove).
+- While within the lockout window, [Edit] and [Remove] buttons render as disabled. Hovering shows a tooltip: "Contact changes are locked until Apr 15, 2026."
+- Agency admins can override the lockout window. Facility admins cannot.
+
+**Edit Contact Modal**
+- Only facility admins and agency admins can open this modal. The [Edit] button is not shown to read-only roles.
+- All changes are audit-logged with the admin's username, timestamp, and a diff of what changed.
+- Relationship dropdown options match the approved list in system settings.

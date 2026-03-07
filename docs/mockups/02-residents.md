@@ -75,8 +75,8 @@
 │  MANAGEMENT  │  │  [ img ]   ID: #4821                                             │   │
 │ >>👥 Residents  │  │  [     ]   Facility: Sing Sing  |  Unit: B-12                   │   │
 │  🤝 Contacts │  │            Admitted: 03/14/2021    |  Release Est.: 06/30/2027   │   │
-│  🚪 Visitors │  └──────────────────────────────────────────────────────────────────┘   │
-│              │                                                                          │
+│  🚪 Visitors │  │            [Reset PIN]  [Deactivate]  [Release]                  │   │
+│              │  └──────────────────────────────────────────────────────────────────┘   │
 │  MONITORING  │  [ Activity ] [ Contacts ] [ Housing ] [ Notes ]                        │
 │  📞 Voice    │  ─────────────────────────────────────────────────────────────────────  │
 │  📹 Video    │                                                                          │
@@ -188,6 +188,154 @@
 
 ---
 
+
+---
+
+### Resident Profile: PIN Management (within Profile Page)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│ Open Connect Admin          [Facility: Sing Sing ▼]              🔔(3)  Admin Name ▼   │
+├──────────────┬──────────────────────────────────────────────────────────────────────────┤
+│  SIDEBAR     │  Residents > John Doe                                                    │
+│              │                                                                          │
+│  📊 Dashboard│  ┌──────────────────────────────────────────────────────────────────┐   │
+│              │  │  [Photo]   John Doe                  {Active}  {Risk: Medium}    │   │
+│  MANAGEMENT  │  │  [ img ]   ID: #4821  |  Sing Sing  |  Unit: B-12               │   │
+│ >>👥 Residents  │  │            [Reset PIN]  [Deactivate]  [Release]                  │   │
+│  🤝 Contacts │  └──────────────────────────────────────────────────────────────────┘   │
+│  🚪 Visitors │                                                                          │
+│              │  [ Activity ] [ Contacts ] [ Housing ] [*Notes*]                        │
+│  MONITORING  │  ─────────────────────────────────────────────────────────────────────  │
+│  📞 Voice    │                                                                          │
+│  📹 Video    │  ── PIN Management ──────────────────────────────────────────────────── │
+│  💬 Messages │                                                                          │
+│              │  ┌──────────────────────────────────────────────────────────────────┐   │
+│  INTELLIGENCE│  │  Current PIN:   ••••                                             │   │
+│  🔍 Search   │  │  PIN Set:       Jan 15, 2026                                     │   │
+│              │  │                                                                  │   │
+│  OPERATIONS  │  │  [Reset PIN]                                                     │   │
+│  🏠 Housing  │  └──────────────────────────────────────────────────────────────────┘   │
+│  📈 Reports  │                                                                          │
+│  📋 Audit Log│                                                                          │
+│  ⚙️ Settings │                                                                          │
+│              │                                                                          │
+└──────────────┴──────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Modal: Reset PIN
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                         │
+│   ┌─────────────────────────────────────────────────────────────────────────────────┐  │
+│   │  Reset PIN                                                                  [X] │  │
+│   ├─────────────────────────────────────────────────────────────────────────────────┤  │
+│   │                                                                                 │  │
+│   │  Generate a new 4-digit PIN for John Doe (#4821). The current PIN will be       │  │
+│   │  invalidated immediately.                                                       │  │
+│   │                                                                                 │  │
+│   │  ┌─────────────────────────────────────────────────────────────────────────┐   │  │
+│   │  │  ⚠  The new PIN must be communicated to the resident through facility   │   │  │
+│   │  │     staff.                                                              │   │  │
+│   │  └─────────────────────────────────────────────────────────────────────────┘   │  │
+│   │                                                                                 │  │
+│   │                                          [Cancel]  [Generate New PIN]           │  │
+│   └─────────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**After PIN generation — success state:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                         │
+│   ┌─────────────────────────────────────────────────────────────────────────────────┐  │
+│   │  Reset PIN                                                                  [X] │  │
+│   ├─────────────────────────────────────────────────────────────────────────────────┤  │
+│   │                                                                                 │  │
+│   │  ┌─────────────────────────────────────────────────────────────────────────┐   │  │
+│   │  │                                                                         │   │  │
+│   │  │   New PIN:  7392                                                        │   │  │
+│   │  │                                                                         │   │  │
+│   │  └─────────────────────────────────────────────────────────────────────────┘   │  │
+│   │                                                                                 │  │
+│   │  PIN has been reset. Previous PIN is no longer valid.                           │  │
+│   │                                                                                 │  │
+│   │                                                              [Close]            │  │
+│   └─────────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Modal: Deactivate Resident
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                         │
+│   ┌─────────────────────────────────────────────────────────────────────────────────┐  │
+│   │  Deactivate Resident                                                        [X] │  │
+│   ├─────────────────────────────────────────────────────────────────────────────────┤  │
+│   │                                                                                 │  │
+│   │  Deactivate John Doe (#4821). This will:                                        │  │
+│   │                                                                                 │  │
+│   │    • Remove access to all communication services                                │  │
+│   │    • Preserve all records and history                                           │  │
+│   │    • This can be reversed by reactivating the resident                         │  │
+│   │                                                                                 │  │
+│   │  Reason (required)                                                              │  │
+│   │  ┌─────────────────────────────────────────────────────────────────────────┐   │  │
+│   │  │                                                                         │   │  │
+│   │  │                                                                         │   │  │
+│   │  └─────────────────────────────────────────────────────────────────────────┘   │  │
+│   │                                                                                 │  │
+│   │                                          [Cancel]  [Deactivate]                 │  │
+│   └─────────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Modal: Release Resident
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                         │
+│   ┌─────────────────────────────────────────────────────────────────────────────────┐  │
+│   │  Process Release                                                            [X] │  │
+│   ├─────────────────────────────────────────────────────────────────────────────────┤  │
+│   │                                                                                 │  │
+│   │  Process release for John Doe (#4821). This will:                               │  │
+│   │                                                                                 │  │
+│   │    • Set status to Released                                                     │  │
+│   │    • Remove access to all communication services                                │  │
+│   │    • Record release date and reason                                             │  │
+│   │                                                                                 │  │
+│   │  Release Date                                                                   │  │
+│   │  ┌──────────────────────────┐                                                   │  │
+│   │  │  03/07/2026              │  (defaults to today)                              │  │
+│   │  └──────────────────────────┘                                                   │  │
+│   │                                                                                 │  │
+│   │  Reason (required)                                                              │  │
+│   │  ┌─────────────────────────────────────────────────────────────────────────┐   │  │
+│   │  │                                                                         │   │  │
+│   │  │                                                                         │   │  │
+│   │  └─────────────────────────────────────────────────────────────────────────┘   │  │
+│   │                                                                                 │  │
+│   │                                          [Cancel]  [Confirm Release]            │  │
+│   └─────────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ### Annotations: Resident Profile
 
 **Header**
@@ -212,3 +360,22 @@
 **Housing Tab**
 - Cellmate name links to that resident's profile.
 - Move history is read-only; housing changes are made from the Housing screen.
+
+**Action Buttons (Profile Header)**
+- [Reset PIN] opens the ResetPinModal. Only facility admins and agency admins can reset PINs.
+- [Deactivate] is disabled if the resident is already Inactive or Released.
+- [Release] is disabled if the resident is already Released or Transferred.
+- All three actions are audit-logged with the acting admin's username and timestamp.
+
+**PIN Management**
+- The current PIN is always masked (••••). It cannot be revealed — only reset.
+- PIN Set date reflects when the PIN was last generated (either at import or last reset).
+- The generated PIN is shown once in the success modal and never again. Staff must record it immediately.
+
+**Deactivate Modal**
+- Reason field is required; [Deactivate] button is disabled until text is entered.
+- Deactivation is reversible: an Inactive resident can be set back to Active from the same profile.
+
+**Release Modal**
+- Release Date defaults to today but can be set to a past date (e.g., if processing a delayed release).
+- Release is not reversible through the UI. Contact agency admin to correct an erroneous release.
