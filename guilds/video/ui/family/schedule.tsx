@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Card } from '@openconnect/ui';
+import { familyMessages } from '../messages';
 
 export default function ScheduleCall() {
   const { contactId } = useParams<{ contactId: string }>();
@@ -22,7 +23,7 @@ export default function ScheduleCall() {
       const now = new Date();
       
       if (selectedDateTime <= now) {
-        throw new Error('Please select a date and time in the future');
+        throw new Error(familyMessages.schedule.inPastError);
       }
 
       // Calculate end time (30 minutes later)
@@ -54,7 +55,7 @@ export default function ScheduleCall() {
         navigate(`/family/video/manage_contact/${contactId}/scheduled`);
       }, 1500);
     } catch (err: any) {
-      setError(err.message || 'Failed to schedule call');
+      setError(err.message || familyMessages.schedule.submitErrorFallback);
     } finally {
       setLoading(false);
     }
@@ -75,22 +76,22 @@ export default function ScheduleCall() {
 
   return (
     <div className="space-y-4">
-      <Link to=".." className="text-blue-600 hover:text-blue-700">&larr; Back</Link>
+      <Link to=".." className="text-blue-600 hover:text-blue-700">&larr; {familyMessages.common.back}</Link>
       
-      <h1 className="text-2xl font-bold text-gray-900">Schedule Video Call</h1>
+      <h1 className="text-2xl font-bold text-gray-900">{familyMessages.schedule.title}</h1>
 
       <Card padding="lg">
         {success ? (
           <div className="text-center py-8">
             <div className="text-6xl mb-4">✅</div>
-            <h2 className="text-xl font-semibold mb-2 text-green-600">Call Requested!</h2>
-            <p className="text-gray-600">Your video call request has been submitted for approval.</p>
+            <h2 className="text-xl font-semibold mb-2 text-green-600">{familyMessages.schedule.successTitle}</h2>
+            <p className="text-gray-600">{familyMessages.schedule.successDescription}</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Select Date
+                {familyMessages.schedule.dateLabel}
               </label>
               <input
                 type="date"
@@ -104,7 +105,7 @@ export default function ScheduleCall() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Select Time (30-minute call)
+                {familyMessages.schedule.timeLabel}
               </label>
               <select
                 value={time}
@@ -112,7 +113,7 @@ export default function ScheduleCall() {
                 required
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">-- Select Time --</option>
+                <option value="">{familyMessages.schedule.timePlaceholder}</option>
                 {timeOptions.map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -133,19 +134,19 @@ export default function ScheduleCall() {
                 disabled={loading}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
-                {loading ? 'Requesting...' : 'Request Call'}
+                {loading ? familyMessages.schedule.requestingButton : familyMessages.schedule.requestCallButton}
               </button>
               <button
                 type="button"
                 onClick={() => navigate('..')}
                 className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
               >
-                Cancel
+                {familyMessages.schedule.cancelButton}
               </button>
             </div>
 
             <p className="text-sm text-gray-500">
-              Note: Your request will need to be approved by facility staff before the call is scheduled.
+              {familyMessages.schedule.approvalNote}
             </p>
           </form>
         )}

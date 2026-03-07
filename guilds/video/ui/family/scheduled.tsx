@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Card } from '@openconnect/ui';
+import { familyMessages } from '../messages';
 
 interface VideoCall {
   id: string;
@@ -37,7 +38,7 @@ export default function ScheduledCalls() {
         const data: VideoCall[] = json.data || json;
         if (mounted) setCalls(data);
       } catch (err: any) {
-        if (mounted) setError(err.message || 'Failed to load scheduled calls');
+        if (mounted) setError(err.message || familyMessages.scheduled.loadErrorFallback);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -48,7 +49,7 @@ export default function ScheduledCalls() {
 
   const formatDateTime = (isoString: string) => {
     const date = new Date(isoString);
-    return date.toLocaleString('en-US', {
+    return date.toLocaleString(familyMessages.locale.dateTime, {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -68,31 +69,31 @@ export default function ScheduledCalls() {
     };
     return (
       <span className={`px-2 py-1 text-xs font-medium rounded ${styles[status] || 'bg-gray-100 text-gray-800'}`}>
-        {status}
+        {familyMessages.scheduled.statusLabels[status] || status}
       </span>
     );
   };
 
   return (
     <div className="space-y-4">
-      <Link to=".." className="text-blue-600 hover:text-blue-700">&larr; Back</Link>
+      <Link to=".." className="text-blue-600 hover:text-blue-700">&larr; {familyMessages.common.back}</Link>
       
-      <h1 className="text-2xl font-bold text-gray-900">Scheduled Calls</h1>
+      <h1 className="text-2xl font-bold text-gray-900">{familyMessages.scheduled.title}</h1>
 
       <Card padding="lg">
         <div className="space-y-4">
-          {loading && <div className="text-gray-500">Loading...</div>}
+          {loading && <div className="text-gray-500">{familyMessages.common.loading}</div>}
           {error && <div className="text-red-600">{error}</div>}
 
           {!loading && calls.length === 0 && (
             <div className="text-center py-8">
               <div className="text-4xl mb-2">📅</div>
-              <div className="text-gray-500">No scheduled calls</div>
+              <div className="text-gray-500">{familyMessages.scheduled.noScheduledCalls}</div>
               <Link
                 to="../schedule"
                 className="mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
-                Schedule a Call
+                {familyMessages.scheduled.scheduleCallButton}
               </Link>
             </div>
           )}
@@ -112,7 +113,7 @@ export default function ScheduledCalls() {
                   {getStatusBadge(call.status)}
                 </div>
                 <div className="text-xs text-gray-500">
-                  Duration: 30 minutes
+                  {familyMessages.scheduled.durationLabel}
                 </div>
               </div>
             ))}
