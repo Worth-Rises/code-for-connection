@@ -12,6 +12,42 @@ import { buildFacilityFilter } from './helpers.js';
 
 export const contactsRouter = Router();
 
+// GET /check - check contact approval status (any authenticated user, for cross-guild consumption)
+contactsRouter.get('/check', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { incarceratedPersonId, familyMemberId } = req.query;
+
+    if (!incarceratedPersonId || !familyMemberId) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'incarceratedPersonId and familyMemberId are required',
+      }));
+      return;
+    }
+
+    const contact = await prisma.approvedContact.findUnique({
+      where: {
+        incarceratedPersonId_familyMemberId: {
+          incarceratedPersonId: String(incarceratedPersonId),
+          familyMemberId: String(familyMemberId),
+        },
+      },
+    });
+
+    res.json(createSuccessResponse({
+      approved: contact?.status === 'approved',
+      isAttorney: contact?.isAttorney ?? false,
+    }));
+  } catch (error) {
+    console.error('Error checking contact:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to check contact',
+    }));
+  }
+});
+
+// All routes below require admin role
 contactsRouter.use(requireAuth, requireRole('facility_admin', 'agency_admin'));
 
 // GET / - paginated contact list
@@ -61,45 +97,19 @@ contactsRouter.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// GET /check - check contact approval status (must be before /:param routes)
-contactsRouter.get('/check', async (req: Request, res: Response) => {
-  try {
-    const { incarceratedPersonId, familyMemberId } = req.query;
-
-    if (!incarceratedPersonId || !familyMemberId) {
-      res.status(400).json(createErrorResponse({
-        code: 'VALIDATION_ERROR',
-        message: 'incarceratedPersonId and familyMemberId are required',
-      }));
-      return;
-    }
-
-    const contact = await prisma.approvedContact.findUnique({
-      where: {
-        incarceratedPersonId_familyMemberId: {
-          incarceratedPersonId: String(incarceratedPersonId),
-          familyMemberId: String(familyMemberId),
-        },
-      },
-    });
-
-    res.json(createSuccessResponse({
-      approved: contact?.status === 'approved',
-      isAttorney: contact?.isAttorney ?? false,
-    }));
-  } catch (error) {
-    console.error('Error checking contact:', error);
-    res.status(500).json(createErrorResponse({
-      code: 'INTERNAL_ERROR',
-      message: 'Failed to check contact',
-    }));
-  }
-});
-
 // GET /:incarceratedPersonId - approved contacts for an incarcerated person
 contactsRouter.get('/:incarceratedPersonId', async (req: Request, res: Response) => {
   try {
     const { incarceratedPersonId } = req.params;
+    const facilityFilter = buildFacilityFilter(req.user!);
+
+    const person = await prisma.incarceratedPerson.findFirst({
+      where: { id: incarceratedPersonId, ...facilityFilter },
+    });
+    if (!person) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Person not found' }));
+      return;
+    }
 
     const contacts = await prisma.approvedContact.findMany({
       where: {

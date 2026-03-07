@@ -77,8 +77,8 @@ facilityRouter.patch('/:facilityId', requireFacilityAccess(), async (req: Reques
     const facility = await prisma.facility.update({
       where: { id: facilityId },
       data: {
-        ...(announcementText !== undefined ? { announcementText } : {}),
-        ...(announcementAudioUrl !== undefined ? { announcementAudioUrl } : {}),
+        ...(announcementText !== undefined ? { announcementText: announcementText || null } : {}),
+        ...(announcementAudioUrl !== undefined ? { announcementAudioUrl: announcementAudioUrl || null } : {}),
       },
     });
 

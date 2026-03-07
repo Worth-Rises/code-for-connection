@@ -12,6 +12,43 @@ import { buildFacilityFilter } from './helpers.js';
 
 export const blockedNumbersRouter = Router();
 
+// GET /check - check if a number is blocked (any authenticated user, for cross-guild consumption)
+blockedNumbersRouter.get('/check', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { phoneNumber, facilityId } = req.query;
+
+    if (!phoneNumber) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'phoneNumber is required',
+      }));
+      return;
+    }
+
+    const blockedNumber = await prisma.blockedNumber.findFirst({
+      where: {
+        phoneNumber: String(phoneNumber),
+        OR: [
+          { scope: 'agency' },
+          { scope: 'facility', facilityId: facilityId ? String(facilityId) : undefined },
+        ],
+      },
+    });
+
+    res.json(createSuccessResponse({
+      blocked: !!blockedNumber,
+      scope: blockedNumber?.scope ?? null,
+    }));
+  } catch (error) {
+    console.error('Error checking blocked number:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to check blocked number',
+    }));
+  }
+});
+
+// All routes below require admin role
 blockedNumbersRouter.use(requireAuth, requireRole('facility_admin', 'agency_admin'));
 
 // GET / - paginated blocked numbers list
@@ -33,7 +70,11 @@ blockedNumbersRouter.get('/', async (req: Request, res: Response) => {
         { scope: 'facility', facilityId: user.facilityId },
       ];
     } else if (facilityId) {
-      where.facilityId = String(facilityId);
+      // Agency admin filtered by facility: show agency-wide blocks + that facility's blocks
+      where.OR = [
+        { scope: 'agency' },
+        { scope: 'facility', facilityId: String(facilityId) },
+      ];
     }
 
     const [blockedNumbers, total] = await Promise.all([
@@ -146,42 +187,6 @@ blockedNumbersRouter.delete('/:id', async (req: Request, res: Response) => {
     res.status(500).json(createErrorResponse({
       code: 'INTERNAL_ERROR',
       message: 'Failed to delete blocked number',
-    }));
-  }
-});
-
-// GET /check - check if a number is blocked
-blockedNumbersRouter.get('/check', async (req: Request, res: Response) => {
-  try {
-    const { phoneNumber, facilityId } = req.query;
-
-    if (!phoneNumber) {
-      res.status(400).json(createErrorResponse({
-        code: 'VALIDATION_ERROR',
-        message: 'phoneNumber is required',
-      }));
-      return;
-    }
-
-    const blockedNumber = await prisma.blockedNumber.findFirst({
-      where: {
-        phoneNumber: String(phoneNumber),
-        OR: [
-          { scope: 'agency' },
-          { scope: 'facility', facilityId: facilityId ? String(facilityId) : undefined },
-        ],
-      },
-    });
-
-    res.json(createSuccessResponse({
-      blocked: !!blockedNumber,
-      scope: blockedNumber?.scope ?? null,
-    }));
-  } catch (error) {
-    console.error('Error checking blocked number:', error);
-    res.status(500).json(createErrorResponse({
-      code: 'INTERNAL_ERROR',
-      message: 'Failed to check blocked number',
     }));
   }
 });

@@ -23,7 +23,7 @@ async function fetchCrossGuildStats(path: string, token: string): Promise<unknow
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.ok) return null;
-    const data = await response.json();
+    const data = await response.json() as { success?: boolean; data?: unknown };
     return data.success ? data.data : null;
   } catch {
     return null;
