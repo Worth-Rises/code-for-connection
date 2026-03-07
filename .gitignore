@@ -44,6 +44,15 @@ prisma/*.db-journal
 # Turbo
 .turbo/
 
+# TypeScript build artifacts (compiled in-place by tsc)
+# Packages use dist/ for output; these are stale in-place artifacts
+**/*.d.ts
+**/*.d.ts.map
+**/*.js.map
+
+# Playwright
+.playwright-mcp/
+
 # Misc
 *.tsbuildinfo
 .eslintcache
