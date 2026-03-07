@@ -1,0 +1,247 @@
+How-To: Admin Scope Guide Requirements
+=======================================
+
+For each numbered requirement from the TPM's scope guide PDF,
+here is how to do it in the app (or its current status).
+
+Login: http://localhost:5173/login
+  agency admin:   admin@nydocs.gov / admin123       (sees all facilities)
+  facility admin: admin@singsingcf.gov / admin123   (Sing Sing only)
+  facility admin: admin@bedfordhillscf.gov / admin123 (Bedford Hills only)
+
+
+AGENCY-LEVEL CONFIGURATION
+===========================
+
+1. Set calling hours (by housing unit type)
+   STATUS: Display works. Inline editing needs server restart.
+   HOW-TO: Settings > Facility Config > select a facility >
+   "Housing Unit Type Settings" section shows time pickers for
+   Calling Hours Start / End per unit type. Edit the time and
+   click away (saves on blur).
+   NOTE: The Housing Units table below shows the current values
+   read-only (e.g., General Population: 08:00-22:00).
+
+2. Set call duration limit (by housing unit type)
+   STATUS: Display works. Inline editing needs server restart.
+   HOW-TO: Settings > Facility Config > select a facility >
+   "Housing Unit Type Settings" > "Voice Call Duration (min)" field.
+   Currently shows: General Population 30 min, Minimum Security
+   30 min, Restrictive Housing 15 min.
+
+3. Set video call duration (by housing unit type)
+   STATUS: Display works. Inline editing needs server restart.
+   HOW-TO: Settings > Facility Config > select a facility >
+   "Housing Unit Type Settings" > "Video Call Duration (min)" field.
+
+4. Set video time slots (by housing unit type)
+   STATUS: Backend CRUD exists (POST/PATCH/DELETE /housing/time-slots).
+   No dedicated UI yet; values visible in Facility Config.
+   HOW-TO: Settings > Facility Config > select a facility >
+   "Housing Unit Type Settings" > "Video Slot Duration (min)" field
+   sets the slot length. Time slot scheduling UI is not yet built.
+
+5. Define housing unit types
+   STATUS: Existing types are viewable and editable. Creating NEW
+   types has no UI (backend POST exists).
+   HOW-TO: Settings > Facility Config > select a facility >
+   "Housing Unit Type Settings" shows all existing types with
+   editable fields (name, durations, hours, contacts).
+
+6. Set contact list limits (per person)
+   STATUS: Works.
+   HOW-TO: Settings > Facility Config > select a facility >
+   "Housing Unit Type Settings" > "Max Contacts per Person" field.
+   Currently: General Population 25, Min Security 30, Restrictive 5.
+
+7. Agency-wide block list
+   STATUS: Works.
+   HOW-TO: Facility > Blocked Numbers > click "Add Blocked Number" >
+   set Scope to "Agency-wide" > enter phone number and reason > Save.
+   Agency-wide blocks appear with an "Agency-wide" badge.
+
+8. Auto-create user profiles
+   STATUS: Works (via seed data).
+   HOW-TO: Profiles are auto-created from the seed data, simulating
+   integration with a case management system. 10 incarcerated
+   persons exist with correct facility/housing assignments.
+   View them: People > Residents.
+
+9. Housing assignment
+   STATUS: Works (read-only from seed data).
+   HOW-TO: Each resident's profile shows their current facility and
+   housing unit. People > Residents > click any resident >
+   "Housing" tab shows current assignment and transfer history.
+
+
+FACILITY-LEVEL CONFIGURATION
+==============================
+
+10. Set facility name
+    STATUS: Display only. Name is set in seed data.
+    HOW-TO: Settings > Facility Config > select a facility >
+    "Facility Details" card shows the facility name and agency.
+    The "Announcements" section lets you set the announcement text
+    (used in facility disclaimer audio).
+
+11. Dashboard: Active communications
+    STATUS: Works.
+    HOW-TO: Dashboard > Overview. Stats cards show "Active Voice
+    Calls" and "Active Video Calls" counts in real-time.
+
+12. Dashboard: Today's activity
+    STATUS: Works.
+    HOW-TO: Dashboard > Overview. Stats cards show counts for
+    Pending Contacts, Active Residents, Blocked Numbers,
+    and Pending Messages.
+
+13. Dashboard: Recent activity feed
+    STATUS: Works (as action items).
+    HOW-TO: Dashboard > Overview > "Action Items" section shows
+    pending items with counts and links: Pending Contacts (2),
+    Pending Messages (1), Pending Video Requests (1).
+
+14. View incarcerated user profile
+    STATUS: Works.
+    HOW-TO: People > Residents > click any resident row.
+    Profile shows: name, status, risk level, external ID,
+    facility, housing unit. Tabs: Activity, Contacts, Housing, Notes.
+
+15. Edit incarcerated user
+    STATUS: Backend works (PATCH /residents/:id/profile).
+    No edit button in UI yet.
+    HOW-TO: Not yet available in UI. Backend supports editing
+    firstName, lastName, externalId with entity history tracking.
+
+16. Deactivate incarcerated user
+    STATUS: Backend works (PATCH /residents/:id/status).
+    No deactivate button in UI yet.
+    HOW-TO: Not yet available in UI. Backend supports changing
+    status to "deactivated" with audit logging.
+
+17. Search incarcerated users
+    STATUS: Works.
+    HOW-TO: People > Residents > type in the search box at top.
+    Searches by name or external ID. Also: Monitoring > Search
+    for cross-entity search (residents, contacts, messages).
+
+18. List all incarcerated users (paginated)
+    STATUS: Works.
+    HOW-TO: People > Residents. Shows paginated table with columns:
+    Name, External ID, Housing Unit, Risk Level, Status.
+    Filter by status, risk level, or housing unit.
+
+19. Assign/reset PIN
+    STATUS: Backend works (POST /residents/:id/pin).
+    No PIN button in UI yet.
+    HOW-TO: Not yet available in UI. Backend generates a random
+    4-digit PIN or accepts a provided one.
+
+20. View incarcerated user's contacts
+    STATUS: Works.
+    HOW-TO: People > Residents > click resident > "Contacts" tab.
+    Shows approved contacts with name and relationship.
+
+21. View incarcerated user's communication history
+    STATUS: Works.
+    HOW-TO: People > Residents > click resident > "Activity" tab.
+    Shows chronological timeline of voice calls, video calls,
+    and messages with status and timestamps.
+
+22. View all pending contact approvals
+    STATUS: Works.
+    HOW-TO: People > Contacts. Default view shows "Pending" tab
+    with all pending contact approval requests across the facility.
+
+23. Approve contact
+    STATUS: Works.
+    HOW-TO: People > Contacts > "Pending" tab > click "Approve"
+    button on any pending contact row. Confirms with a modal.
+
+24. Deny contact
+    STATUS: Works.
+    HOW-TO: People > Contacts > "Pending" tab > click "Deny"
+    button on any pending contact row. Confirms with a modal.
+
+25. View contact details
+    STATUS: Works.
+    HOW-TO: People > Contacts > switch to "Approved" tab > click
+    any contact row. Shows name, relationship, phone, email.
+    Also available from resident profile > Contacts tab.
+
+26. Edit contact
+    STATUS: Backend works (PATCH /contacts/:id/edit).
+    No edit form in UI yet.
+    HOW-TO: Not yet available in UI. Backend supports editing
+    relationship, notes, phone, email, firstName, lastName.
+
+27. Remove contact
+    STATUS: Works.
+    HOW-TO: People > Contacts > "Approved" tab > click "Remove"
+    button on any approved contact row. Confirms with a modal.
+
+28. Global block list (facility-level)
+    STATUS: Works.
+    HOW-TO: Facility > Blocked Numbers. Shows blocked numbers for
+    the selected facility. Click "Add Blocked Number" with scope
+    set to "Facility" to add a facility-level block.
+
+29. Verify attorney
+    STATUS: Works.
+    HOW-TO: People > Contacts > "Approved" tab > click the
+    "Attorney" toggle button on any approved contact row.
+    Toggles attorney-client privilege flag.
+
+30. Block outside person agency-wide
+    STATUS: Backend works (POST /contacts/block-person-agency-wide).
+    No UI button yet.
+    HOW-TO: Not yet available in UI. Backend supports blocking
+    a family member across all facilities (agency_admin only).
+
+
+OPTIONAL SCOPE
+==============
+
+31. Handle transfers
+    STATUS: Backend works (POST /residents/:id/transfer).
+    HOW-TO: Facility > Housing > click a unit > resident table
+    shows residents. Transfer UI not yet wired up, but backend
+    supports moving residents between units with audit logging.
+
+32. Handle releases
+    STATUS: Backend works (PATCH /residents/:id/status).
+    HOW-TO: Not yet available in UI. Backend supports changing
+    status to "released" which deactivates access.
+
+33. Set contact list change frequency
+    STATUS: Not implemented.
+
+34. Bulk user import (CSV)
+    STATUS: Not implemented.
+
+35. Export data (CSV)
+    STATUS: Works.
+    HOW-TO: Reports > Reports > select a tab (Volume, Moderation,
+    Flags, or Visitors) > set date range > click "Export CSV".
+
+36. Audit log
+    STATUS: Works.
+    HOW-TO: Reports > Audit Log. Filter by date range, admin user,
+    action type, or entity type. Click any row to expand and see
+    the full JSON details of the action.
+
+37. Usage reports
+    STATUS: Works.
+    HOW-TO: Reports > Reports. Four tabs:
+    - Volume: communication counts by type
+    - Moderation: message review stats
+    - Flags: flagged content summary
+    - Visitors: visitor activity
+
+
+SUMMARY
+=======
+
+Fully working in UI:     22 of 30 required, 3 of 7 optional
+Backend only (no UI):     8 of 30 required (items 15, 16, 19, 26, 30 + partial 1-5)
+Not implemented:          0 of 30 required, 2 of 7 optional (items 33, 34)

@@ -12,11 +12,27 @@ export default function AdminLayout() {
     navigate('/login');
   };
 
+  // Sidebar nav matches the TPM scope guide PDF exactly
   const navSections = [
     {
       title: 'Dashboard',
       items: [
-        { path: '/admin', label: 'Overview', icon: '📊', end: true },
+        { path: '/admin', label: 'Dashboard', icon: '📊', end: true },
+      ],
+    },
+    {
+      title: 'People',
+      items: [
+        { path: '/admin/residents', label: 'Incarcerated Users', icon: '👤' },
+        { path: '/admin/contacts', label: 'Contacts', icon: '👥' },
+      ],
+    },
+    {
+      title: 'Configuration',
+      items: [
+        { path: '/admin/facility', label: 'Facility Config', icon: '🏢' },
+        { path: '/admin/housing', label: 'Housing Units', icon: '🏠' },
+        { path: '/admin/blocked-numbers', label: 'Block Lists', icon: '🚫' },
       ],
     },
     {
@@ -28,41 +44,11 @@ export default function AdminLayout() {
       ],
     },
     {
-      title: 'People',
+      title: 'Optional',
       items: [
-        { path: '/admin/residents', label: 'Residents', icon: '👤' },
-        { path: '/admin/visitors', label: 'Visitors', icon: '🧑' },
-        { path: '/admin/contacts', label: 'Contacts', icon: '👥' },
-      ],
-    },
-    {
-      title: 'Facility',
-      items: [
-        { path: '/admin/housing', label: 'Housing', icon: '🏠' },
-        { path: '/admin/blocked-numbers', label: 'Blocked Numbers', icon: '🚫' },
-      ],
-    },
-    {
-      title: 'Monitoring',
-      items: [
-        { path: '/admin/search', label: 'Search', icon: '🔍' },
-        { path: '/admin/keyword-alerts', label: 'Keyword Alerts', icon: '⚠️' },
-      ],
-    },
-    {
-      title: 'Reports',
-      items: [
-        { path: '/admin/reports', label: 'Reports', icon: '📈' },
+        { path: '/admin/reports', label: 'Usage Reports', icon: '📈' },
         { path: '/admin/audit-log', label: 'Audit Log', icon: '📋' },
-      ],
-    },
-    {
-      title: 'Settings',
-      items: [
-        { path: '/admin/facility', label: 'Facility Config', icon: '🏢' },
-        { path: '/admin/settings/permissions', label: 'Permissions', icon: '🔐' },
-        { path: '/admin/settings/system', label: 'System Status', icon: '⚙️' },
-        { path: '/admin/users', label: 'Admin Users', icon: '👤' },
+        { path: '/admin/search', label: 'Search', icon: '🔍' },
       ],
     },
   ];
