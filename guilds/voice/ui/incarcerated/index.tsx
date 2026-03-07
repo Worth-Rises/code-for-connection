@@ -122,6 +122,7 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
   const startTimeRef = useRef<number>(Date.now());
   const twilioCallRef = useRef<Call | null>(null);
   const callIdRef = useRef<string | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Keep callIdRef in sync with callId state
   useEffect(() => { callIdRef.current = callId; }, [callId]);
@@ -142,11 +143,13 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
         // Notify the server so DB status is updated (fallback for when no PUBLIC_URL callback)
         const cid = callIdRef.current;
         if (cid) {
-          fetch(`${API_BASE}/voice/users/end-call/${cid}`, {
+          fetch(`${API_BASE}/voice/users/end-call/${cid}?endedBy=receiver`, {
             method: 'POST',
             headers: getAuthHeaders(),
           }).catch(() => { /* best effort */ });
         }
+        // Stop polling if still active
+        if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
         setCallState('ended');
       });
 
@@ -223,6 +226,7 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
         const pollInterval = setInterval(async () => {
           if (abortController.signal.aborted) {
             clearInterval(pollInterval);
+            pollIntervalRef.current = null;
             return;
           }
           try {
@@ -233,6 +237,7 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
             const statusData = await statusResp.json() as { success: boolean; data?: { phoneAnswered: boolean } };
             if (statusData.success && statusData.data?.phoneAnswered) {
               clearInterval(pollInterval);
+              pollIntervalRef.current = null;
               setCallState('connected');
               startTimeRef.current = Date.now();
             }
@@ -240,9 +245,13 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
             // Ignore poll errors (e.g. abort)
           }
         }, 1000);
+        pollIntervalRef.current = pollInterval;
 
         // Store the interval so cleanup can clear it
-        abortController.signal.addEventListener('abort', () => clearInterval(pollInterval));
+        abortController.signal.addEventListener('abort', () => {
+          clearInterval(pollInterval);
+          pollIntervalRef.current = null;
+        });
       } catch (err) {
         // Ignore abort errors
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -559,6 +568,10 @@ function VoiceHome() {
     initDevice();
     return () => {
       cancelled = true;
+      // Destroy device to release connections and remove listeners
+      if (twilioDevice) {
+        try { twilioDevice.destroy(); } catch { /* ignore */ }
+      }
     };
   }, []);
 
