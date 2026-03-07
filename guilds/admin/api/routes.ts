@@ -14,6 +14,10 @@ import { monitoringRouter } from './monitoring.routes.js';
 import { residentsRouter } from './residents.routes.js';
 import { visitorsRouter } from './visitors.routes.js';
 import { housingRouter } from './housing.routes.js';
+import { searchRouter } from './search.routes.js';
+import { auditRouter } from './audit.routes.js';
+import { reportsRouter } from './reports.routes.js';
+import { settingsRouter } from './settings.routes.js';
 
 export const adminRouter = Router();
 
@@ -28,6 +32,10 @@ adminRouter.use('/monitoring', monitoringRouter);
 adminRouter.use('/residents', residentsRouter);
 adminRouter.use('/visitors', visitorsRouter);
 adminRouter.use('/housing', housingRouter);
+adminRouter.use('/search', searchRouter);
+adminRouter.use('/audit-log', auditRouter);
+adminRouter.use('/reports', reportsRouter);
+adminRouter.use('/settings', settingsRouter);
 
 adminRouter.get('/housing-unit-type/:unitTypeId', requireAuth, async (req: Request, res: Response) => {
   try {

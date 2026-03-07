@@ -16,16 +16,12 @@ import VisitorListPage from './visitors/VisitorListPage';
 import VisitorProfilePage from './visitors/VisitorProfilePage';
 import HousingDashboardPage from './housing/HousingDashboardPage';
 import UnitRosterPage from './housing/UnitRosterPage';
-
-// Placeholder for pages not yet built
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <div className="text-center py-12">
-      <h2 className="text-xl font-semibold text-gray-700">{title}</h2>
-      <p className="text-gray-500 mt-2">This page will be implemented in a later stage.</p>
-    </div>
-  );
-}
+import SearchPage from './search/SearchPage';
+import KeywordAlertsPage from './search/KeywordAlertsPage';
+import AuditLogPage from './audit/AuditLogPage';
+import ReportsPage from './reports/ReportsPage';
+import PermissionsPage from './settings/PermissionsPage';
+import SystemStatusPage from './settings/SystemStatusPage';
 
 export default function AdminPortal() {
   return (
@@ -44,12 +40,12 @@ export default function AdminPortal() {
           <Route path="visitors/:id" element={<VisitorProfilePage />} />
           <Route path="housing" element={<HousingDashboardPage />} />
           <Route path="housing/:unitId" element={<UnitRosterPage />} />
-          <Route path="search" element={<PlaceholderPage title="Search" />} />
-          <Route path="keyword-alerts" element={<PlaceholderPage title="Keyword Alerts" />} />
-          <Route path="reports" element={<PlaceholderPage title="Reports" />} />
-          <Route path="audit-log" element={<PlaceholderPage title="Audit Log" />} />
-          <Route path="settings/permissions" element={<PlaceholderPage title="Permissions" />} />
-          <Route path="settings/system" element={<PlaceholderPage title="System Status" />} />
+          <Route path="search" element={<SearchPage />} />
+          <Route path="keyword-alerts" element={<KeywordAlertsPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="audit-log" element={<AuditLogPage />} />
+          <Route path="settings/permissions" element={<PermissionsPage />} />
+          <Route path="settings/system" element={<SystemStatusPage />} />
         </Routes>
       </main>
     </div>
