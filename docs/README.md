@@ -31,7 +31,7 @@ You need these tools installed before starting. Click the links to download if y
 # Clone the repo
 git clone https://github.com/wildcard-dev/code-for-connection.git
 cd code-for-connection
-
+//t
 # Checkout your team's branch
 git checkout guild/voice  # or guild/video, guild/messaging, guild/admin
 
