@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Card, Button, Modal, LoadingSpinner } from '@openconnect/ui';
+import { Device, Call } from '@twilio/voice-sdk';
 
 const API_BASE = '/api';
 
@@ -34,10 +35,6 @@ interface VoiceCallRecord {
     firstName: string;
     lastName: string;
     phone: string;
-  };
-  incarceratedPerson?: {
-    firstName: string;
-    lastName: string;
   };
 }
 
@@ -110,51 +107,153 @@ function statusLabel(status: string): string {
 
 interface ActiveCallProps {
   contact: ApprovedContact;
+  device: Device | null;
   onCallEnded: () => void;
 }
 
-function ActiveCallScreen({ contact, onCallEnded }: ActiveCallProps) {
-  const [callState, setCallState] = useState<'connecting' | 'connected' | 'ended' | 'error'>('connecting');
+
+function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
+  const [callState, setCallState] = useState<'connecting' | 'ringing' | 'connected' | 'ended' | 'error'>('connecting');
   const [callId, setCallId] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
   const [isMuted, setIsMuted] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(Date.now());
+  const twilioCallRef = useRef<Call | null>(null);
+  const callIdRef = useRef<string | null>(null);
 
-  // Initiate call on mount
+  // Keep callIdRef in sync with callId state
+  useEffect(() => { callIdRef.current = callId; }, [callId]);
+
+  // Listen for the incoming conference call from Twilio and auto-accept
   useEffect(() => {
-    let cancelled = false;
+    if (!device) return;
 
-    async function initiateCall() {
+    const handleIncoming = (incomingCall: Call) => {
+      console.log('[voice-ui] Incoming conference call received, auto-accepting');
+      incomingCall.accept();
+      twilioCallRef.current = incomingCall;
+
+      incomingCall.on('disconnect', () => {
+        console.log('[voice-ui] Twilio call disconnected (remote hangup or conference ended)');
+        // Release the mic/speakers
+        if (device) { try { device.disconnectAll(); } catch (e) { /* ignore */ } }
+        // Notify the server so DB status is updated (fallback for when no PUBLIC_URL callback)
+        const cid = callIdRef.current;
+        if (cid) {
+          fetch(`${API_BASE}/voice/users/end-call/${cid}`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+          }).catch(() => { /* best effort */ });
+        }
+        setCallState('ended');
+      });
+
+      incomingCall.on('error', (err: Error) => {
+        console.error('[voice-ui] Twilio call error:', err);
+        setCallState('error');
+        setErrorMsg(err.message || 'Call connection error');
+      });
+    };
+
+    device.on('incoming', handleIncoming);
+    return () => {
+      device.removeListener('incoming', handleIncoming);
+      // Ensure mic is released when this screen unmounts
+      try { device.disconnectAll(); } catch (e) { /* ignore */ }
+    };
+  }, [device]);
+
+  // Keep device in a ref so the startCall effect doesn't re-run when it changes
+  const deviceRef = useRef(device);
+  deviceRef.current = device;
+
+  // Initiate call
+  useEffect(() => {
+    const abortController = new AbortController();
+
+    async function startCall() {
       try {
+        setCallState('connecting');
+
+        // Wait up to 5 seconds for the device to be ready
+        let d = deviceRef.current;
+        for (let i = 0; i < 10 && !d; i++) {
+          await new Promise(r => setTimeout(r, 500));
+          if (abortController.signal.aborted) return;
+          d = deviceRef.current;
+        }
+        if (!d) {
+          setCallState('error');
+          setErrorMsg('Voice device not ready. Please refresh and try again.');
+          return;
+        }
+
+        console.log('[voice-ui] Initiating call for contact', contact.id);
+
+        // Tell the backend to create the conference and add both participants
         const resp = await fetch(`${API_BASE}/voice/users/initiate-call`, {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({ contactId: contact.id }),
+          signal: abortController.signal,
         });
-        const data = await resp.json();
+        const data = await resp.json() as { success: boolean; data?: { id: string; conferenceName: string }; error?: { message: string } };
 
-        if (cancelled) return;
+        if (abortController.signal.aborted) return;
 
         if (!resp.ok || !data.success) {
+          // 409 = server dedup caught a duplicate request, first call is already in progress
+          if (resp.status === 409) {
+            console.log('[voice-ui] Duplicate call blocked by server (409), ignoring');
+            return;
+          }
           setCallState('error');
           setErrorMsg(data.error?.message || 'Failed to connect call');
           return;
         }
 
-        setCallId(data.data.id);
-        setCallState('connected');
-        startTimeRef.current = Date.now();
+        const newCallId = data.data!.id;
+        setCallId(newCallId);
+        // Tablet is in conference, phone is ringing — show Ringing
+        setCallState('ringing');
+
+        // Poll for phone answer
+        const pollInterval = setInterval(async () => {
+          if (abortController.signal.aborted) {
+            clearInterval(pollInterval);
+            return;
+          }
+          try {
+            const statusResp = await fetch(`${API_BASE}/voice/users/call-status/${newCallId}`, {
+              headers: getAuthHeaders(),
+              signal: abortController.signal,
+            });
+            const statusData = await statusResp.json() as { success: boolean; data?: { phoneAnswered: boolean } };
+            if (statusData.success && statusData.data?.phoneAnswered) {
+              clearInterval(pollInterval);
+              setCallState('connected');
+              startTimeRef.current = Date.now();
+            }
+          } catch {
+            // Ignore poll errors (e.g. abort)
+          }
+        }, 1000);
+
+        // Store the interval so cleanup can clear it
+        abortController.signal.addEventListener('abort', () => clearInterval(pollInterval));
       } catch (err) {
-        if (cancelled) return;
+        // Ignore abort errors
+        if (err instanceof DOMException && err.name === 'AbortError') return;
         setCallState('error');
         setErrorMsg('Network error — could not reach the server');
       }
     }
 
-    initiateCall();
-    return () => { cancelled = true; };
+    startCall();
+    return () => { abortController.abort(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contact.id]);
 
   // Timer
@@ -172,6 +271,18 @@ function ActiveCallScreen({ contact, onCallEnded }: ActiveCallProps) {
   const handleEndCall = useCallback(async () => {
     if (timerRef.current) clearInterval(timerRef.current);
 
+    // Disconnect the browser Twilio call
+    if (twilioCallRef.current) {
+      try { twilioCallRef.current.disconnect(); } catch (e) { /* ignore */ }
+      twilioCallRef.current = null;
+    }
+
+    // Also try device.disconnectAll() as a fallback
+    if (device) {
+      try { device.disconnectAll(); } catch (e) { /* ignore */ }
+    }
+
+    // Tell the backend to end both legs of the conference
     if (callId) {
       try {
         await fetch(`${API_BASE}/voice/users/end-call/${callId}`, {
@@ -184,8 +295,17 @@ function ActiveCallScreen({ contact, onCallEnded }: ActiveCallProps) {
     }
 
     setCallState('ended');
+
     setTimeout(onCallEnded, 1500);
   }, [callId, onCallEnded]);
+
+  const handleToggleMute = useCallback(() => {
+    if (twilioCallRef.current) {
+      const newMuted = !isMuted;
+      twilioCallRef.current.mute(newMuted);
+      setIsMuted(newMuted);
+    }
+  }, [isMuted]);
 
   const contactName = `${contact.familyMember.firstName} ${contact.familyMember.lastName}`;
 
@@ -203,7 +323,7 @@ function ActiveCallScreen({ contact, onCallEnded }: ActiveCallProps) {
             <div className="absolute w-80 h-80 rounded-full border border-blue-300 opacity-10 animate-ping" style={{ animationDuration: '4s' }} />
           </>
         )}
-        {callState === 'connecting' && (
+        {(callState === 'connecting' || callState === 'ringing') && (
           <div className="absolute w-48 h-48 rounded-full border-2 border-yellow-400 opacity-30 animate-ping" style={{ animationDuration: '1.5s' }} />
         )}
       </div>
@@ -225,9 +345,18 @@ function ActiveCallScreen({ contact, onCallEnded }: ActiveCallProps) {
           <div className="flex flex-col items-center mb-10">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
-              <span className="text-yellow-300 text-xl font-medium">Connecting…</span>
+              <span className="text-yellow-300 text-xl font-medium">Setting up call…</span>
             </div>
             <LoadingSpinner size="sm" />
+          </div>
+        )}
+
+        {callState === 'ringing' && (
+          <div className="flex flex-col items-center mb-10">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
+              <span className="text-yellow-300 text-xl font-medium">Ringing…</span>
+            </div>
           </div>
         )}
 
@@ -259,12 +388,12 @@ function ActiveCallScreen({ contact, onCallEnded }: ActiveCallProps) {
 
         {/* Controls */}
         <div className="flex items-center gap-8">
-          {(callState === 'connected') && (
+          {callState === 'connected' && (
             <button
-              onClick={() => setIsMuted(!isMuted)}
+              onClick={handleToggleMute}
               className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl transition-all duration-200 ${isMuted
-                  ? 'bg-red-500/30 border-2 border-red-400 text-red-300'
-                  : 'bg-white/10 border-2 border-white/20 text-white hover:bg-white/20'
+                ? 'bg-red-500/30 border-2 border-red-400 text-red-300'
+                : 'bg-white/10 border-2 border-white/20 text-white hover:bg-white/20'
                 }`}
               title={isMuted ? 'Unmute' : 'Mute'}
             >
@@ -272,7 +401,7 @@ function ActiveCallScreen({ contact, onCallEnded }: ActiveCallProps) {
             </button>
           )}
 
-          {(callState === 'connecting' || callState === 'connected') && (
+          {(callState === 'connecting' || callState === 'ringing' || callState === 'connected') && (
             <button
               onClick={handleEndCall}
               className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center text-3xl shadow-lg shadow-red-900/50 transition-all duration-200 active:scale-95 border-2 border-red-400/30"
@@ -303,9 +432,10 @@ function ActiveCallScreen({ contact, onCallEnded }: ActiveCallProps) {
 interface ContactCardProps {
   contact: ApprovedContact;
   onCall: (contact: ApprovedContact) => void;
+  disabled?: boolean;
 }
 
-function ContactCard({ contact, onCall }: ContactCardProps) {
+function ContactCard({ contact, onCall, disabled }: ContactCardProps) {
   const { familyMember, relationship, isAttorney } = contact;
   const initials = `${familyMember.firstName[0]}${familyMember.lastName[0]}`;
 
@@ -328,7 +458,8 @@ function ContactCard({ contact, onCall }: ContactCardProps) {
       </div>
       <button
         onClick={() => onCall(contact)}
-        className="w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 active:bg-green-700 flex items-center justify-center text-white text-2xl shadow-lg shadow-green-200 transition-all duration-150 active:scale-95"
+        disabled={disabled}
+        className="w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 active:bg-green-700 flex items-center justify-center text-white text-2xl shadow-lg shadow-green-200 transition-all duration-150 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
         title={`Call ${familyMember.firstName}`}
       >
         📞
@@ -381,6 +512,56 @@ function VoiceHome() {
   const [activeCall, setActiveCall] = useState<ApprovedContact | null>(null);
   const [error, setError] = useState('');
 
+  // Twilio Device state
+  const [twilioDevice, setTwilioDevice] = useState<Device | null>(null);
+  const [deviceReady, setDeviceReady] = useState(false);
+  const [deviceError, setDeviceError] = useState('');
+
+  // Initialize Twilio Device with access token (incoming calls only, no TwiML App)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function initDevice() {
+      try {
+        const resp = await fetch(`${API_BASE}/voice/users/token`, {
+          headers: getAuthHeaders(),
+        });
+        const data = await resp.json();
+
+        if (cancelled) return;
+
+        if (!resp.ok || !data.success) {
+          setDeviceError('Could not initialize voice — token error');
+          return;
+        }
+
+        const device = new Device(data.data.token, {
+          codecPreferences: [Call.Codec.Opus, Call.Codec.PCMU],
+          logLevel: 1,
+        });
+
+        device.on('registered', () => {
+          if (!cancelled) setDeviceReady(true);
+        });
+
+        device.on('error', (err: Error) => {
+          console.error('Twilio Device error:', err);
+          if (!cancelled) setDeviceError(`Voice device error: ${err.message}`);
+        });
+
+        device.register();
+        setTwilioDevice(device);
+      } catch (err) {
+        if (!cancelled) setDeviceError('Failed to initialize voice device');
+      }
+    }
+
+    initDevice();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Load contacts
   useEffect(() => {
     async function fetchContacts() {
@@ -429,9 +610,9 @@ function VoiceHome() {
     fetchHistory();
   }, [fetchHistory]);
 
-  // Active call overlay
+
   if (activeCall) {
-    return <ActiveCallScreen contact={activeCall} onCallEnded={handleCallEnded} />;
+    return <ActiveCallScreen contact={activeCall} device={twilioDevice} onCallEnded={handleCallEnded} />;
   }
 
   return (
@@ -442,10 +623,18 @@ function VoiceHome() {
           <h1 className="text-2xl font-bold text-gray-900">Voice Calls</h1>
           <p className="text-sm text-gray-500 mt-1">Tap a contact to start a call</p>
         </div>
-        <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-2xl">
-          📞
+        <div className="flex items-center gap-2">
+          <div className={`w-3 h-3 rounded-full ${deviceReady ? 'bg-green-400' : 'bg-yellow-400 animate-pulse'}`} />
+          <span className="text-xs text-gray-400">{deviceReady ? 'Ready' : 'Connecting…'}</span>
         </div>
       </div>
+
+      {/* Device error */}
+      {deviceError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-700 text-sm">
+          ⚠️ {deviceError}
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -467,8 +656,8 @@ function VoiceHome() {
             </div>
           </Card>
         ) : contacts.length === 0 ? (
-            <Card padding="lg">
-              <div className="text-center py-8">
+          <Card padding="lg">
+            <div className="text-center py-8">
               <span className="text-5xl block mb-4">📋</span>
               <p className="text-gray-500">No approved contacts yet.</p>
               <p className="text-sm text-gray-400 mt-1">Ask your facility to approve contacts for calling.</p>
@@ -477,7 +666,12 @@ function VoiceHome() {
         ) : (
           <div className="space-y-3">
             {contacts.map((c) => (
-              <ContactCard key={c.id} contact={c} onCall={setActiveCall} />
+              <ContactCard
+                key={c.id}
+                contact={c}
+                onCall={setActiveCall}
+                disabled={!deviceReady}
+              />
             ))}
           </div>
         )}

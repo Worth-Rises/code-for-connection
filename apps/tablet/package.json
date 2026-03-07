@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@openconnect/ui": "*",
+    "@twilio/voice-sdk": "^2.10.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.3"
