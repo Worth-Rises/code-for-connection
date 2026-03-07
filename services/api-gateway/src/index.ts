@@ -5,9 +5,9 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 
 import { authRouter } from './routes/auth.js';
+import { videoRouter } from '@openconnect/video';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { adminRouter } from '@openconnect/admin';
-import { videoRouter } from '@openconnect/video';
 
 dotenv.config();
 
