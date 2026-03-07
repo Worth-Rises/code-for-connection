@@ -168,23 +168,22 @@ voiceAdminRouter.post('/terminate-calls', requireAuth, requireRole('facility_adm
       }
     }
 
-    // Update all eligible calls in the DB in batches
+    // Bulk-update all eligible calls in a single query
     const now = new Date();
-    await processBatch(eligible, (call) => {
-      const durationSeconds = call.connectedAt
-        ? Math.floor((now.getTime() - call.connectedAt.getTime()) / 1000)
-        : 0;
-      return prisma.voiceCall.update({
-        where: { id: call.id },
-        data: {
-          status: 'terminated_by_admin',
-          endedAt: now,
-          endedBy: 'admin',
-          terminatedByAdminId: req.user!.id,
-          durationSeconds,
-        },
-      });
-    });
+    const eligibleIds = eligible.map(c => c.id);
+    await prisma.$executeRaw`
+      UPDATE voice_calls
+      SET status = 'terminated_by_admin',
+          ended_at = ${now},
+          ended_by = 'admin',
+          terminated_by_admin_id = ${req.user!.id},
+          duration_seconds = CASE
+            WHEN connected_at IS NOT NULL
+              THEN EXTRACT(EPOCH FROM (${now}::timestamptz - connected_at))::int
+            ELSE 0
+          END
+      WHERE id = ANY(${eligibleIds})
+    `;
 
     // Mark all eligible as success
     for (const call of eligible) {
