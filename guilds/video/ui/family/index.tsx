@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import { Card } from '@openconnect/ui';
+import Contacts from './manage_contacts';
 
 function VideoHome() {
   return (
@@ -46,6 +47,7 @@ export default function VideoFamily() {
   return (
     <Routes>
       <Route index element={<VideoHome />} />
+      <Route path="manage" element={<Contacts />} />
     </Routes>
   );
 }
