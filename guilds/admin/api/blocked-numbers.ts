@@ -175,7 +175,7 @@ blockedNumbersRouter.get('/check', async (req: Request, res: Response) => {
 
     res.json(createSuccessResponse({
       blocked: !!blockedNumber,
-      scope: blockedNumber?.scope,
+      scope: blockedNumber?.scope ?? null,
     }));
   } catch (error) {
     console.error('Error checking blocked number:', error);

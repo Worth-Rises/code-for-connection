@@ -61,7 +61,7 @@ contactsRouter.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// GET /check - check contact approval status
+// GET /check - check contact approval status (must be before /:param routes)
 contactsRouter.get('/check', async (req: Request, res: Response) => {
   try {
     const { incarceratedPersonId, familyMemberId } = req.query;
@@ -92,6 +92,31 @@ contactsRouter.get('/check', async (req: Request, res: Response) => {
     res.status(500).json(createErrorResponse({
       code: 'INTERNAL_ERROR',
       message: 'Failed to check contact',
+    }));
+  }
+});
+
+// GET /:incarceratedPersonId - approved contacts for an incarcerated person
+contactsRouter.get('/:incarceratedPersonId', async (req: Request, res: Response) => {
+  try {
+    const { incarceratedPersonId } = req.params;
+
+    const contacts = await prisma.approvedContact.findMany({
+      where: {
+        incarceratedPersonId,
+        status: 'approved',
+      },
+      include: {
+        familyMember: true,
+      },
+    });
+
+    res.json(createSuccessResponse(contacts));
+  } catch (error) {
+    console.error('Error fetching contacts for person:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch contacts',
     }));
   }
 });
