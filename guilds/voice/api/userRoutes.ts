@@ -8,10 +8,82 @@ import {
 } from '@openconnect/shared';
 import twilio from "twilio";
 
+const AccessToken = twilio.jwt.AccessToken;
+const VoiceGrant = AccessToken.VoiceGrant;
+
 export const voiceUserRouter = Router();
 
-// In-memory map of callId -> Twilio SID (hackathon workaround since we can't modify the Prisma schema)
-const twilioSidMap = new Map<string, string>();
+// In-memory map of callId -> { twilioSids, conferenceName }
+const callMetadata = new Map<string, { clientSid?: string; phoneSid?: string; conferenceName: string }>();
+
+// Track active call per user to prevent duplicate calls
+const activeCallByUser = new Map<string, string>(); // userId -> callId
+
+// ==========================================
+// TWILIO VOICE SDK — TOKEN
+// ==========================================
+
+/**
+ * GET /token — Generate Twilio Access Token for the browser Voice SDK.
+ * The token allows the browser Device to receive incoming conference calls.
+ * No TwiML App required — we add participants via the Conference Participants API.
+ */
+voiceRouter.get('/token', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const identity = req.user!.id;
+
+    const token = new AccessToken(
+      process.env.TWILIO_ACCOUNT_SID!,
+      process.env.TWILIO_API_KEY_SID!,
+      process.env.TWILIO_API_KEY_SECRET!,
+      { identity }
+    );
+
+    const voiceGrant = new VoiceGrant({
+      incomingAllow: true,
+    });
+    token.addGrant(voiceGrant);
+
+    res.json(createSuccessResponse({ token: token.toJwt(), identity }));
+  } catch (error) {
+    console.error('Error generating token:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to generate voice token',
+    }));
+  }
+});
+
+// ==========================================
+// CALL STATUS POLLING
+// ==========================================
+
+/**
+ * GET /call-status/:callId — Check if the phone participant has answered.
+ * Polls the Twilio REST API directly — no webhook/ngrok needed.
+ */
+voiceRouter.get('/call-status/:callId', requireAuth, async (req: Request, res: Response) => {
+  const { callId } = req.params;
+  const metadata = callMetadata.get(callId);
+
+  if (!metadata?.phoneSid) {
+    return res.json(createSuccessResponse({ phoneAnswered: false }));
+  }
+
+  try {
+    const client = twilio(
+      process.env.TWILIO_ACCOUNT_SID,
+      process.env.TWILIO_AUTH_TOKEN,
+    );
+    const call = await client.calls(metadata.phoneSid).fetch();
+    // 'in-progress' means the phone was answered and is connected
+    const phoneAnswered = call.status === 'in-progress';
+    res.json(createSuccessResponse({ phoneAnswered }));
+  } catch (error) {
+    console.error('[voice] Error checking call status:', error);
+    res.json(createSuccessResponse({ phoneAnswered: false }));
+  }
+});
 
 // ==========================================
 // INCARCERATED USER ENDPOINTS
@@ -53,7 +125,15 @@ voiceUserRouter.get('/contacts', requireAuth, async (req: Request, res: Response
 });
 
 /**
- * POST /initiate-call — Place an outbound Twilio call to an approved contact
+ * POST /initiate-call — Start a conference call with an approved contact.
+ *
+ * Flow:
+ * 1. Validate contact is approved & not blocked
+ * 2. Create VoiceCall DB record
+ * 3. Create a conference and add the tablet user as a client participant
+ * 4. Add the contact's phone number as a participant
+ * 5. The tablet's Twilio Device receives an incoming call → auto-accept → both in conference
+ *
  * Body: { contactId: string }
  */
 voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Response) => {
@@ -61,10 +141,23 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
     const userId = req.user!.id;
     const { contactId } = req.body;
 
+    console.log(`[voice] === INITIATE-CALL REQUEST === userId=${userId} contactId=${contactId}`);
+    console.log(`[voice] activeCallByUser state:`, Object.fromEntries(activeCallByUser));
+
     if (!contactId) {
       return res.status(400).json(createErrorResponse({
         code: 'VALIDATION_ERROR',
         message: 'contactId is required',
+      }));
+    }
+
+    // Prevent duplicate calls — one active call per user
+    const existingCallId = activeCallByUser.get(userId);
+    if (existingCallId) {
+      console.log(`[voice] BLOCKED: User ${userId} already has active call ${existingCallId}, rejecting duplicate`);
+      return res.status(409).json(createErrorResponse({
+        code: 'ALREADY_IN_CALL',
+        message: 'You already have an active call',
       }));
     }
 
@@ -117,23 +210,83 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
       },
     });
 
-    // Place Twilio call
+    const conferenceName = `call-${voiceCall.id}`;
+    const twilioFrom = process.env.TWILIO_PHONE_NUMBER!;
+
+    // Mark this user as having an active call
+    activeCallByUser.set(userId, voiceCall.id);
+    console.log(`[voice] Created DB record ${voiceCall.id}, conference=${conferenceName}, marked user active`);
+
     try {
       const client = twilio(
         process.env.TWILIO_ACCOUNT_SID,
         process.env.TWILIO_AUTH_TOKEN,
       );
 
-      const twilioCall = await client.calls.create({
-        to: contact.familyMember.phone,
-        from: process.env.TWILIO_PHONE_NUMBER!,
-        twiml: `<Response><Say voice="alice">You have an incoming call from ${contact.incarceratedPerson.firstName} ${contact.incarceratedPerson.lastName}. Press any key to accept.</Say><Pause length="30"/></Response>`,
+      // Step 1: Add the tablet user (browser Device) to the conference
+      console.log(`[voice] Step 1: Adding client:${userId} to conference ${conferenceName}`);
+      const clientParticipant = await client.conferences(conferenceName)
+        .participants
+        .create({
+          from: twilioFrom,
+          to: `client:${userId}`,
+          maxParticipants: 2,
+          label: `client:${userId}`,
+          startConferenceOnEnter: true,
+          endConferenceOnExit: true,
+        });
+      console.log(`[voice] Step 1 done: clientCallSid=${clientParticipant.callSid} conferenceSid=${clientParticipant.conferenceSid}`);
+
+      // Store metadata immediately so we can clean up even if step 2 fails
+      callMetadata.set(voiceCall.id, {
+        clientSid: clientParticipant.callSid,
+        conferenceName,
       });
 
-      // Store the mapping
-      twilioSidMap.set(voiceCall.id, twilioCall.sid);
+      // Step 2: Add the contact's phone number to the conference
+      console.log(`[voice] Step 2: Adding ${contact.familyMember.phone} to conference ${conferenceName}`);
+      try {
+        const phoneParticipant = await client.conferences(conferenceName)
+          .participants
+          .create({
+            from: twilioFrom,
+            to: contact.familyMember.phone,
+            label: contact.familyMember.phone,
+            startConferenceOnEnter: true,
+            endConferenceOnExit: true,
+          });
+        console.log(`[voice] Step 2 done: phoneCallSid=${phoneParticipant.callSid} conferenceSid=${phoneParticipant.conferenceSid}`);
 
-      // Update call as connected
+        // Update metadata with phone SID
+        callMetadata.set(voiceCall.id, {
+          clientSid: clientParticipant.callSid,
+          phoneSid: phoneParticipant.callSid,
+          conferenceName,
+        });
+      } catch (phoneError: unknown) {
+        // Phone participant failed — clean up the client participant
+        console.error('[voice] Phone participant failed:', phoneError);
+        try {
+          await client.calls(clientParticipant.callSid).update({ status: 'completed' });
+        } catch (cleanupErr) {
+          console.error('[voice] Failed to clean up client participant:', cleanupErr);
+        }
+        callMetadata.delete(voiceCall.id);
+        activeCallByUser.delete(userId);
+
+        await prisma.voiceCall.update({
+          where: { id: voiceCall.id },
+          data: { status: 'missed', endedAt: new Date() },
+        });
+
+        const errorMessage = phoneError instanceof Error ? phoneError.message : 'Failed to call contact';
+        return res.status(502).json(createErrorResponse({
+          code: 'TWILIO_ERROR',
+          message: errorMessage,
+        }));
+      }
+
+      // Update call status
       const updatedCall = await prisma.voiceCall.update({
         where: { id: voiceCall.id },
         data: {
@@ -147,10 +300,13 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
         },
       });
 
-      res.json(createSuccessResponse(updatedCall));
+      res.json(createSuccessResponse({
+        ...updatedCall,
+        conferenceName,
+      }));
     } catch (twilioError: unknown) {
-      // Twilio failed — update DB to missed, but still return useful info
-      console.error('Twilio error:', twilioError);
+      console.error('[voice] Twilio error (client participant):', twilioError);
+      activeCallByUser.delete(userId);
       await prisma.voiceCall.update({
         where: { id: voiceCall.id },
         data: { status: 'missed', endedAt: new Date() },
@@ -172,7 +328,7 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
 });
 
 /**
- * POST /end-call/:callId — Hang up an active call
+ * POST /end-call/:callId — End an active conference call
  */
 voiceUserRouter.post('/end-call/:callId', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -194,20 +350,45 @@ voiceUserRouter.post('/end-call/:callId', requireAuth, async (req: Request, res:
       }));
     }
 
-    // Try to end the Twilio call
-    const twilioSid = twilioSidMap.get(callId);
-    if (twilioSid) {
+    // End the conference (this terminates ALL participants)
+    const metadata = callMetadata.get(callId);
+    if (metadata) {
       try {
         const client = twilio(
           process.env.TWILIO_ACCOUNT_SID,
           process.env.TWILIO_AUTH_TOKEN,
         );
-        await client.calls(twilioSid).update({ status: 'completed' });
+
+        // Terminate the conference itself — ends all call legs
+        console.log(`[voice] Ending conference ${metadata.conferenceName}`);
+        const conferences = await client.conferences.list({
+          friendlyName: metadata.conferenceName,
+          status: 'in-progress',
+        });
+        for (const conf of conferences) {
+          await conf.update({ status: 'completed' });
+          console.log(`[voice] Conference ${conf.sid} terminated`);
+        }
+
+        // Also explicitly end any individual call legs as fallback
+        if (metadata.clientSid) {
+          try { await client.calls(metadata.clientSid).update({ status: 'completed' }); } catch { /* may already be ended */ }
+        }
+        if (metadata.phoneSid) {
+          try { await client.calls(metadata.phoneSid).update({ status: 'completed' }); } catch { /* may already be ended */ }
+        }
       } catch (twilioError) {
-        console.error('Error ending Twilio call:', twilioError);
-        // Continue to update DB even if Twilio fails
+        console.error('[voice] Error ending conference/calls:', twilioError);
       }
-      twilioSidMap.delete(callId);
+      callMetadata.delete(callId);
+    }
+
+    // Clear active call for this user
+    for (const [uid, cid] of activeCallByUser.entries()) {
+      if (cid === callId) {
+        activeCallByUser.delete(uid);
+        break;
+      }
     }
 
     const durationSeconds = call.connectedAt
