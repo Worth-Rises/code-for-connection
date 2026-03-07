@@ -1,3 +1,8 @@
+<p align="center">
+  <img width="1600" height="400" alt="code-for-connection-logo" src="https://github.com/user-attachments/assets/70d0c13c-b6c1-4a90-8bcd-ec82d45280a8" />
+</p>
+
+
 # Code for Connection - Hackathon Documentation
 
 Welcome to the Code for Connection hackathon! This documentation will help you get started with building your component.
@@ -182,6 +187,14 @@ npm run db:reset
 npm run db:seed
 ```
 
-## Support
+## Support & Community
 
-Ask a facilitator if you need help!
+Join the hackathon Slack: **[slack.com/code-for-connection](https://join.slack.com/t/codeforconnection/shared_invite/zt-3rv1g0c2e-nWESP6Uv25vWAhRL4aobJg)**
+
+Once you're in, head to your guild's channel:
+- Voice Guild → `#guild-voice`
+- Video Guild → `#guild-video`
+- Messaging Guild → `#guild-messaging`
+- Admin Platform Guild → `#guild-admin`
+
+For technical questions, post in `#tech-help`. Facilitators will be monitoring throughout both days.
