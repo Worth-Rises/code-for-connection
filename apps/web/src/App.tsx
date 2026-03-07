@@ -9,19 +9,19 @@ import LoginPage from './pages/LoginPage';
 import PinLoginPage from './pages/PinLoginPage';
 import RegisterPage from './pages/RegisterPage';
 
-const VoiceIncarcerated = lazy(() => import('../../guilds/voice/ui/incarcerated'));
-const VoiceFamily = lazy(() => import('../../guilds/voice/ui/family'));
-const VoiceAdmin = lazy(() => import('../../guilds/voice/ui/admin'));
+const VoiceIncarcerated = lazy(() => import('../../../guilds/voice/ui/incarcerated'));
+const VoiceFamily = lazy(() => import('../../../guilds/voice/ui/family'));
+const VoiceAdmin = lazy(() => import('../../../guilds/voice/ui/admin'));
 
-const VideoIncarcerated = lazy(() => import('../../guilds/video/ui/incarcerated'));
-const VideoFamily = lazy(() => import('../../guilds/video/ui/family'));
-const VideoAdmin = lazy(() => import('../../guilds/video/ui/admin'));
+const VideoIncarcerated = lazy(() => import('../../../guilds/video/ui/incarcerated'));
+const VideoFamily = lazy(() => import('../../../guilds/video/ui/family'));
+const VideoAdmin = lazy(() => import('../../../guilds/video/ui/admin'));
 
-const MessagingIncarcerated = lazy(() => import('../../guilds/messaging/ui/incarcerated'));
-const MessagingFamily = lazy(() => import('../../guilds/messaging/ui/family'));
-const MessagingAdmin = lazy(() => import('../../guilds/messaging/ui/admin'));
+const MessagingIncarcerated = lazy(() => import('../../../guilds/messaging/ui/incarcerated'));
+const MessagingFamily = lazy(() => import('../../../guilds/messaging/ui/family'));
+const MessagingAdmin = lazy(() => import('../../../guilds/messaging/ui/admin'));
 
-const AdminDashboard = lazy(() => import('../../guilds/admin/ui'));
+const AdminDashboard = lazy(() => import('../../../guilds/admin/ui'));
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
   const { user, loading } = useAuth();
