@@ -1,0 +1,80 @@
+# Production Docker Compose
+# Runs the full Code for Connection stack.
+# For cloud deployment (AWS, Azure), use Terraform instead.
+#
+# Usage:
+#   docker compose -f deploy/docker/docker-compose.prod.yml up -d
+#
+# Prerequisites:
+#   - Docker and Docker Compose installed
+#   - Create a .env file with these required values:
+#     POSTGRES_PASSWORD=<a strong password>
+#     JWT_SECRET=<a random string, at least 32 characters>
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-openconnect}
+      POSTGRES_USER: ${POSTGRES_USER:-openconnect}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openconnect"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-openconnect}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-openconnect}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      NODE_ENV: production
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  signaling:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.signaling
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379
+      PORT: 3001
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+      - signaling
+
+volumes:
+  pgdata:

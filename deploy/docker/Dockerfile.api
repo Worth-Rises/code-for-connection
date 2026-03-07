@@ -1,0 +1,22 @@
+# API Gateway
+# Runs the Express server that handles all /api/* requests
+# Connects to PostgreSQL (database) and Redis (cache)
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+COPY packages/shared/package.json packages/shared/
+COPY services/api-gateway/package.json services/api-gateway/
+COPY guilds/admin/package.json guilds/admin/
+COPY guilds/voice/package.json guilds/voice/
+COPY guilds/video/package.json guilds/video/
+COPY guilds/messaging/package.json guilds/messaging/
+RUN npm ci
+COPY . .
+RUN npm run build -w @openconnect/shared
+
+FROM node:20-alpine
+WORKDIR /app
+COPY --from=builder /app .
+EXPOSE 3000
+CMD ["node", "services/api-gateway/dist/index.js"]

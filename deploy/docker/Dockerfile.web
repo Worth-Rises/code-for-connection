@@ -1,0 +1,20 @@
+# Web Frontend
+# Builds the React app and serves it with nginx (a web server)
+# All /api/* requests are proxied to the API gateway
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+COPY packages/ packages/
+COPY apps/web/package.json apps/web/
+COPY guilds/ guilds/
+RUN npm ci
+COPY . .
+RUN npm run build -w @openconnect/shared
+RUN npm run build -w @openconnect/ui
+RUN npm run build -w apps/web
+
+FROM nginx:alpine
+COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
+COPY deploy/docker/nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
