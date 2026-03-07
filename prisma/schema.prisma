@@ -242,6 +242,7 @@ model VoiceCall {
   facilityId           String          @map("facility_id")
   status               VoiceCallStatus @default(ringing)
   isLegal              Boolean         @default(false) @map("is_legal")
+  conferenceSid        String?         @map("conference_sid")
   startedAt            DateTime        @default(now()) @map("started_at")
   connectedAt          DateTime?       @map("connected_at")
   endedAt              DateTime?       @map("ended_at")

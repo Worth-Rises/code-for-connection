@@ -6,6 +6,7 @@ import {
   createErrorResponse,
   prisma,
 } from '@openconnect/shared';
+import twilio from 'twilio';
 
 export const voiceAdminRouter = Router();
 
@@ -94,26 +95,107 @@ voiceAdminRouter.get('/call-logs', requireAuth, async (req: Request, res: Respon
   }
 });
 
-voiceAdminRouter.post('/terminate-call/:callId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+/**
+ * POST /terminate-calls — Bulk-terminate active calls.
+ * Body: { callIds: string[] }
+ * Terminates each call's Twilio conference and updates the DB record.
+ */
+voiceAdminRouter.post('/terminate-calls', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
-    const { callId } = req.params;
-    
-    const call = await prisma.voiceCall.update({
-      where: { id: callId },
-      data: {
-        status: 'terminated_by_admin',
-        endedAt: new Date(),
-        endedBy: 'admin',
-        terminatedByAdminId: req.user!.id,
-      },
+    const { callIds } = req.body;
+
+    if (!Array.isArray(callIds) || callIds.length === 0) {
+      return res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'callIds must be a non-empty array of strings',
+      }));
+    }
+
+    // Fetch all requested calls in one query
+    const calls = await prisma.voiceCall.findMany({
+      where: { id: { in: callIds } },
+    });
+    type VoiceCallRecord = Awaited<ReturnType<typeof prisma.voiceCall.findMany>>[number];
+    const callMap = new Map<string, VoiceCallRecord>();
+    for (const c of calls) callMap.set(c.id, c);
+
+    const client = twilio(
+      process.env.TWILIO_ACCOUNT_SID,
+      process.env.TWILIO_AUTH_TOKEN,
+    );
+
+    // Determine which calls are eligible and which aren't
+    const eligible: VoiceCallRecord[] = [];
+    const results: Array<{ callId: string; success: boolean; error?: string }> = [];
+
+    for (const callId of callIds) {
+      const call = callMap.get(callId);
+      if (!call) {
+        results.push({ callId, success: false, error: 'Call not found' });
+      } else if (!['ringing', 'connected'].includes(call.status)) {
+        results.push({ callId, success: false, error: 'Call is not active' });
+      } else {
+        eligible.push(call);
+      }
+    }
+
+    // Process items in batches to respect Twilio rate limits
+    const BATCH_SIZE = 20;
+    async function processBatch<T, R>(items: T[], fn: (item: T) => Promise<R>): Promise<PromiseSettledResult<R>[]> {
+      const results: PromiseSettledResult<R>[] = [];
+      for (let i = 0; i < items.length; i += BATCH_SIZE) {
+        const batch = items.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(batch.map(fn));
+        results.push(...batchResults);
+      }
+      return results;
+    }
+
+    // Terminate Twilio conferences in batches
+    const twilioResults = await processBatch(eligible, async (call) => {
+      if (!call.conferenceSid) {
+        throw new Error(`No conferenceSid stored for call ${call.id}`);
+      }
+      console.log(`[voice] Admin terminate: conference ${call.conferenceSid} terminating`);
+      await client.conferences(call.conferenceSid).update({ status: 'completed' });
+      return call.id;
     });
 
-    res.json(createSuccessResponse({ success: true, call }));
+    // Log any Twilio failures (but don't block DB update)
+    for (const result of twilioResults) {
+      if (result.status === 'rejected') {
+        console.error('[voice] Twilio conference termination failed:', result.reason);
+      }
+    }
+
+    // Bulk-update all eligible calls in a single query
+    const now = new Date();
+    const eligibleIds = eligible.map(c => c.id);
+    await prisma.$executeRaw`
+      UPDATE voice_calls
+      SET status = 'terminated_by_admin',
+          ended_at = ${now},
+          ended_by = 'admin',
+          terminated_by_admin_id = ${req.user!.id},
+          duration_seconds = CASE
+            WHEN connected_at IS NOT NULL
+              THEN EXTRACT(EPOCH FROM (${now}::timestamptz - connected_at))::int
+            ELSE 0
+          END
+      WHERE id = ANY(${eligibleIds})
+    `;
+
+    // Mark all eligible as success
+    for (const call of eligible) {
+      results.push({ callId: call.id, success: true });
+    }
+
+    res.json(createSuccessResponse({ results }));
   } catch (error) {
-    console.error('Error terminating call:', error);
+    console.error('Error in terminate-calls:', error);
     res.status(500).json(createErrorResponse({
       code: 'INTERNAL_ERROR',
-      message: 'Failed to terminate call',
+      message: 'Failed to terminate calls',
     }));
   }
 });

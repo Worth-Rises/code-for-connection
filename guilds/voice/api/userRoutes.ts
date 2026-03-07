@@ -330,6 +330,7 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
         where: { id: voiceCall.id },
         data: {
           status: 'ringing',
+          conferenceSid: clientParticipant.conferenceSid,
         },
         include: {
           familyMember: {
@@ -396,22 +397,29 @@ voiceUserRouter.post('/end-call/:callId', requireAuth, async (req: Request, res:
     }
 
     // End the conference (this terminates ALL participants)
-    const conferenceName = `call-${callId}`;
     try {
       const client = twilio(
         process.env.TWILIO_ACCOUNT_SID,
         process.env.TWILIO_AUTH_TOKEN,
       );
 
-      // Terminate the conference by friendly name — works even without callMetadata
-      console.log(`[voice] Ending conference ${conferenceName}`);
-      const conferences = await client.conferences.list({
-        friendlyName: conferenceName,
-        status: 'in-progress',
-      });
-      for (const conf of conferences) {
-        await conf.update({ status: 'completed' });
-        console.log(`[voice] Conference ${conf.sid} terminated`);
+      if (call.conferenceSid) {
+        // Use stored SID to terminate directly
+        console.log(`[voice] Ending conference by SID ${call.conferenceSid}`);
+        await client.conferences(call.conferenceSid).update({ status: 'completed' });
+        console.log(`[voice] Conference ${call.conferenceSid} terminated`);
+      } else {
+        // Fallback: look up by friendly name for calls created before conferenceSid was stored
+        const conferenceName = `call-${callId}`;
+        console.log(`[voice] No conferenceSid stored, falling back to friendly name ${conferenceName}`);
+        const conferences = await client.conferences.list({
+          friendlyName: conferenceName,
+          status: 'in-progress',
+        });
+        for (const conf of conferences) {
+          await conf.update({ status: 'completed' });
+          console.log(`[voice] Conference ${conf.sid} terminated`);
+        }
       }
 
       // Also explicitly end any individual call legs if we have the SIDs
