@@ -101,18 +101,13 @@ messagingRouter.get(
       const facilityId =
         (req.query.facilityId as string) || req.user!.facilityId;
 
-      if (!facilityId) {
-        res.status(400).json(
-          createErrorResponse({
-            code: "VALIDATION_ERROR",
-            message: "facilityId is required",
-          }),
-        );
-        return;
+      const where: Record<string, unknown> = {};
+      if (facilityId) {
+        where.facilityId = facilityId;
       }
 
       const keywords = await prisma.flaggedKeyword.findMany({
-        where: { facilityId },
+        where,
         orderBy: { createdAt: "asc" },
       });
 
@@ -253,7 +248,6 @@ messagingRouter.get(
   async (req: Request, res: Response) => {
     try {
       const {
-        facilityId,
         startDate,
         endDate,
         userId,
@@ -262,6 +256,9 @@ messagingRouter.get(
         page = "1",
         pageSize = "20",
       } = req.query;
+
+      const facilityId =
+        (req.query.facilityId as string) || req.user!.facilityId;
 
       const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize));
       const take = parseInt(String(pageSize));
@@ -344,12 +341,21 @@ messagingRouter.get(
   requireRole("facility_admin", "agency_admin"),
   async (req: Request, res: Response) => {
     try {
-      const { facilityId } = req.query;
+      const facilityId =
+        (req.query.facilityId as string) || req.user!.facilityId;
+
+      const where: Record<string, unknown> = {
+        status: "pending_review",
+      };
+
+      if (facilityId) {
+        where.conversation = {
+          incarceratedPerson: { facilityId },
+        };
+      }
 
       const pendingMessages = await prisma.message.findMany({
-        where: {
-          status: "pending_review",
-        },
+        where,
         include: {
           conversation: {
             include: {
@@ -386,7 +392,7 @@ messagingRouter.post(
       const message = await prisma.message.update({
         where: { id: messageId },
         data: {
-          status: "approved",
+          status: "sent",
           reviewedBy: req.user!.id,
         },
       });
@@ -519,21 +525,13 @@ messagingRouter.get(
       const facilityId =
         (req.query.facilityId as string) || req.user!.facilityId;
 
-      if (!facilityId) {
-        res.status(400).json(
-          createErrorResponse({
-            code: "VALIDATION_ERROR",
-            message: "facilityId is required",
-          }),
-        );
-        return;
+      const where: Record<string, unknown> = { isBlocked: true };
+      if (facilityId) {
+        where.incarceratedPerson = { facilityId };
       }
 
       const conversations = await prisma.conversation.findMany({
-        where: {
-          isBlocked: true,
-          incarceratedPerson: { facilityId },
-        },
+        where,
         include: {
           incarceratedPerson: {
             select: { id: true, firstName: true, lastName: true },
@@ -567,18 +565,13 @@ messagingRouter.get(
       const facilityId =
         (req.query.facilityId as string) || req.user!.facilityId;
 
-      if (!facilityId) {
-        res.status(400).json(
-          createErrorResponse({
-            code: "VALIDATION_ERROR",
-            message: "facilityId is required",
-          }),
-        );
-        return;
+      const where: Record<string, unknown> = { status: "active" };
+      if (facilityId) {
+        where.facilityId = facilityId;
       }
 
       const persons = await prisma.incarceratedPerson.findMany({
-        where: { facilityId, status: "active" },
+        where,
         select: { id: true, firstName: true, lastName: true },
         orderBy: { lastName: "asc" },
       });
@@ -665,21 +658,13 @@ messagingRouter.get(
       const facilityId =
         (req.query.facilityId as string) || req.user!.facilityId;
 
-      if (!facilityId) {
-        res.status(400).json(
-          createErrorResponse({
-            code: "VALIDATION_ERROR",
-            message: "facilityId is required",
-          }),
-        );
-        return;
+      const where: Record<string, unknown> = { status: "pending" };
+      if (facilityId) {
+        where.incarceratedPerson = { facilityId };
       }
 
       const requests = await prisma.approvedContact.findMany({
-        where: {
-          status: "pending",
-          incarceratedPerson: { facilityId },
-        },
+        where,
         include: {
           incarceratedPerson: {
             select: { id: true, firstName: true, lastName: true },

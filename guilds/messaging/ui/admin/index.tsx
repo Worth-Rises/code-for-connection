@@ -85,7 +85,13 @@ function fullName(p: Person) {
 
 // ── Contact Requests ─────────────────────────────────────────────────────────
 
-function ContactRequests({ facilityId }: { facilityId?: string }) {
+function ContactRequests({
+  facilityId,
+  onChanged,
+}: {
+  facilityId?: string;
+  onChanged?: () => void;
+}) {
   const [requests, setRequests] = useState<ContactRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -116,6 +122,7 @@ function ContactRequests({ facilityId }: { facilityId?: string }) {
       const data = (await res.json()) as ApiResponse<unknown>;
       if (data.success) {
         setRequests((prev) => prev.filter((r) => r.id !== requestId));
+        onChanged?.();
       } else {
         setError(data.error?.message || `Failed to ${action} request`);
       }
@@ -276,7 +283,13 @@ function PendingMessages({ onReviewed }: { onReviewed?: () => void }) {
 
 // ── Blocked Conversations ────────────────────────────────────────────────────
 
-function BlockedConversations({ facilityId }: { facilityId?: string }) {
+function BlockedConversations({
+  facilityId,
+  onChanged,
+}: {
+  facilityId?: string;
+  onChanged?: () => void;
+}) {
   const [conversations, setConversations] = useState<BlockedConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -358,6 +371,7 @@ function BlockedConversations({ facilityId }: { facilityId?: string }) {
         setSelectedFamilyMemberId("");
         setContactOptions([]);
         fetchConversations();
+        onChanged?.();
       } else {
         setError(data.error?.message || "Failed to block conversation");
       }
@@ -375,6 +389,7 @@ function BlockedConversations({ facilityId }: { facilityId?: string }) {
       const data = (await res.json()) as ApiResponse<unknown>;
       if (data.success) {
         setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+        onChanged?.();
       } else {
         setError(data.error?.message || "Failed to unblock conversation");
       }
@@ -940,7 +955,19 @@ function MessagingDashboard() {
   const [facilityId, setFacilityId] = useState<string | undefined>(undefined);
   const [contentKey, setContentKey] = useState(0);
 
-  const refreshContent = useCallback(() => setContentKey((k) => k + 1), []);
+  const fetchStats = useCallback(() => {
+    apiFetch(`${apiBase}/stats`)
+      .then((r) => r.json() as Promise<ApiResponse<MessagingStats>>)
+      .then((data) => {
+        if (data.success) setStats(data.data);
+      })
+      .catch(() => {});
+  }, []);
+
+  const refreshAll = useCallback(() => {
+    setContentKey((k) => k + 1);
+    fetchStats();
+  }, [fetchStats]);
 
   useEffect(() => {
     apiFetch("/api/auth/me")
@@ -949,13 +976,8 @@ function MessagingDashboard() {
         if (data.success) setFacilityId(data.data.facilityId);
       })
       .catch(() => {});
-    apiFetch(`${apiBase}/stats`)
-      .then((r) => r.json() as Promise<ApiResponse<MessagingStats>>)
-      .then((data) => {
-        if (data.success) setStats(data.data);
-      })
-      .catch(() => {});
-  }, []);
+    fetchStats();
+  }, [fetchStats]);
 
   return (
     <div className="space-y-6">
@@ -980,9 +1002,13 @@ function MessagingDashboard() {
         </Card>
       </div>
 
-      <ContactRequests facilityId={facilityId} />
-      <PendingMessages onReviewed={refreshContent} />
-      <BlockedConversations key={contentKey} facilityId={facilityId} />
+      <ContactRequests facilityId={facilityId} onChanged={refreshAll} />
+      <PendingMessages onReviewed={refreshAll} />
+      <BlockedConversations
+        key={contentKey}
+        facilityId={facilityId}
+        onChanged={refreshAll}
+      />
       <MessageHistory key={`h-${contentKey}`} facilityId={facilityId} />
       <KeywordManager facilityId={facilityId} />
     </div>
