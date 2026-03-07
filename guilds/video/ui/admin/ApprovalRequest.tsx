@@ -2,27 +2,27 @@ import React, { useState } from 'react';
 
 interface ApprovalRequestProps {
   name: string;
+  details: string;
   onApprove: () => void;
   onDeny: () => void;
   onAction?: () => void;
   actionLabel?: string;
-  details?: React.ReactNode;
   isLoading?: boolean;
 }
 
 export const ApprovalRequest: React.FC<ApprovalRequestProps> = ({
   name,
+  details,
   onApprove,
   onDeny,
   onAction,
   actionLabel = 'More',
-  details,
   isLoading = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <div className="border border-gray-300 rounded-lg bg-white overflow-hidden">
+    <div className="border border-gray-300 rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow">
       {/* Header */}
       <div className="flex items-center justify-between p-4">
         {/* Left: Name and Expand Button */}
@@ -38,7 +38,7 @@ export const ApprovalRequest: React.FC<ApprovalRequestProps> = ({
         </div>
 
         {/* Right: Action Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-4">
           <button
             onClick={onApprove}
             disabled={isLoading}
@@ -68,11 +68,7 @@ export const ApprovalRequest: React.FC<ApprovalRequestProps> = ({
       {/* Expandable Details Section */}
       {isExpanded && (
         <div className="border-t border-gray-200 bg-gray-50 p-4">
-          {details ? (
-            details
-          ) : (
-            <p className="text-gray-500 text-sm">No details available</p>
-          )}
+          <p className="text-sm text-gray-600 mt-1">{details}</p>
         </div>
       )}
     </div>
