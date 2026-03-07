@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Link } from 'react-router-dom';
 import { Card } from '@openconnect/ui';
 
 function VideoHome() {
@@ -10,17 +10,32 @@ function VideoHome() {
         <div className="text-center py-8">
           <span className="text-6xl mb-4 block">📹</span>
           <h2 className="text-xl font-semibold mb-2">Schedule & Join Video Visits</h2>
-          <p className="text-gray-600 mb-6">
-            This is where the Video Guild will build the family video interface.
-          </p>
-          <p className="text-sm text-gray-500">Features to implement:</p>
-          <ul className="text-sm text-gray-500 mt-2 space-y-1">
-            <li>Request video visits</li>
-            <li>View scheduled visits</li>
-            <li>Join video calls</li>
-            <li>Camera/mic controls</li>
-            <li>Visit history</li>
-          </ul>
+          <div className="mt-6 flex flex-col items-center gap-3">
+            <Link
+              to="schedule"
+              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm hover:bg-blue-700"
+            >
+              Schedule video call
+            </Link>
+            <Link
+              to="calls"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            >
+              View scheduled calls
+            </Link>
+            <Link
+              to="past-calls"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            >
+              View past calls
+            </Link>
+            <Link
+              to="manage"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            >
+              Manage contacts
+            </Link>
+          </div>
         </div>
       </Card>
     </div>
