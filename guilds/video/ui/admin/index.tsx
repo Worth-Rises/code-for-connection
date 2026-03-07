@@ -10,6 +10,14 @@ function VideoDashboard() {
   const [loading, setLoading] = useState(true);
   const [loadingStates, setLoadingStates] = useState<{ [key: string]: boolean }>({});
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return {
+      'Content-Type': 'application/json',
+      ...(token && { 'Authorization': `Bearer ${token}` }),
+    };
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -18,17 +26,17 @@ function VideoDashboard() {
     try {
       setLoading(true);
       const [statsRes, requestsRes] = await Promise.all([
-        fetch('/api/video/stats'),
-        fetch('/api/video/pending-requests'),
+        fetch('/api/video/stats', { headers: getAuthHeaders() }),
+        fetch('/api/video/pending-requests', { headers: getAuthHeaders() }),
       ]);
 
       if (statsRes.ok) {
-        const statsData = await statsRes.json();
+        const statsData = await statsRes.json() as any;
         setStats(statsData.data as typeof stats || {});
       }
 
       if (requestsRes.ok) {
-        const requestsData = await requestsRes.json();
+        const requestsData = await requestsRes.json() as any;
         setPendingRequests(requestsData.data as any[] || []);
       }
     } catch (error) {
@@ -43,6 +51,7 @@ function VideoDashboard() {
       setLoadingStates(prev => ({ ...prev, [callId]: true }));
       const response = await fetch(`/api/video/approve-request/${callId}`, {
         method: 'POST',
+        headers: getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -66,6 +75,7 @@ function VideoDashboard() {
       setLoadingStates(prev => ({ ...prev, [callId]: true }));
       const response = await fetch(`/api/video/deny-request/${callId}`, {
         method: 'POST',
+        headers: getAuthHeaders(),
       });
 
       if (response.ok) {
