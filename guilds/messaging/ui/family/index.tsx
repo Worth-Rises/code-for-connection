@@ -124,9 +124,14 @@ function ConversationThread() {
     apiFetch('/messaging/conversations').then(data => {
       if (data.success) setConv(data.data.find((c: Conversation) => c.id === conversationId) ?? null);
     });
-    apiFetch(`/messaging/conversations/${conversationId}/messages`).then(data => {
-      if (data.success) setMessages(data.data);
-    });
+    const fetchMessages = () => {
+      apiFetch(`/messaging/conversations/${conversationId}/messages`).then(data => {
+        if (data.success) setMessages(data.data);
+      });
+    };
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 3000);
+    return () => clearInterval(interval);
   }, [conversationId]);
 
   useEffect(() => {
