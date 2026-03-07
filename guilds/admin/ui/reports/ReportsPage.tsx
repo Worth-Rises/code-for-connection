@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Button } from '@openconnect/ui';
 import { useAdminApi } from '../hooks/useAdminApi';
-import { useFacilityScope } from '../../hooks/useFacilityScope';
-import { DataTable } from '../../components/DataTable';
-import { TabNav } from '../../components/TabNav';
-import { FilterBar } from '../../components/FilterBar';
-import { FacilitySelector } from '../../components/FacilitySelector';
-import { StatsCard } from '../../components/StatsCard';
+import { useFacilityScope } from '../hooks/useFacilityScope';
+import { DataTable } from '../components/DataTable';
+import { TabNav } from '../components/TabNav';
+import { FilterBar } from '../components/FilterBar';
+import { FacilitySelector } from '../components/FacilitySelector';
+import { StatsCard } from '../components/StatsCard';
 
 type ReportTab = 'volume' | 'moderation' | 'flags' | 'visitors';
 

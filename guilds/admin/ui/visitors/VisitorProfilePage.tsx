@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Button, Modal } from '@openconnect/ui';
 import { useAdminApi } from '../hooks/useAdminApi';
-import { DataTable } from '../../components/DataTable';
-import { StatusBadge } from '../../components/StatusBadge';
-import { TabNav } from '../../components/TabNav';
+import { DataTable } from '../components/DataTable';
+import { StatusBadge } from '../components/StatusBadge';
+import { TabNav } from '../components/TabNav';
 
 interface LinkedResident {
   id: string;

@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@openconnect/ui';
 import { useAdminApi } from '../hooks/useAdminApi';
-import { useFacilityScope } from '../../hooks/useFacilityScope';
-import { FacilitySelector } from '../../components/FacilitySelector';
+import { useFacilityScope } from '../hooks/useFacilityScope';
+import { FacilitySelector } from '../components/FacilitySelector';
 
 interface HousingUnit {
   id: string;

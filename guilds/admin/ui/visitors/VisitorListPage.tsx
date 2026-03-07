@@ -2,13 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Modal } from '@openconnect/ui';
 import { useAdminApi } from '../hooks/useAdminApi';
-import { usePagination } from '../../hooks/usePagination';
-import { useFacilityScope } from '../../hooks/useFacilityScope';
-import { DataTable } from '../../components/DataTable';
-import { StatusBadge } from '../../components/StatusBadge';
-import { TabNav } from '../../components/TabNav';
-import { Pagination } from '../../components/Pagination';
-import { FacilitySelector } from '../../components/FacilitySelector';
+import { usePagination } from '../hooks/usePagination';
+import { useFacilityScope } from '../hooks/useFacilityScope';
+import { DataTable } from '../components/DataTable';
+import { StatusBadge } from '../components/StatusBadge';
+import { TabNav } from '../components/TabNav';
+import { Pagination } from '../components/Pagination';
+import { FacilitySelector } from '../components/FacilitySelector';
 
 type VisitorTab = 'pending' | 'approved' | 'suspended';
 

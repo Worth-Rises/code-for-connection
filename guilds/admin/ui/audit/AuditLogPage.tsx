@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from '@openconnect/ui';
 import { useAdminApi } from '../hooks/useAdminApi';
-import { usePagination } from '../../hooks/usePagination';
-import { DataTable } from '../../components/DataTable';
-import { StatusBadge } from '../../components/StatusBadge';
-import { FilterBar } from '../../components/FilterBar';
-import { Pagination } from '../../components/Pagination';
+import { usePagination } from '../hooks/usePagination';
+import { DataTable } from '../components/DataTable';
+import { StatusBadge } from '../components/StatusBadge';
+import { FilterBar } from '../components/FilterBar';
+import { Pagination } from '../components/Pagination';
 
 interface AdminUser {
   id: string;

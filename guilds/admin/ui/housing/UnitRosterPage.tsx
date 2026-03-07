@@ -2,10 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Modal } from '@openconnect/ui';
 import { useAdminApi } from '../hooks/useAdminApi';
-import { usePagination } from '../../hooks/usePagination';
-import { DataTable } from '../../components/DataTable';
-import { StatusBadge } from '../../components/StatusBadge';
-import { Pagination } from '../../components/Pagination';
+import { usePagination } from '../hooks/usePagination';
+import { DataTable } from '../components/DataTable';
+import { StatusBadge } from '../components/StatusBadge';
+import { Pagination } from '../components/Pagination';
 
 interface Resident {
   id: string;
