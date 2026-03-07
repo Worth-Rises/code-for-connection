@@ -111,6 +111,7 @@ interface ActiveCallProps {
   onCallEnded: () => void;
 }
 
+
 function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
   const [callState, setCallState] = useState<'connecting' | 'ringing' | 'connected' | 'ended' | 'error'>('connecting');
   const [callId, setCallId] = useState<string | null>(null);
@@ -120,6 +121,10 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(Date.now());
   const twilioCallRef = useRef<Call | null>(null);
+  const callIdRef = useRef<string | null>(null);
+
+  // Keep callIdRef in sync with callId state
+  useEffect(() => { callIdRef.current = callId; }, [callId]);
 
   // Listen for the incoming conference call from Twilio and auto-accept
   useEffect(() => {
@@ -131,9 +136,17 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
       twilioCallRef.current = incomingCall;
 
       incomingCall.on('disconnect', () => {
-        console.log('[voice-ui] Twilio call disconnected');
+        console.log('[voice-ui] Twilio call disconnected (remote hangup or conference ended)');
         // Release the mic/speakers
         if (device) { try { device.disconnectAll(); } catch (e) { /* ignore */ } }
+        // Notify the server so DB status is updated (fallback for when no PUBLIC_URL callback)
+        const cid = callIdRef.current;
+        if (cid) {
+          fetch(`${API_BASE}/voice/users/end-call/${cid}`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+          }).catch(() => { /* best effort */ });
+        }
         setCallState('ended');
       });
 
@@ -152,7 +165,11 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
     };
   }, [device]);
 
-  // Initiate call: tell the backend to create the conference and add participants
+  // Keep device in a ref so the startCall effect doesn't re-run when it changes
+  const deviceRef = useRef(device);
+  deviceRef.current = device;
+
+  // Initiate call
   useEffect(() => {
     const abortController = new AbortController();
 
@@ -160,11 +177,20 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
       try {
         setCallState('connecting');
 
-        if (!device) {
+        // Wait up to 5 seconds for the device to be ready
+        let d = deviceRef.current;
+        for (let i = 0; i < 10 && !d; i++) {
+          await new Promise(r => setTimeout(r, 500));
+          if (abortController.signal.aborted) return;
+          d = deviceRef.current;
+        }
+        if (!d) {
           setCallState('error');
           setErrorMsg('Voice device not ready. Please refresh and try again.');
           return;
         }
+
+        console.log('[voice-ui] Initiating call for contact', contact.id);
 
         // Tell the backend to create the conference and add both participants
         const resp = await fetch(`${API_BASE}/voice/users/initiate-call`, {
@@ -178,6 +204,11 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
         if (abortController.signal.aborted) return;
 
         if (!resp.ok || !data.success) {
+          // 409 = server dedup caught a duplicate request, first call is already in progress
+          if (resp.status === 409) {
+            console.log('[voice-ui] Duplicate call blocked by server (409), ignoring');
+            return;
+          }
           setCallState('error');
           setErrorMsg(data.error?.message || 'Failed to connect call');
           return;
@@ -188,14 +219,14 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
         // Tablet is in conference, phone is ringing — show Ringing
         setCallState('ringing');
 
-        // Poll for phone answer via statusCallback
+        // Poll for phone answer
         const pollInterval = setInterval(async () => {
           if (abortController.signal.aborted) {
             clearInterval(pollInterval);
             return;
           }
           try {
-            const statusResp = await fetch(`${API_BASE}/voice/call-status/${newCallId}`, {
+            const statusResp = await fetch(`${API_BASE}/voice/users/call-status/${newCallId}`, {
               headers: getAuthHeaders(),
               signal: abortController.signal,
             });
@@ -222,7 +253,8 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
 
     startCall();
     return () => { abortController.abort(); };
-  }, [contact.id, device]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contact.id]);
 
   // Timer
   useEffect(() => {
@@ -263,6 +295,7 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
     }
 
     setCallState('ended');
+
     setTimeout(onCallEnded, 1500);
   }, [callId, onCallEnded]);
 
@@ -490,7 +523,7 @@ function VoiceHome() {
 
     async function initDevice() {
       try {
-        const resp = await fetch(`${API_BASE}/voice/token`, {
+        const resp = await fetch(`${API_BASE}/voice/users/token`, {
           headers: getAuthHeaders(),
         });
         const data = await resp.json();
@@ -577,7 +610,7 @@ function VoiceHome() {
     fetchHistory();
   }, [fetchHistory]);
 
-  // Active call overlay
+
   if (activeCall) {
     return <ActiveCallScreen contact={activeCall} device={twilioDevice} onCallEnded={handleCallEnded} />;
   }

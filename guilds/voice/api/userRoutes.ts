@@ -16,8 +16,6 @@ export const voiceUserRouter = Router();
 // In-memory map of callId -> { twilioSids, conferenceName }
 const callMetadata = new Map<string, { clientSid?: string; phoneSid?: string; conferenceName: string }>();
 
-// Track active call per user to prevent duplicate calls
-const activeCallByUser = new Map<string, string>(); // userId -> callId
 
 // ==========================================
 // TWILIO VOICE SDK — TOKEN
@@ -28,7 +26,7 @@ const activeCallByUser = new Map<string, string>(); // userId -> callId
  * The token allows the browser Device to receive incoming conference calls.
  * No TwiML App required — we add participants via the Conference Participants API.
  */
-voiceRouter.get('/token', requireAuth, async (req: Request, res: Response) => {
+voiceUserRouter.get('/token', requireAuth, async (req: Request, res: Response) => {
   try {
     const identity = req.user!.id;
 
@@ -62,7 +60,7 @@ voiceRouter.get('/token', requireAuth, async (req: Request, res: Response) => {
  * GET /call-status/:callId — Check if the phone participant has answered.
  * Polls the Twilio REST API directly — no webhook/ngrok needed.
  */
-voiceRouter.get('/call-status/:callId', requireAuth, async (req: Request, res: Response) => {
+voiceUserRouter.get('/call-status/:callId', requireAuth, async (req: Request, res: Response) => {
   const { callId } = req.params;
   const metadata = callMetadata.get(callId);
 
@@ -142,7 +140,6 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
     const { contactId } = req.body;
 
     console.log(`[voice] === INITIATE-CALL REQUEST === userId=${userId} contactId=${contactId}`);
-    console.log(`[voice] activeCallByUser state:`, Object.fromEntries(activeCallByUser));
 
     if (!contactId) {
       return res.status(400).json(createErrorResponse({
@@ -151,14 +148,43 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
       }));
     }
 
-    // Prevent duplicate calls — one active call per user
-    const existingCallId = activeCallByUser.get(userId);
-    if (existingCallId) {
-      console.log(`[voice] BLOCKED: User ${userId} already has active call ${existingCallId}, rejecting duplicate`);
-      return res.status(409).json(createErrorResponse({
-        code: 'ALREADY_IN_CALL',
-        message: 'You already have an active call',
-      }));
+    // Check DB for an already active call for this user
+    const existingActiveCall = await prisma.voiceCall.findFirst({
+      where: {
+        incarceratedPersonId: userId,
+        status: { in: ['ringing', 'connected'] },
+      },
+    });
+    if (existingActiveCall) {
+      // Verify with Twilio whether the conference is actually still running
+      const conferenceName = `call-${existingActiveCall.id}`;
+      try {
+        const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+        const conferences = await client.conferences.list({
+          friendlyName: conferenceName,
+          status: 'in-progress',
+        });
+        if (conferences.length > 0) {
+          // Conference is genuinely still active — block the new call
+          console.log(`[voice] BLOCKED: User ${userId} has active conference ${conferenceName}`);
+          return res.status(409).json(createErrorResponse({
+            code: 'ALREADY_IN_CALL',
+            message: 'You already have an active call',
+          }));
+        }
+      } catch (err) {
+        console.error(`[voice] Error checking Twilio conference ${conferenceName}:`, err);
+      }
+
+      // Conference is not active on Twilio — clean up the stale DB record
+      console.log(`[voice] Stale call ${existingActiveCall.id} detected, marking as completed`);
+      const durationSeconds = existingActiveCall.connectedAt
+        ? Math.floor((Date.now() - existingActiveCall.connectedAt.getTime()) / 1000)
+        : 0;
+      await prisma.voiceCall.update({
+        where: { id: existingActiveCall.id },
+        data: { status: 'completed', endedAt: new Date(), durationSeconds },
+      });
     }
 
     // Verify the contact is approved for this user
@@ -213,9 +239,7 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
     const conferenceName = `call-${voiceCall.id}`;
     const twilioFrom = process.env.TWILIO_PHONE_NUMBER!;
 
-    // Mark this user as having an active call
-    activeCallByUser.set(userId, voiceCall.id);
-    console.log(`[voice] Created DB record ${voiceCall.id}, conference=${conferenceName}, marked user active`);
+    console.log(`[voice] Created DB record ${voiceCall.id}, conference=${conferenceName}`);
 
     try {
       const client = twilio(
@@ -254,6 +278,11 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
             label: contact.familyMember.phone,
             startConferenceOnEnter: true,
             endConferenceOnExit: true,
+            // Status callback: Twilio POSTs here when the phone call ends
+            ...(process.env.PUBLIC_URL ? {
+              statusCallback: `${process.env.PUBLIC_URL}/api/voice/users/status-callback/${voiceCall.id}`,
+              statusCallbackEvent: ['answered', 'completed'],
+            } : {}),
           });
         console.log(`[voice] Step 2 done: phoneCallSid=${phoneParticipant.callSid} conferenceSid=${phoneParticipant.conferenceSid}`);
 
@@ -272,7 +301,6 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
           console.error('[voice] Failed to clean up client participant:', cleanupErr);
         }
         callMetadata.delete(voiceCall.id);
-        activeCallByUser.delete(userId);
 
         await prisma.voiceCall.update({
           where: { id: voiceCall.id },
@@ -306,7 +334,6 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
       }));
     } catch (twilioError: unknown) {
       console.error('[voice] Twilio error (client participant):', twilioError);
-      activeCallByUser.delete(userId);
       await prisma.voiceCall.update({
         where: { id: voiceCall.id },
         data: { status: 'missed', endedAt: new Date() },
@@ -383,13 +410,7 @@ voiceUserRouter.post('/end-call/:callId', requireAuth, async (req: Request, res:
       callMetadata.delete(callId);
     }
 
-    // Clear active call for this user
-    for (const [uid, cid] of activeCallByUser.entries()) {
-      if (cid === callId) {
-        activeCallByUser.delete(uid);
-        break;
-      }
-    }
+
 
     const durationSeconds = call.connectedAt
       ? Math.floor((Date.now() - call.connectedAt.getTime()) / 1000)
@@ -418,6 +439,44 @@ voiceUserRouter.post('/end-call/:callId', requireAuth, async (req: Request, res:
       message: 'Failed to end call',
     }));
   }
+});
+
+/**
+ * POST /status-callback/:callId — Twilio calls this when a phone participant's status changes.
+ * No auth required — Twilio calls this directly.
+ */
+voiceUserRouter.post('/status-callback/:callId', async (req: Request, res: Response) => {
+  const { callId } = req.params;
+  const { CallStatus, CallSid } = req.body;
+
+  console.log(`[voice] Status callback: callId=${callId} CallStatus=${CallStatus} CallSid=${CallSid}`);
+
+  if (CallStatus === 'completed' || CallStatus === 'busy' || CallStatus === 'no-answer' || CallStatus === 'failed' || CallStatus === 'canceled') {
+    try {
+      const call = await prisma.voiceCall.findUnique({ where: { id: callId } });
+      if (call && ['ringing', 'connected'].includes(call.status)) {
+        const durationSeconds = call.connectedAt
+          ? Math.floor((Date.now() - call.connectedAt.getTime()) / 1000)
+          : 0;
+
+        await prisma.voiceCall.update({
+          where: { id: callId },
+          data: {
+            status: CallStatus === 'completed' ? 'completed' : 'missed',
+            endedAt: new Date(),
+            endedBy: 'receiver',
+            durationSeconds,
+          },
+        });
+        console.log(`[voice] Call ${callId} marked as ended by receiver (${CallStatus})`);
+      }
+    } catch (err) {
+      console.error(`[voice] Error processing status callback for call ${callId}:`, err);
+    }
+  }
+
+  // Twilio expects 200 OK
+  res.sendStatus(200);
 });
 
 export default voiceUserRouter;
