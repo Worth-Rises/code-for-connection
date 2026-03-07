@@ -1,0 +1,2194 @@
+﻿Abstract
+Goal:
+* 
+
+
+
+User Journeys:
+* As an admin, in order to ______, i want to configure calling hours, call duration limits, and video time slots by unit type
+* As an admin, in order to _____, I want the user data model to incorporate incarcerated user profiles with respect to specific housing assignments
+   * Only the admin can change the 
+
+
+Data Model:
+
+
+
+
+Frontend Screens:”
+
+
+Backend:
+
+
+
+
+Gaps between vanilla repo and aligned requirements:
+
+
+
+
+Requirements:
+1. Data privacy
+2. E2EE
+3. PRD
+
+
+Design Section 1: Architecture, Navigation & Data Model
+These are the foundational decisions everything else sits on. Let me present them together.
+
+
+Architecture Approach
+Recommendation: Extend guilds/admin/ with internal sub-modules.
+
+
+The existing guild structure works. Rather than creating a separate app, we scale guilds/admin/ into a richer structure:
+
+
+guilds/admin/
+├── api/
+│   ├── routes.ts            ← main router (mounts sub-routers)
+│   ├── dashboard.routes.ts
+│   ├── residents.routes.ts
+│   ├── contacts.routes.ts
+│   ├── visitors.routes.ts
+│   ├── monitoring.routes.ts  ← voice + video + messaging monitoring
+│   ├── search.routes.ts
+│   ├── housing.routes.ts
+│   ├── settings.routes.ts
+│   ├── audit.routes.ts
+│   └── reports.routes.ts
+├── ui/
+│   ├── index.tsx             ← admin router (renders sub-pages)
+│   ├── dashboard/
+│   ├── residents/
+│   ├── contacts/
+│   ├── visitors/
+│   ├── monitoring/
+│   │   ├── voice/
+│   │   ├── video/
+│   │   └── messaging/
+│   ├── search/
+│   ├── housing/
+│   ├── settings/
+│   ├── audit/
+│   └── reports/
+└── package.json
+This respects the monorepo convention, keeps the admin guild self-contained, and doesn't require touching apps/web/ routing beyond what's already there (/admin/* → <AdminDashboard />).
+
+
+Navigation (Information Architecture)
+Industry research says: task-oriented primary nav, entity drill-down as secondary. Here's the proposed sidebar:
+
+
+PRIMARY SIDEBAR
+─────────────────────────────
+📊  Dashboard                    ← unified overview, action items
+👥  Residents                    ← resident profiles, search, housing
+🤝  Contacts                    ← approval queue, manage contacts
+🚪  Visitors                    ← applications, approvals, scheduling
+─────────────────────────────
+📞  Voice Monitoring             ← active calls, call history, call detail
+📹  Video Monitoring             ← active sessions, approval queue, scheduling
+💬  Message Review               ← moderation queue, conversations, attachments
+─────────────────────────────
+🔍  Search & Alerts              ← global search, keyword alert config
+🏠  Housing                      ← unit management, assignments, capacity
+─────────────────────────────
+📈  Reports                      ← analytics, exports
+📋  Audit Log                    ← action history, entity change log
+⚙️  Settings                     ← facility config, permissions, blocked numbers
+
+
+The top header bar shows: admin name/role, facility selector (for agency admins who see multiple facilities), notifications bell, and logout.
+
+
+Data Model Changes
+New models to add to schema.prisma:
+1. Visitor (new)
+Visitor
+  id, firstName, lastName, dateOfBirth, email, phone
+  governmentIdUrl          ← uploaded ID image
+  organizationName?        ← for clergy, social workers, etc.
+  visitorType              ← enum: family, friend, attorney, clergy, social_worker, other
+  backgroundCheckStatus    ← enum: pending, cleared, flagged, denied
+  backgroundCheckDate?
+  isActive
+  createdAt
+2. VisitorResident (join — links visitors to residents)
+VisitorResident
+  id, visitorId, residentId
+  relationship             ← string
+  status                   ← enum: pending, approved, denied, suspended
+  visitRestrictions?       ← e.g., "supervised only"
+  approvedBy?, reviewedAt?
+  maxVisitsPerMonth?
+
+
+3. AuditLog (new)
+AuditLog
+  id
+  adminUserId              ← who did it
+  action                   ← enum: contact_approved, contact_denied, call_terminated,
+                              message_approved, message_blocked, visitor_approved,
+                              housing_changed, setting_changed, number_blocked, ...
+  entityType               ← 'contact' | 'message' | 'call' | 'visitor' | 'resident' | ...
+  entityId                 ← UUID of affected entity
+  details                  ← JSON — old/new values, reason, notes
+  ipAddress?
+  createdAt
+
+
+4. EntityHistory (new — version tracking for key entities)
+EntityHistory
+  id
+  entityType               ← 'resident' | 'contact' | 'visitor' | 'housing_assignment'
+  entityId
+  fieldName                ← which field changed
+  oldValue?                ← JSON string
+  newValue?                ← JSON string
+  changedBy                ← admin user ID
+  changedAt
+
+
+5. KeywordAlert (new)
+KeywordAlert
+  id
+  keyword                  ← the term/phrase
+  isRegex                  ← boolean
+  severity                 ← enum: high, medium, low
+  facilityId?              ← null = agency-wide
+  agencyId
+  createdBy
+  isActive
+  createdAt
+6. FlaggedContent (new — unified flag queue)
+FlaggedContent
+  id
+  contentType              ← 'message' | 'voice_call' | 'video_call' | 'attachment'
+  contentId                ← UUID of the flagged item
+  flagReason               ← 'keyword_match' | 'manual' | 'pattern_alert'
+  keywordAlertId?          ← if keyword triggered it
+  matchedText?             ← the specific text that matched
+  severity                 ← high, medium, low
+  status                   ← pending, reviewed, dismissed, escalated
+  assignedTo?              ← admin user claimed it
+  reviewedBy?, reviewedAt?
+  resolutionNotes?
+  createdAt
+7. AdminPermission (new — feature-level scoping)
+AdminPermission
+  id
+  adminUserId
+  permission               ← enum: manage_contacts, monitor_calls, review_messages,
+                              manage_visitors, manage_housing, manage_settings,
+                              view_audit_log, manage_blocked_numbers, run_reports,
+                              manage_keyword_alerts, view_flagged_content
+  granted                  ← boolean (true = allowed)
+
+
+Modifications to existing models:
+- IncarceratedPerson: add riskLevel (enum: low, medium, high), notes (text), profileImageUrl?
+- FamilyMember: add backgroundCheckStatus?, backgroundCheckDate?
+- Facility: add timezone, maxVisitorsPerResident, messageReviewRequired (boolean — do messages require manual approval before delivery)
+- AdminUser: add lastLoginAt?, isActive (boolean)
+
+
+
+
+New Screens Needed:
+
+
+Screen
+	Journeys Needed
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+	
+
+
+
+Dashboard        J1, J2, J3, J53
+Residents List        J4
+Resident Profile (tabs: Activity, Contacts, Housing)        J5, J6, J7, J8, J9, J13, J47, J56
+Contacts List (tabs: Pending, Approved, Denied)        J10, J11
+Contact Detail        J12, J13, J55
+Visitors List (tabs: Applications, Approved, Suspended)        J14
+Visitor Profile (tabs: Linked Residents, Visit History)        J15, J16, J17
+Voice Monitoring (tabs: Active, History)        J18, J19, J20
+Call Detail View        J21, J22
+Video Monitoring (tabs: Pending Requests, Schedule, Active, History)        J23, J24, J25, J26, J27
+Message Review (tabs: Pending, Attachments)        J28, J29, J30
+Message/Conversation Detail        J29, J31, J32, J54
+Search Page        J33
+Keyword Alerts (list + modals)        J34, J35, J36
+Housing Dashboard        J37
+Unit Roster        J38, J39
+Housing Unit Type Editor        J40
+Reports (sub-pages: Volume, Moderation, Flags, Visitors)        J41, J42, J43, J44, J45
+Audit Log        J46, J47, J48
+Settings > Facility        J49
+Settings > Blocked Numbers        J50, J57
+Settings > Permissions        J51
+Settings > System        J52
+
+
+WIP Spec
+WIP Spec
+
+
+Admin Portal Design Spec
+Date: 2026-03-07 Status: Draft — awaiting confirmation Target: MVP for pilot deployment (production-grade TODOs tracked in TODO.md) Stack: React/Vite + Express + Prisma/PostgreSQL + Redis + Tailwind (same as existing codebase)
+
+
+________________
+
+
+Table of Contents
+1. Overview
+2. Architecture
+3. Navigation & Information Architecture
+4. Data Model Changes
+5. RBAC & Permissions
+6. Screen Inventory
+7. User Journeys
+8. API Endpoints
+9. Cross-Cutting Concerns
+10. Production-Grade TODOs
+
+
+________________
+
+
+1. Overview
+What We're Building
+A comprehensive admin portal for the Code for Connection platform — a corrections facility communication management system. The portal serves facility administrators and agency administrators who oversee all communications between incarcerated persons and their families, visitors, and legal contacts.
+Scope Decisions
+Decision
+	Choice
+	Ownership
+	Everything under /admin — dashboard, all monitoring views, all management screens
+	Target maturity
+	MVP for pilot deployment; production-grade gaps tracked in TODO.md
+	Contact model
+	Keep FamilyMember for communications; add separate Visitor model with its own approval workflow
+	Search capability
+	Full-text search + configurable keyword alerts (vector/semantic search deferred to production)
+	Change tracking
+	Audit log for admin actions + entity version history for key entities
+	RBAC
+	Keep 2 roles (facility_admin, agency_admin); add feature-level permission flags
+	Priority
+	Comprehensive spec; all sections equal priority; build incrementally
+	Industry Context
+Research into corrections technology platforms (Securus/THREADS, ViaPath/Command, ICSolutions, JPay) reveals these as table-stakes features for any admin portal:
+
+
+* Content moderation queues with claimed-item coordination
+* Contact approval workflows with attorney-client privilege protection
+* Real-time call monitoring with terminate capability
+* Keyword alert systems for automated flagging
+* Audit trails for every admin action
+* Role-scoped access (facility admins can only see their facility)
+* Shift handoff awareness ("since your last login" summaries)
+
+
+________________
+
+
+2. Architecture
+Directory Structure
+Extends guilds/admin/ with internal sub-modules — respects the existing monorepo guild convention while scaling for a full admin portal.
+
+
+guilds/admin/
+
+
+├── api/
+
+
+│   ├── routes.ts                ← main router (mounts sub-routers)
+
+
+│   ├── dashboard.routes.ts
+
+
+│   ├── residents.routes.ts
+
+
+│   ├── contacts.routes.ts
+
+
+│   ├── visitors.routes.ts
+
+
+│   ├── monitoring.routes.ts     ← voice + video + messaging monitoring
+
+
+│   ├── search.routes.ts
+
+
+│   ├── housing.routes.ts
+
+
+│   ├── settings.routes.ts
+
+
+│   ├── audit.routes.ts
+
+
+│   └── reports.routes.ts
+
+
+├── ui/
+
+
+│   ├── index.tsx                ← admin router (renders sub-pages)
+
+
+│   ├── components/              ← shared admin UI components
+
+
+│   │   ├── EntityHistory.tsx
+
+
+│   │   ├── StatusBadge.tsx
+
+
+│   │   ├── FilterBar.tsx
+
+
+│   │   ├── DataTable.tsx
+
+
+│   │   ├── ConfirmModal.tsx
+
+
+│   │   ├── DetailPanel.tsx
+
+
+│   │   └── TimelineView.tsx
+
+
+│   ├── hooks/                   ← shared admin hooks
+
+
+│   │   ├── useAdminApi.ts
+
+
+│   │   ├── usePolling.ts
+
+
+│   │   └── useFacilityFilter.ts
+
+
+│   ├── dashboard/
+
+
+│   │   └── DashboardPage.tsx
+
+
+│   ├── residents/
+
+
+│   │   ├── ResidentListPage.tsx
+
+
+│   │   └── ResidentProfilePage.tsx
+
+
+│   ├── contacts/
+
+
+│   │   ├── ContactListPage.tsx
+
+
+│   │   └── ContactDetailPanel.tsx
+
+
+│   ├── visitors/
+
+
+│   │   ├── VisitorListPage.tsx
+
+
+│   │   └── VisitorProfilePage.tsx
+
+
+│   ├── monitoring/
+
+
+│   │   ├── voice/
+
+
+│   │   │   ├── VoiceMonitoringPage.tsx
+
+
+│   │   │   └── CallDetailView.tsx
+
+
+│   │   ├── video/
+
+
+│   │   │   ├── VideoMonitoringPage.tsx
+
+
+│   │   │   └── VideoDetailView.tsx
+
+
+│   │   └── messaging/
+
+
+│   │       ├── MessageReviewPage.tsx
+
+
+│   │       └── ConversationView.tsx
+
+
+│   ├── search/
+
+
+│   │   ├── SearchPage.tsx
+
+
+│   │   └── KeywordAlertsPage.tsx
+
+
+│   ├── housing/
+
+
+│   │   ├── HousingDashboardPage.tsx
+
+
+│   │   ├── UnitRosterPage.tsx
+
+
+│   │   └── UnitTypeEditorPage.tsx
+
+
+│   ├── reports/
+
+
+│   │   └── ReportsPage.tsx
+
+
+│   ├── audit/
+
+
+│   │   └── AuditLogPage.tsx
+
+
+│   └── settings/
+
+
+│       ├── FacilitySettingsPage.tsx
+
+
+│       ├── BlockedNumbersPage.tsx
+
+
+│       ├── PermissionsPage.tsx
+
+
+│       └── SystemStatusPage.tsx
+
+
+└── package.json
+Routing
+No changes to apps/web/src/App.tsx needed — the existing /admin/* route renders guilds/admin/ui/index.tsx, which becomes an internal router:
+
+
+/admin                          → DashboardPage
+
+
+/admin/residents                → ResidentListPage
+
+
+/admin/residents/:id            → ResidentProfilePage
+
+
+/admin/contacts                 → ContactListPage
+
+
+/admin/visitors                 → VisitorListPage
+
+
+/admin/visitors/:id             → VisitorProfilePage
+
+
+/admin/voice                    → VoiceMonitoringPage
+
+
+/admin/voice/:callId            → CallDetailView
+
+
+/admin/video                    → VideoMonitoringPage
+
+
+/admin/video/:callId            → VideoDetailView
+
+
+/admin/messaging                → MessageReviewPage
+
+
+/admin/messaging/:conversationId → ConversationView
+
+
+/admin/search                   → SearchPage
+
+
+/admin/search/alerts            → KeywordAlertsPage
+
+
+/admin/housing                  → HousingDashboardPage
+
+
+/admin/housing/:unitId          → UnitRosterPage
+
+
+/admin/housing/types/:typeId    → UnitTypeEditorPage
+
+
+/admin/reports                  → ReportsPage
+
+
+/admin/audit                    → AuditLogPage
+
+
+/admin/settings                 → FacilitySettingsPage
+
+
+/admin/settings/blocked         → BlockedNumbersPage
+
+
+/admin/settings/permissions     → PermissionsPage
+
+
+/admin/settings/system          → SystemStatusPage
+AdminLayout Changes
+The existing AdminLayout.tsx sidebar nav expands from 4 items to the full navigation structure. The header adds a facility selector dropdown (for agency admins).
+
+
+________________
+
+
+3. Navigation & Information Architecture
+Sidebar Navigation
+PRIMARY SIDEBAR
+
+
+─────────────────────────────
+
+
+📊  Dashboard                    ← unified overview, action items
+
+
+─────────────────────────────
+
+
+  MANAGEMENT
+
+
+👥  Residents                    ← profiles, search, status
+
+
+🤝  Contacts                    ← approval queue, manage contacts
+
+
+🚪  Visitors                    ← applications, approvals
+
+
+─────────────────────────────
+
+
+  MONITORING
+
+
+📞  Voice Calls                  ← active calls, history
+
+
+📹  Video Calls                  ← requests, schedule, active, history
+
+
+💬  Messages                     ← moderation queue, conversations
+
+
+─────────────────────────────
+
+
+  INTELLIGENCE
+
+
+🔍  Search & Alerts              ← global search, keyword config
+
+
+─────────────────────────────
+
+
+  OPERATIONS
+
+
+🏠  Housing                      ← capacity, assignments, unit config
+
+
+📈  Reports                      ← analytics, exports
+
+
+📋  Audit Log                    ← action history, change log
+
+
+⚙️  Settings                     ← facility, blocked numbers, permissions
+Header Bar
+┌──────────────────────────────────────────────────────────┐
+
+
+│ Open Connect Admin    [Facility: Sing Sing ▼]    🔔(3)  Admin Name ▼│
+
+
+└─────────────────────────────────────────────────────────┘
+
+
+* Facility selector: Dropdown showing facilities the admin has access to. Agency admins see all + "All Facilities" option. Facility admins see only their facility (selector hidden or disabled).
+* Notifications bell: Count of items needing attention (pending contacts + pending messages + pending visitors + flagged content). Clicking opens a dropdown with grouped action items.
+* Admin name dropdown: Profile, logout.
+Design Principles
+1. Task-oriented primary nav — organized by what staff need to do, not database entities
+2. Badge counts on nav items — pending items shown as red badges (e.g., Contacts shows "7" for pending approvals)
+3. "Since your last login" panel — top of Dashboard, shows deltas since the admin's last session
+4. Confirmation dialogs for destructive actions — Deny, Terminate, Block, Remove all require explicit confirmation with reason field
+5. Facility-scoped by default — facility admins see only their facility's data; agency admins can filter or view aggregate
+
+
+________________
+
+
+4. Data Model Changes
+New Models
+Visitor
+model Visitor {
+
+
+  id                     String                @id @default(uuid())
+
+
+  firstName              String                @map("first_name")
+
+
+  lastName               String                @map("last_name")
+
+
+  dateOfBirth            DateTime              @map("date_of_birth")
+
+
+  email                  String?
+
+
+  phone                  String?
+
+
+  governmentIdUrl        String?               @map("government_id_url")
+
+
+  organizationName       String?               @map("organization_name")
+
+
+  visitorType            VisitorType
+
+
+  backgroundCheckStatus  BackgroundCheckStatus @default(pending)  @map("background_check_status")
+
+
+  backgroundCheckDate    DateTime?             @map("background_check_date")
+
+
+  isActive               Boolean               @default(true) @map("is_active")
+
+
+  createdAt              DateTime              @default(now()) @map("created_at")
+
+
+  residentLinks          VisitorResident[]
+
+
+  @@map("visitors")
+
+
+}
+
+
+enum VisitorType {
+
+
+  family
+
+
+  friend
+
+
+  attorney
+
+
+  clergy
+
+
+  social_worker
+
+
+  other
+
+
+}
+
+
+enum BackgroundCheckStatus {
+
+
+  pending
+
+
+  cleared
+
+
+  flagged
+
+
+  denied
+
+
+}
+VisitorResident (join table)
+model VisitorResident {
+
+
+  id                     String        @id @default(uuid())
+
+
+  visitorId              String        @map("visitor_id")
+
+
+  incarceratedPersonId   String        @map("incarcerated_person_id")
+
+
+  relationship           String
+
+
+  status                 ContactStatus @default(pending)
+
+
+  visitRestrictions      String?       @map("visit_restrictions")
+
+
+  maxVisitsPerMonth      Int?          @map("max_visits_per_month")
+
+
+  approvedBy             String?       @map("approved_by")
+
+
+  reviewedAt             DateTime?     @map("reviewed_at")
+
+
+  createdAt              DateTime      @default(now()) @map("created_at")
+
+
+  visitor              Visitor              @relation(fields: [visitorId], references: [id])
+
+
+  incarceratedPerson   IncarceratedPerson   @relation(fields: [incarceratedPersonId], references: [id])
+
+
+  reviewer             AdminUser?           @relation("VisitorReviewedByAdmin", fields: [approvedBy], references: [id])
+
+
+  @@unique([visitorId, incarceratedPersonId])
+
+
+  @@map("visitor_residents")
+
+
+}
+AuditLog
+model AuditLog {
+
+
+  id            String      @id @default(uuid())
+
+
+  adminUserId   String      @map("admin_user_id")
+
+
+  action        AuditAction
+
+
+  entityType    String      @map("entity_type")
+
+
+  entityId      String      @map("entity_id")
+
+
+  details       Json?
+
+
+  ipAddress     String?     @map("ip_address")
+
+
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+
+  adminUser     AdminUser   @relation(fields: [adminUserId], references: [id])
+
+
+  @@index([entityType, entityId])
+
+
+  @@index([adminUserId])
+
+
+  @@index([createdAt])
+
+
+  @@map("audit_logs")
+
+
+}
+
+
+enum AuditAction {
+
+
+  contact_approved
+
+
+  contact_denied
+
+
+  contact_removed
+
+
+  contact_attorney_flagged
+
+
+  call_terminated
+
+
+  video_approved
+
+
+  video_denied
+
+
+  video_terminated
+
+
+  message_approved
+
+
+  message_blocked
+
+
+  conversation_blocked
+
+
+  conversation_unblocked
+
+
+  visitor_approved
+
+
+  visitor_denied
+
+
+  visitor_suspended
+
+
+  resident_status_changed
+
+
+  resident_risk_updated
+
+
+  resident_transferred
+
+
+  housing_changed
+
+
+  setting_changed
+
+
+  number_blocked
+
+
+  number_unblocked
+
+
+  keyword_alert_created
+
+
+  keyword_alert_updated
+
+
+  keyword_alert_deactivated
+
+
+  permission_changed
+
+
+  flagged_content_reviewed
+
+
+  flagged_content_escalated
+
+
+  flagged_content_dismissed
+
+
+}
+EntityHistory
+model EntityHistory {
+
+
+  id            String   @id @default(uuid())
+
+
+  entityType    String   @map("entity_type")
+
+
+  entityId      String   @map("entity_id")
+
+
+  fieldName     String   @map("field_name")
+
+
+  oldValue      String?  @map("old_value")
+
+
+  newValue      String?  @map("new_value")
+
+
+  changedBy     String   @map("changed_by")
+
+
+  changedAt     DateTime @default(now()) @map("changed_at")
+
+
+  admin         AdminUser @relation("EntityChangedByAdmin", fields: [changedBy], references: [id])
+
+
+  @@index([entityType, entityId])
+
+
+  @@index([changedAt])
+
+
+  @@map("entity_histories")
+
+
+}
+KeywordAlert
+model KeywordAlert {
+
+
+  id            String         @id @default(uuid())
+
+
+  keyword       String
+
+
+  isRegex       Boolean        @default(false) @map("is_regex")
+
+
+  severity      AlertSeverity
+
+
+  facilityId    String?        @map("facility_id")
+
+
+  agencyId      String         @map("agency_id")
+
+
+  createdBy     String         @map("created_by")
+
+
+  isActive      Boolean        @default(true) @map("is_active")
+
+
+  createdAt     DateTime       @default(now()) @map("created_at")
+
+
+  facility      Facility?      @relation(fields: [facilityId], references: [id])
+
+
+  agency        Agency         @relation(fields: [agencyId], references: [id])
+
+
+  creator       AdminUser      @relation("KeywordAlertCreatedBy", fields: [createdBy], references: [id])
+
+
+  flaggedContent FlaggedContent[]
+
+
+  @@map("keyword_alerts")
+
+
+}
+
+
+enum AlertSeverity {
+
+
+  high
+
+
+  medium
+
+
+  low
+
+
+}
+FlaggedContent
+model FlaggedContent {
+
+
+  id              String             @id @default(uuid())
+
+
+  contentType     FlaggedContentType @map("content_type")
+
+
+  contentId       String             @map("content_id")
+
+
+  flagReason      FlagReason         @map("flag_reason")
+
+
+  keywordAlertId  String?            @map("keyword_alert_id")
+
+
+  matchedText     String?            @map("matched_text")
+
+
+  severity        AlertSeverity
+
+
+  status          FlagStatus         @default(pending)
+
+
+  assignedTo      String?            @map("assigned_to")
+
+
+  reviewedBy      String?            @map("reviewed_by")
+
+
+  reviewedAt      DateTime?          @map("reviewed_at")
+
+
+  resolutionNotes String?            @map("resolution_notes")
+
+
+  createdAt       DateTime           @default(now()) @map("created_at")
+
+
+  keywordAlert    KeywordAlert?      @relation(fields: [keywordAlertId], references: [id])
+
+
+  assignedAdmin   AdminUser?         @relation("FlagAssignedTo", fields: [assignedTo], references: [id])
+
+
+  reviewer        AdminUser?         @relation("FlagReviewedBy", fields: [reviewedBy], references: [id])
+
+
+  @@index([contentType, contentId])
+
+
+  @@index([status])
+
+
+  @@index([severity])
+
+
+  @@map("flagged_content")
+
+
+}
+
+
+enum FlaggedContentType {
+
+
+  message
+
+
+  voice_call
+
+
+  video_call
+
+
+  attachment
+
+
+}
+
+
+enum FlagReason {
+
+
+  keyword_match
+
+
+  manual
+
+
+  pattern_alert
+
+
+}
+
+
+enum FlagStatus {
+
+
+  pending
+
+
+  in_review
+
+
+  dismissed
+
+
+  escalated
+
+
+  resolved
+
+
+}
+AdminPermission
+model AdminPermission {
+
+
+  id            String          @id @default(uuid())
+
+
+  adminUserId   String          @map("admin_user_id")
+
+
+  permission    PermissionType
+
+
+  granted       Boolean         @default(true)
+
+
+  adminUser     AdminUser       @relation(fields: [adminUserId], references: [id])
+
+
+  @@unique([adminUserId, permission])
+
+
+  @@map("admin_permissions")
+
+
+}
+
+
+enum PermissionType {
+
+
+  manage_contacts
+
+
+  monitor_calls
+
+
+  review_messages
+
+
+  manage_visitors
+
+
+  manage_housing
+
+
+  manage_settings
+
+
+  view_audit_log
+
+
+  manage_blocked_numbers
+
+
+  run_reports
+
+
+  manage_keyword_alerts
+
+
+  view_flagged_content
+
+
+}
+Modifications to Existing Models
+IncarceratedPerson — add fields:
+  riskLevel       RiskLevel    @default(low) @map("risk_level")
+
+
+  notes           String?
+
+
+  profileImageUrl String?      @map("profile_image_url")
+
+
+  // add relation:
+
+
+  visitorLinks    VisitorResident[]
+
+
+}
+FamilyMember — add fields:
+  backgroundCheckStatus  BackgroundCheckStatus? @map("background_check_status")
+
+
+  backgroundCheckDate    DateTime?              @map("background_check_date")
+Facility — add fields:
+  timezone                String   @default("America/New_York")
+
+
+  maxVisitorsPerResident  Int      @default(15) @map("max_visitors_per_resident")
+
+
+  messageReviewRequired   Boolean  @default(true) @map("message_review_required")
+
+
+  // add relations:
+
+
+  keywordAlerts           KeywordAlert[]
+AdminUser — add fields:
+  lastLoginAt    DateTime?  @map("last_login_at")
+
+
+  isActive       Boolean    @default(true) @map("is_active")
+
+
+  // add relations:
+
+
+  auditLogs              AuditLog[]
+
+
+  entityChanges          EntityHistory[]         @relation("EntityChangedByAdmin")
+
+
+  createdKeywordAlerts   KeywordAlert[]          @relation("KeywordAlertCreatedBy")
+
+
+  assignedFlags          FlaggedContent[]        @relation("FlagAssignedTo")
+
+
+  reviewedFlags          FlaggedContent[]        @relation("FlagReviewedBy")
+
+
+  reviewedVisitors       VisitorResident[]       @relation("VisitorReviewedByAdmin")
+
+
+  permissions            AdminPermission[]
+Agency — add relation:
+  keywordAlerts  KeywordAlert[]
+
+
+________________
+
+
+5. RBAC & Permissions
+Roles
+Role
+	Scope
+	Description
+	agency_admin
+	All facilities in agency
+	Full access across all facilities. Can switch facility context. Sees aggregate views.
+	facility_admin
+	One facility
+	Access scoped to their assigned facility only.
+	Permission Flags
+Both roles can have individual permissions toggled on/off via AdminPermission. Default: all permissions granted on first creation.
+
+
+Permission
+	Controls
+	manage_contacts
+	Approve/deny/remove contacts, flag attorney privilege
+	monitor_calls
+	View active calls, call history, call detail, terminate calls
+	review_messages
+	View message queue, approve/block messages, view conversations
+	manage_visitors
+	Review visitor applications, approve/deny/suspend visitors
+	manage_housing
+	Move residents between units, edit unit type rules
+	manage_settings
+	Edit facility config, manage blocked numbers
+	view_audit_log
+	View audit log and entity history
+	manage_blocked_numbers
+	Add/remove blocked numbers
+	run_reports
+	Access reports and export data
+	manage_keyword_alerts
+	Create/edit/deactivate keyword alerts
+	view_flagged_content
+	View and triage flagged content queue
+	Enforcement
+* Backend: middleware checks AdminPermission for the authenticated admin before processing route handlers
+* Frontend: nav items hidden if admin lacks permission; action buttons disabled with tooltip "You don't have permission for this action"
+* Facility scoping: built into every query — facility admins only see data for their facilityId
+
+
+________________
+
+
+6. Screen Inventory
+23 Screens + Modals
+Dashboard
+Screen
+	Purpose
+	Key Components
+	DashboardPage
+	Unified overview, action items, shift handoff
+	Since-last-login panel, stat cards (active calls, pending messages, pending contacts, flagged content, video requests), recent activity feed, quick action links
+	Management
+Screen
+	Purpose
+	Key Components
+	ResidentListPage
+	Browse/search all residents
+	Search bar, filter (facility, unit, status, risk level), sortable table, pagination
+	ResidentProfilePage
+	Full resident detail
+	Header (name, ID, status badge, risk badge, housing), tabs: Activity (timeline), Contacts, Housing, Notes
+	ContactListPage
+	Manage contact requests and approved contacts
+	Tabs: Pending (badge count), Approved, Denied/Removed. Table with inline actions. Slideout detail panel.
+	ContactDetailPanel
+	View contact pair details + history
+	Resident and family member info, relationship, attorney flag, communication history between pair
+	VisitorListPage
+	Manage visitor applications
+	Tabs: Applications (pending), Approved, Suspended. Table with document preview.
+	VisitorProfilePage
+	Full visitor detail
+	Header (name, type, background check status), tabs: Linked Residents, Visit History
+	Monitoring
+Screen
+	Purpose
+	Key Components
+	VoiceMonitoringPage
+	Active calls + call history
+	Tabs: Active Calls (auto-refresh, live duration counter), History (filterable table)
+	CallDetailView
+	Single call detail
+	Metadata sidebar, call timeline (started→connected→ended), keyword matches, admin notes
+	VideoMonitoringPage
+	Video requests, schedule, active sessions, history
+	Tabs: Pending Requests (badge), Schedule (calendar/timeline), Active Sessions, History
+	VideoDetailView
+	Single video call detail
+	Same pattern as CallDetailView + scheduled vs actual times, approved-by
+	MessageReviewPage
+	Message moderation queue
+	Tabs: Pending (badge, sorted oldest-first), Attachments (flagged images). Inline expand for full message + thread context.
+	ConversationView
+	Full conversation thread
+	Chronological messages with status indicators, block/unblock action, link to both profiles
+	Intelligence
+Screen
+	Purpose
+	Key Components
+	SearchPage
+	Global cross-entity search
+	Single search bar, results grouped by type (Residents, Contacts, Visitors, Messages, Calls), each result links to detail view
+	KeywordAlertsPage
+	Configure and view keyword alerts
+	Table of active alerts (keyword, severity, scope, match count), add/edit modal, deactivate toggle, "View Matches" drill-down
+	Operations
+Screen
+	Purpose
+	Key Components
+	HousingDashboardPage
+	Facility housing overview
+	Unit cards with occupancy bars, color-coded capacity, click to drill into roster
+	UnitRosterPage
+	Residents in a specific unit
+	Resident table, "Move" action per row, unit info header
+	UnitTypeEditorPage
+	Edit housing unit type rules
+	Form: call durations, calling hours, max contacts, video settings. Save updates all units of this type.
+	ReportsPage
+	Analytics and exports
+	Sub-sections: Communication Volume, Moderation Performance, Flags & Alerts, Visitor Activity. Date range picker, charts, tables, CSV/PDF export.
+	AuditLogPage
+	Admin action history
+	Filterable table: date range, admin user, action type, entity type. Click row for full detail (JSON diff).
+	FacilitySettingsPage
+	Facility configuration
+	Form: name, announcement text/audio, timezone, max visitors, message review toggle
+	BlockedNumbersPage
+	Manage blocked phone numbers
+	Table: number, scope, reason, blocked by, date. Add/remove modals.
+	PermissionsPage
+	Admin user permission management
+	Admin user list → click → permission toggle matrix
+	SystemStatusPage
+	Health checks
+	Database, signaling, API gateway, Redis status indicators
+	Shared Modals
+Modal
+	Used By
+	Fields
+	ConfirmTerminateModal
+	Voice/Video Monitoring
+	Reason (required), confirm button
+	ConfirmDenyModal
+	Contacts, Visitors, Video Requests
+	Reason (required), confirm button
+	ConfirmBlockModal
+	Messages, Conversations, Numbers
+	Reason (required), scope selector (for numbers), confirm button
+	ApproveContactModal
+	Contacts
+	Review details, approve button
+	AttorneyFlagModal
+	Contacts
+	Bar number, jurisdiction, confirm
+	MoveResidentModal
+	Housing, Resident Profile
+	Target unit selector (shows capacity), reason, confirm
+	TransferResidentModal
+	Resident Profile (agency admin)
+	Target facility, target unit, reason, confirm
+	AddKeywordAlertModal
+	Keyword Alerts
+	Keyword/phrase, regex toggle, severity, facility scope, confirm
+	AddBlockedNumberModal
+	Blocked Numbers
+	Phone number, scope (facility/agency), reason, confirm
+	ExportModal
+	Reports
+	Format (CSV/PDF), date range confirmation, download
+	EscalateModal
+	Flagged Content
+	Target admin (dropdown), notes, confirm
+	VisitorApplicationModal
+	Visitors (if admin creates manually)
+	Name, DOB, type, resident to link, relationship
+	
+
+________________
+
+
+7. User Journeys
+A. Shift Start & Dashboard
+ID
+	Journey
+	Trigger → Resolution
+	J1
+	Start-of-shift orientation
+	Login → Dashboard shows "since last login" deltas → Admin triages urgent items
+	J2
+	Respond to urgent action
+	Dashboard red badge → Click → Land in relevant queue
+	J3
+	Facility switch (agency admin)
+	Top bar facility dropdown → All views filter to selected facility
+	B. Residents
+ID
+	Journey
+	Trigger → Resolution
+	J4
+	Look up a resident
+	Residents → Search → Click result → Resident Profile
+	J5
+	View communication timeline
+	Resident Profile → Activity tab → Chronological calls/messages/moves
+	J6
+	View contacts & visitors
+	Resident Profile → Contacts tab → Two sections: comms contacts + visitors
+	J7
+	Change resident status
+	Profile → Status dropdown → Confirm with reason → Audit logged
+	J8
+	Update risk level
+	Profile → Risk badge → Select level + note → Saved
+	J9
+	View housing history
+	Profile → Housing tab → Movement history table
+	C. Contact Management
+ID
+	Journey
+	Trigger → Resolution
+	J10
+	Review pending contact request
+	Contacts → Pending tab → Detail panel → Approve/Deny with notes
+	J11
+	Remove approved contact
+	Contacts → Approved tab → Remove → Modal with reason → Audit logged
+	J12
+	Flag contact as attorney
+	Contact Detail → Attorney toggle → Bar number modal → Recording suppressed
+	J13
+	View communication history between pair
+	Contact Detail → History section → All calls/messages between the two
+	D. Visitor Management
+ID
+	Journey
+	Trigger → Resolution
+	J14
+	Review visitor application
+	Visitors → Applications tab → Review docs/background → Approve/Deny
+	J15
+	Manage visitor-resident links
+	Visitor Profile → Linked Residents → Approve/suspend/remove associations
+	J16
+	Suspend a visitor
+	Visitor Profile → Suspend → Reason → Status updated, visits cancelled
+	J17
+	View visitor history
+	Visitor Profile → Visit History tab → All past visits across residents
+	E. Voice Call Monitoring
+ID
+	Journey
+	Trigger → Resolution
+	J18
+	Monitor active calls
+	Voice → Active tab → Real-time table with duration counters
+	J19
+	Terminate active call
+	Active tab → Terminate button → Confirm modal → Call ended, audit logged
+	J20
+	Browse call history
+	Voice → History tab → Filter/search → Paginated results
+	J21
+	View call detail
+	History → Click row → Metadata sidebar, timeline, keyword matches
+	J22
+	Review flagged call
+	Dashboard/Alerts → Flagged call → Detail → Dismiss/Escalate
+	F. Video Call Monitoring
+ID
+	Journey
+	Trigger → Resolution
+	J23
+	Approve video call request
+	Video → Pending tab → Review details → Approve/Deny
+	J24
+	View today's schedule
+	Video → Schedule tab → Timeline view with capacity utilization
+	J25
+	Monitor active video sessions
+	Video → Active tab → Session list with terminate capability
+	J26
+	Terminate video session
+	Active tab → Terminate → Confirm → Session ended
+	J27
+	Review video call history
+	Video → History tab → Filter/search → Paginated results
+	G. Message Review
+ID
+	Journey
+	Trigger → Resolution
+	J28
+	Review pending messages
+	Messages → Pending tab → Queue sorted oldest-first → Approve/Block
+	J29
+	Approve/block a message
+	Expand message → See thread context + profiles → Approve or Block with notes
+	J30
+	Review flagged attachment
+	Attachments tab → View image → Approve/Reject
+	J31
+	View conversation thread
+	Click conversation → Full message history with status indicators
+	J32
+	Block/unblock conversation
+	Conversation view → Block → Reason → Both parties prevented from messaging
+	H. Search & Keyword Alerts
+ID
+	Journey
+	Trigger → Resolution
+	J33
+	Global search
+	Search page → Type query → Results grouped by entity type → Click to navigate
+	J34
+	Configure keyword alert
+	Keyword Alerts → Add → Keyword, severity, scope → Saved
+	J35
+	Edit/deactivate alert
+	Keyword Alerts → Click → Edit modal → Save
+	J36
+	View alert matches
+	Keyword alert → Matches tab → Flagged content list → Triage
+	I. Housing Management
+ID
+	Journey
+	Trigger → Resolution
+	J37
+	View facility capacity
+	Housing → Dashboard → Unit cards with occupancy bars
+	J38
+	View unit roster
+	Click unit card → Resident list for that unit
+	J39
+	Move a resident
+	Roster or Profile → Move → Select target unit → Confirm → History logged
+	J40
+	Configure unit type rules
+	Housing or Settings → Unit type → Edit form → Save
+	J. Reports & Analytics
+ID
+	Journey
+	Trigger → Resolution
+	J41
+	Communication volume report
+	Reports → Volume → Date range → Charts + table
+	J42
+	Moderation performance report
+	Reports → Moderation → Metrics by admin user
+	J43
+	Flagged content report
+	Reports → Flags → Volume, resolution rate, top keywords
+	J44
+	Visitor activity report
+	Reports → Visitors → Applications, approvals, visit volume
+	J45
+	Export report
+	Any report → Export → CSV/PDF → Download
+	K. Audit Log
+ID
+	Journey
+	Trigger → Resolution
+	J46
+	Browse action history
+	Audit Log → Filter by date/admin/action/entity → Table
+	J47
+	View entity change history
+	From any entity detail → History link → Filtered log
+	J48
+	Investigate admin activity
+	Audit Log → Filter by admin user → Full action history
+	L. Settings & Configuration
+ID
+	Journey
+	Trigger → Resolution
+	J49
+	Edit facility config
+	Settings → Facility → Form → Save
+	J50
+	Manage blocked numbers
+	Settings → Blocked → Table → Add/Remove
+	J51
+	Manage permissions
+	Settings → Permissions → Admin list → Toggle matrix
+	J52
+	View system status
+	Settings → System → Health indicators
+	M. Cross-Cutting
+ID
+	Journey
+	Trigger → Resolution
+	J53
+	Shift handoff
+	Incoming admin login → "Since last login" panel → Triage
+	J54
+	Escalation workflow
+	Flag → Escalate to target admin → Target sees in their queue
+	J55
+	Attorney-client privilege
+	Contact flagged attorney → Calls auto-unrecorded → Audit trail
+	J56
+	Resident transfer
+	Agency admin → Transfer → New facility/unit → History follows
+	J57
+	Blocked number enforcement
+	Number blocked → Call attempt rejected → Blocked attempt logged
+	
+
+________________
+
+
+8. API Endpoints
+Dashboard
+GET /api/admin/dashboard/stats?facilityId=X
+
+
+  → { activeCalls, activeVideoCalls, pendingMessages, pendingContacts, pendingVisitors, flaggedContent }
+
+
+GET /api/admin/dashboard/since-last-login?facilityId=X
+
+
+  → { newFlags, contactsReviewed, callsTerminated, messagesReviewed, lastLoginAt }
+
+
+GET /api/admin/dashboard/recent-activity?facilityId=X&limit=20
+
+
+  → AuditLog[] (most recent actions across the facility)
+Residents
+GET    /api/admin/residents?facilityId=X&search=Y&status=Z&riskLevel=W&housingUnitId=V&page=1&pageSize=20
+
+
+GET    /api/admin/residents/:id                           → full profile with housing, contacts
+
+
+PATCH  /api/admin/residents/:id/status                    → { status, reason }
+
+
+PATCH  /api/admin/residents/:id/risk-level                → { riskLevel, notes }
+
+
+POST   /api/admin/residents/:id/transfer                  → { targetFacilityId, targetHousingUnitId, reason }
+
+
+GET    /api/admin/residents/:id/timeline?page=1&pageSize=50  → interleaved calls/messages/moves/actions
+
+
+GET    /api/admin/residents/:id/history                   → EntityHistory[]
+Contacts (extends existing)
+GET    /api/admin/contacts?facilityId=X&status=pending|approved|denied&page=1&pageSize=20
+
+
+GET    /api/admin/contacts/:id                            → contact detail with communication history
+
+
+POST   /api/admin/contacts/:id/approve                    → { notes? }
+
+
+POST   /api/admin/contacts/:id/deny                       → { reason }
+
+
+POST   /api/admin/contacts/:id/remove                     → { reason }
+
+
+PATCH  /api/admin/contacts/:id/attorney-flag               → { isAttorney, barNumber?, jurisdiction? }
+
+
+GET    /api/admin/contacts/:id/communication-history?page=1&pageSize=20
+Visitors (new)
+GET    /api/admin/visitors?facilityId=X&status=pending|approved|suspended&type=Y&page=1&pageSize=20
+
+
+GET    /api/admin/visitors/:id                            → full profile with linked residents
+
+
+POST   /api/admin/visitors                                → create visitor (admin-initiated)
+
+
+POST   /api/admin/visitors/:id/approve                    → { notes? }
+
+
+POST   /api/admin/visitors/:id/deny                       → { reason }
+
+
+POST   /api/admin/visitors/:id/suspend                    → { reason, scope }
+
+
+POST   /api/admin/visitors/:id/reactivate                 → { notes? }
+
+
+GET    /api/admin/visitors/:id/visit-history?page=1&pageSize=20
+
+
+POST   /api/admin/visitors/:id/link-resident              → { incarceratedPersonId, relationship }
+
+
+DELETE /api/admin/visitors/:id/unlink-resident/:residentId → { reason }
+Voice Monitoring
+GET    /api/admin/monitoring/voice/active?facilityId=X
+
+
+  → VoiceCall[] with incarceratedPerson + familyMember joins (status=ringing|connected)
+
+
+GET    /api/admin/monitoring/voice/history?facilityId=X&startDate&endDate&residentId&contactId&status&page=1&pageSize=20
+
+
+GET    /api/admin/monitoring/voice/:callId                → call detail with keyword matches
+
+
+POST   /api/admin/monitoring/voice/:callId/terminate      → { reason }
+
+
+GET    /api/admin/monitoring/voice/stats?facilityId=X&date=Y
+
+
+  → { activeCalls, todayTotal, avgDuration, terminatedByAdmin }
+Video Monitoring
+GET    /api/admin/monitoring/video/pending?facilityId=X
+
+
+GET    /api/admin/monitoring/video/active?facilityId=X
+
+
+GET    /api/admin/monitoring/video/schedule?facilityId=X&date=Y
+
+
+GET    /api/admin/monitoring/video/history?facilityId=X&startDate&endDate&page=1&pageSize=20
+
+
+GET    /api/admin/monitoring/video/:callId
+
+
+POST   /api/admin/monitoring/video/:callId/approve        → { notes? }
+
+
+POST   /api/admin/monitoring/video/:callId/deny           → { reason }
+
+
+POST   /api/admin/monitoring/video/:callId/terminate      → { reason }
+
+
+GET    /api/admin/monitoring/video/stats?facilityId=X&date=Y
+Message Review
+GET    /api/admin/monitoring/messages/pending?facilityId=X&page=1&pageSize=20
+
+
+GET    /api/admin/monitoring/messages/attachments?facilityId=X&status=pending_review
+
+
+GET    /api/admin/monitoring/messages/conversation/:conversationId
+
+
+POST   /api/admin/monitoring/messages/:messageId/approve  → { notes? }
+
+
+POST   /api/admin/monitoring/messages/:messageId/block    → { reason }
+
+
+POST   /api/admin/monitoring/messages/conversation/:conversationId/block   → { reason }
+
+
+POST   /api/admin/monitoring/messages/conversation/:conversationId/unblock → { notes? }
+
+
+POST   /api/admin/monitoring/messages/attachments/:attachmentId/approve
+
+
+POST   /api/admin/monitoring/messages/attachments/:attachmentId/reject → { reason }
+
+
+GET    /api/admin/monitoring/messages/stats?facilityId=X&date=Y
+Search & Alerts
+GET    /api/admin/search?q=X&facilityId=Y&types=residents,contacts,visitors,messages,calls&page=1&pageSize=20
+
+
+  → { residents: [], contacts: [], visitors: [], messages: [], calls: [] }
+
+
+GET    /api/admin/keyword-alerts?facilityId=X&isActive=true
+
+
+POST   /api/admin/keyword-alerts                          → { keyword, isRegex, severity, facilityId? }
+
+
+PATCH  /api/admin/keyword-alerts/:id                      → { keyword?, severity?, isActive? }
+
+
+DELETE /api/admin/keyword-alerts/:id
+
+
+GET    /api/admin/keyword-alerts/:id/matches?page=1&pageSize=20 → FlaggedContent[]
+
+
+GET    /api/admin/flagged-content?facilityId=X&status=pending&severity=high&contentType=message&page=1&pageSize=20
+
+
+PATCH  /api/admin/flagged-content/:id/review              → { status, resolutionNotes? }
+
+
+POST   /api/admin/flagged-content/:id/escalate            → { assignedTo, notes }
+
+
+POST   /api/admin/flagged-content                         → { contentType, contentId, flagReason, severity, notes } (manual flag)
+Housing
+GET    /api/admin/housing/units?facilityId=X              → units with occupancy counts
+
+
+GET    /api/admin/housing/units/:unitId/roster             → residents in unit
+
+
+POST   /api/admin/housing/move                             → { incarceratedPersonId, targetHousingUnitId, reason }
+
+
+GET    /api/admin/housing/unit-types?agencyId=X
+
+
+GET    /api/admin/housing/unit-types/:typeId
+
+
+PATCH  /api/admin/housing/unit-types/:typeId               → { ...updatedFields }
+Reports
+GET /api/admin/reports/communication-volume?facilityId=X&startDate&endDate&groupBy=day|week|month
+
+
+GET /api/admin/reports/moderation?facilityId=X&startDate&endDate
+
+
+GET /api/admin/reports/flagged-content?facilityId=X&startDate&endDate
+
+
+GET /api/admin/reports/visitors?facilityId=X&startDate&endDate
+
+
+GET /api/admin/reports/export?type=communication-volume|moderation|flagged|visitors&format=csv|pdf&facilityId=X&startDate&endDate
+Audit Log
+GET /api/admin/audit-log?facilityId=X&adminUserId=Y&action=Z&entityType=W&startDate&endDate&page=1&pageSize=50
+
+
+GET /api/admin/audit-log/:entityType/:entityId            → history for specific entity
+Settings (extends existing)
+GET    /api/admin/settings/facility/:facilityId
+
+
+PATCH  /api/admin/settings/facility/:facilityId           → { ...updatedFields }
+
+
+GET    /api/admin/settings/blocked-numbers?facilityId=X&scope=facility|agency
+
+
+POST   /api/admin/settings/blocked-numbers                → { phoneNumber, scope, facilityId?, reason }
+
+
+DELETE /api/admin/settings/blocked-numbers/:id             → { reason }
+
+
+GET    /api/admin/settings/permissions/:adminUserId
+
+
+PATCH  /api/admin/settings/permissions/:adminUserId       → { permissions: { manage_contacts: true, ... } }
+
+
+GET    /api/admin/settings/system/health
+
+
+________________
+
+
+9. Cross-Cutting Concerns
+Full-Text Search Implementation
+Use PostgreSQL's built-in full-text search (tsvector + tsquery):
+
+
+* Add tsvector generated columns on: incarcerated_persons, family_members, visitors, messages
+* Create GIN indexes for fast lookup
+* Search endpoint combines results across tables with relevance scoring
+* No external search engine needed for MVP
+Keyword Alert Processing
+Messages flow:
+
+
+1. Message created with status: pending_review
+2. Background job scans message body against active KeywordAlert entries
+3. If match found → create FlaggedContent entry linking to the message
+4. Message appears in review queue with flag indicator
+
+
+Call metadata flow (MVP — no audio transcription):
+
+
+1. Call completes → metadata available
+2. Scan contact phone number and call notes against keyword alerts
+3. Flag if matched
+Real-Time Updates
+Active call lists need auto-refresh. Two options:
+
+
+* MVP (polling): Frontend polls active call endpoints every 15-30 seconds via usePolling hook. Simple, works now.
+* Production TODO: WebSocket subscription via existing Socket.io signaling server for push-based updates.
+Audit Logging
+Server-side middleware pattern:
+
+
+// Helper used in every mutation route handler
+
+
+async function auditLog(adminId: string, action: AuditAction, entityType: string, entityId: string, details?: any, ipAddress?: string) {
+
+
+  await prisma.auditLog.create({ data: { adminUserId: adminId, action, entityType, entityId, details, ipAddress } });
+
+
+}
+
+
+Every POST/PATCH/DELETE handler calls auditLog() after the mutation succeeds.
+Entity History Tracking
+For key entities (residents, contacts, visitors, housing assignments), use a helper:
+
+
+async function trackChange(entityType: string, entityId: string, fieldName: string, oldValue: any, newValue: any, changedBy: string) {
+
+
+  await prisma.entityHistory.create({ data: { entityType, entityId, fieldName, oldValue: JSON.stringify(oldValue), newValue: JSON.stringify(newValue), changedBy } });
+
+
+}
+
+
+Called before updating the entity, capturing the old value for comparison.
+Facility Scoping
+Every admin API endpoint applies facility scoping:
+
+
+// Agency admins: optional facilityId filter (null = all facilities)
+
+
+// Facility admins: forced to their facilityId
+
+
+function getFacilityFilter(user: AuthUser, queryFacilityId?: string) {
+
+
+  if (user.role === 'agency_admin') return queryFacilityId ? { facilityId: queryFacilityId } : {};
+
+
+  return { facilityId: user.facilityId };
+
+
+}
+Error Handling
+Uses existing createSuccessResponse / createErrorResponse pattern from @openconnect/shared.
+
+
+________________
+
+
+10. Production-Grade TODOs
+Track in TODO.md at project root. These are features and hardening items deferred from the MVP but required for production deployment.
+Compliance (P0 — must have before real deployment)
+* Attorney-client recording suppression — signaling server must check isAttorney flag and skip recording
+* Consent announcement logging — timestamp + callId proof that outside party was notified
+* PREA documentation module — full incident documentation per 28 CFR Part 115
+* FCC rate transparency — display rate to resident before call connects, itemized billing
+* ADA/TRS support — resident disability flags, TRS/VRS call type handling
+* Legal hold workflow — suspend automated deletion for specific records under investigation
+* Data retention automation — configurable retention periods per record type, automated deletion with pre-deletion notification
+* State-specific consent rules — configurable consent announcement per facility based on jurisdiction
+Security (P0)
+* 3-way call detection — detect and alert on conference bridging attempts
+* Voice biometrics — speaker verification at call start
+* Covert alert mode — monitoring without alerting resident, separate audit trail
+* Emergency lockdown — facility-wide instant phone disable + staff notification
+* Session management — auto-logout after inactivity, concurrent session limits
+* IP allowlisting — restrict admin portal access to facility networks
+Infrastructure (P1)
+* WebSocket real-time updates — replace polling with push for active call lists
+* Call recording storage — S3-compatible storage with encryption at rest
+* Audio transcription — Whisper or similar for automatic call transcription
+* Keyword alert on audio — scan transcripts, not just message text
+* Vector/semantic search — pgvector embeddings for natural language search
+* Background job queue — Bull/BullMQ for keyword scanning, report generation, retention cleanup
+* Rate limiting — per-endpoint rate limits for admin API
+* Caching layer — Redis cache for dashboard stats, active call counts
+Features (P1)
+* Investigative link analysis — network graph visualization of resident communication patterns
+* Incident correlation — link communications to facility incident reports
+* Sentiment analysis — emotional state detection in messages
+* Translation services — Spanish translation of messages before staff review
+* Billing/rate management — trust account integration, rate table configuration
+* Commissary integration — account balance display, transaction history
+* Multi-language support — admin portal i18n
+* PDF/print-ready report generation — formatted reports for compliance filing
+Scale (P2)
+* Multi-jurisdiction support — state-specific rule engines
+* Cross-facility investigation — opt-in data sharing between facilities
+* Custom role creation — full RBAC with admin-defined roles
+* API rate management — external system integrations (JMS, CCMS)
+* Horizontal scaling — stateless API servers behind load balancer
+* Read replicas — PostgreSQL read replicas for reporting queries
+* Archival storage — cold storage tier for aged recordings and messages
+
+
+
+
+Okiki Prompts
+Okiki Prompts
+
+
+
+
+Opencode Prompt:
+the repo and the documentation in the repo is for an admin portal for managing residents, tracking, reviewing, approving/denying audio/video calls, and messaging, audio, videocall metadata, tracking the user data model for changes and permissioning, tracking user data with respect to housing, a visitor data model that associates visitors with residents (inmates), a unified dashboard showing activity across all comms, and semantic search for residents, visitors, or call/message metadata. 
+1. Read the /docs file
+2. Gather context from the documentation
+3. review the codebase
+4. Research how prison tech admin portals have requirements, stated and unstated
+5. Ask clarifying questions
+6. Draft a spec that assumes the same stack as the existing codebase that covers gaps and required and optional scope. Run that by me.
+7. when I confirm, Make low-fidelity mockups based on the spec, one for each screen and modal
+8. When we make edits and changes, and align, start building!
+
+
+Notes from Peter:
+Semantic search for keyword flagging
+* Fuzzy search input for greylist, blacklisted words
+   * Drugs
+   * Criminal activity
+   * Crime words (asking to “take care of”)
+* Blacklist function (can’t say a list of words)
+User Data Model
+* Facility
+   * Housing Unit
+      * ClearanceLevel
+Session Limits for Calls/Messages
+* Dashboard + ability to toggle
+   * Call limits
+* Live Admin interference
+   * End calls as they’re happening
+   * End comms
+Extend the data model to accommodate for legal representation
+* No way to block messaging
