@@ -796,6 +796,103 @@ messagingRouter.get(
 // CONVERSATION & SEND/RECEIVE ROUTES
 // ==========================================
 
+// Get approved contacts for the logged-in family member
+messagingRouter.get('/my-contacts', requireAuth, requireRole('family'), async (req: Request, res: Response) => {
+  try {
+    const contacts = await prisma.approvedContact.findMany({
+      where: { familyMemberId: req.user!.id, status: 'approved' },
+      include: {
+        incarceratedPerson: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+      },
+    });
+
+    res.json(createSuccessResponse(contacts));
+  } catch (error) {
+    console.error('Error fetching contacts:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch contacts',
+    }));
+  }
+});
+
+// Get pending contact requests for the logged-in family member
+messagingRouter.get('/pending-contacts', requireAuth, requireRole('family'), async (req: Request, res: Response) => {
+  try {
+    const contacts = await prisma.approvedContact.findMany({
+      where: { familyMemberId: req.user!.id, status: 'pending' },
+      include: {
+        incarceratedPerson: {
+          select: { id: true, firstName: true, lastName: true, externalId: true },
+        },
+      },
+    });
+
+    res.json(createSuccessResponse(contacts));
+  } catch (error) {
+    console.error('Error fetching pending contacts:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch pending contacts',
+    }));
+  }
+});
+
+// Submit a contact request to admin for approval
+messagingRouter.post('/contact-request', requireAuth, requireRole('family'), async (req: Request, res: Response) => {
+  try {
+    const { externalId, relationship, isAttorney = false } = req.body;
+    const user = req.user!;
+
+    if (!externalId || !relationship) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'externalId and relationship are required',
+      }));
+      return;
+    }
+
+    const person = await prisma.incarceratedPerson.findFirst({
+      where: { externalId },
+    });
+
+    if (!person) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'No person found with that ID. Please check the ID and try again.',
+      }));
+      return;
+    }
+
+    const request = await prisma.approvedContact.create({
+      data: {
+        incarceratedPersonId: person.id,
+        familyMemberId: user.id,
+        relationship,
+        isAttorney,
+        status: 'pending',
+      },
+    });
+
+    res.status(201).json(createSuccessResponse(request));
+  } catch (error: any) {
+    if (error?.code === 'P2002') {
+      res.status(409).json(createErrorResponse({
+        code: 'ALREADY_REQUESTED',
+        message: 'A contact request already exists for this person.',
+      }));
+      return;
+    }
+    console.error('Error creating contact request:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to create contact request',
+    }));
+  }
+});
+
 // Get or create a conversation between an incarcerated person and family member
 messagingRouter.post(
   "/conversations",

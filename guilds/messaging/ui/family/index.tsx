@@ -20,6 +20,18 @@ function fireNotification(title: string, body: string) {
   }
 }
 
+interface ApprovedContact {
+  id: string;
+  incarceratedPerson: { id: string; firstName: string; lastName: string };
+}
+
+interface PendingContact {
+  id: string;
+  relationship: string;
+  requestedAt: string;
+  incarceratedPerson: { id: string; firstName: string; lastName: string; externalId: string | null };
+}
+
 interface Message {
   id: string;
   senderType: 'incarcerated' | 'family';
@@ -43,10 +55,17 @@ function apiFetch(path: string, options?: RequestInit): Promise<any> {
 function ConversationList() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [showNew, setShowNew] = useState(false);
-  const [newPersonId, setNewPersonId] = useState('');
+  const [contacts, setContacts] = useState<ApprovedContact[]>([]);
+  const [pendingContacts, setPendingContacts] = useState<PendingContact[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [unread, setUnread] = useState<Set<string>>(new Set());
   const lastMsgIdRef = useRef<Map<string, string>>(new Map());
+  const [showRequest, setShowRequest] = useState(false);
+  const [requestExternalId, setRequestExternalId] = useState('');
+  const [requestRelationship, setRequestRelationship] = useState('');
+  const [requestIsAttorney, setRequestIsAttorney] = useState(false);
+  const [requestSent, setRequestSent] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -66,7 +85,6 @@ function ConversationList() {
           const lastMsg = conv.messages[0];
           if (!lastMsg) return;
           const prevId = lastMsgIdRef.current.get(conv.id);
-          // Only flag as unread if it's a new incoming message (from incarcerated)
           if (prevId !== undefined && prevId !== lastMsg.id && lastMsg.senderType === 'incarcerated') {
             newUnread.push(conv.id);
             fireNotification(
@@ -84,19 +102,62 @@ function ConversationList() {
     };
 
     fetchConvs();
+    fetchPendingContacts();
     const interval = setInterval(fetchConvs, 3000);
     return () => clearInterval(interval);
   }, []);
 
-  const startConversation = async () => {
-    if (!newPersonId.trim() || !userId) return;
+  const fetchPendingContacts = () => {
+    apiFetch('/messaging/pending-contacts').then(data => {
+      if (data.success) setPendingContacts(data.data);
+    });
+  };
+
+  const openNew = () => {
+    setShowNew(true);
+    setShowRequest(false);
+    setRequestExternalId('');
+    setRequestRelationship('');
+    setRequestIsAttorney(false);
+    setRequestSent(false);
+    setRequestError(null);
+    apiFetch('/messaging/my-contacts').then(data => {
+      if (data.success) setContacts(data.data);
+    });
+  };
+
+  const submitContactRequest = async () => {
+    if (!requestExternalId.trim() || !requestRelationship.trim()) return;
+    const payload = {
+      externalId: requestExternalId.trim(),
+      relationship: requestRelationship.trim(),
+      isAttorney: requestIsAttorney,
+    };
+    console.log('Contact request payload:', payload);
+    const data = await apiFetch('/messaging/contact-request', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (data.success) {
+      setRequestSent(true);
+      setRequestError(null);
+      fetchPendingContacts();
+      setRequestExternalId('');
+      setRequestRelationship('');
+      setRequestIsAttorney(false);
+    } else {
+      setRequestError(data.error?.message ?? 'Something went wrong. Please try again.');
+    }
+  };
+
+  const startConversation = async (incarceratedPersonId: string) => {
+    if (!userId) return;
     const data = await apiFetch('/messaging/conversations', {
       method: 'POST',
-      body: JSON.stringify({ incarceratedPersonId: newPersonId, familyMemberId: userId }),
+      body: JSON.stringify({ incarceratedPersonId, familyMemberId: userId }),
     });
     if (data.success) {
       setShowNew(false);
-      setNewPersonId('');
       navigate(data.data.id);
     }
   };
@@ -105,24 +166,86 @@ function ConversationList() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
-        <Button size="sm" onClick={() => setShowNew(v => !v)}>New Message</Button>
+        <Button size="sm" onClick={openNew}>New Message</Button>
       </div>
 
       {showNew && (
         <Card padding="md">
-          <p className="text-sm font-medium text-gray-700 mb-2">Start a new conversation</p>
-          <p className="text-xs text-gray-500 mb-2">Enter the ID of the incarcerated person you want to message:</p>
-          <input
-            className="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={newPersonId}
-            onChange={e => setNewPersonId(e.target.value)}
-            placeholder="Incarcerated person ID"
-          />
-          <div className="flex gap-2">
-            <Button size="sm" onClick={startConversation} disabled={!newPersonId.trim()}>Start</Button>
-            <Button size="sm" variant="ghost" onClick={() => setShowNew(false)}>Cancel</Button>
+          <p className="text-sm font-medium text-gray-700 mb-3">Select someone to message:</p>
+          {contacts.length === 0 ? (
+            <p className="text-sm text-gray-500">No approved contacts found.</p>
+          ) : (
+            <div className="space-y-2">
+              {contacts.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => startConversation(c.incarceratedPerson.id)}
+                  className="w-full text-left px-3 py-2 rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-sm transition-colors"
+                >
+                  {c.incarceratedPerson.firstName} {c.incarceratedPerson.lastName}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <button
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+              onClick={() => { setShowRequest(v => !v); setRequestSent(false); }}
+            >
+              {showRequest ? 'Hide' : '+ Request a new contact'}
+            </button>
+            {showRequest && (
+              <div className="mt-3 space-y-3">
+                {requestSent ? (
+                  <p className="text-sm text-green-600 font-medium">Request submitted! An admin will review it.</p>
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-sm text-gray-700 mb-1">Facility inmate ID (provided by the facility)</p>
+                      <input
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={requestExternalId}
+                        onChange={e => setRequestExternalId(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-700 mb-1">Your relationship to them</p>
+                      <input
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={requestRelationship}
+                        onChange={e => setRequestRelationship(e.target.value)}
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requestIsAttorney}
+                        onChange={e => setRequestIsAttorney(e.target.checked)}
+                        className="rounded"
+                      />
+                      I am an attorney
+                    </label>
+                    {requestError && (
+                      <p className="text-sm text-red-600">{requestError}</p>
+                    )}
+                    <Button
+                      size="sm"
+                      onClick={submitContactRequest}
+                      disabled={!requestExternalId.trim() || !requestRelationship.trim()}
+                    >
+                      Submit Request
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
+          <Button size="sm" variant="ghost" className="mt-3" onClick={() => setShowNew(false)}>Cancel</Button>
         </Card>
+      )}
+
+      {conversations.length > 0 && (
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Approved Contacts</h2>
       )}
 
       {conversations.length === 0 && !showNew ? (
@@ -162,6 +285,27 @@ function ConversationList() {
               </Card>
             </button>
           ))}
+        </div>
+      )}
+
+      {pendingContacts.length > 0 && (
+        <div className="mt-6">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Pending Requests</h2>
+          <div className="space-y-2">
+            {pendingContacts.map(c => (
+              <Card key={c.id} padding="md">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {c.incarceratedPerson.firstName} {c.incarceratedPerson.lastName}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">{c.relationship} · {c.incarceratedPerson.externalId}</p>
+                  </div>
+                  <span className="text-xs font-medium text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full">Pending</span>
+                </div>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -328,7 +472,11 @@ function ConversationThread() {
               >
                 <p>{msg.body}</p>
                 <p className={`text-xs mt-1 ${msg.senderType === 'family' ? 'text-blue-200' : 'text-gray-400'}`}>
-                  {msg.status === 'pending_review' ? 'Pending review' : msg.status}
+                  {msg.status === 'pending_review' && '🕐 Pending review'}
+                  {msg.status === 'approved' && '✓ Approved'}
+                  {msg.status === 'sent' && '✓ Sent'}
+                  {msg.status === 'delivered' && '✓✓ Delivered'}
+                  {msg.status === 'read' && '✓✓ Read'}
                 </p>
               </div>
             </div>
