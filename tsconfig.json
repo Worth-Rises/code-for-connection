@@ -14,7 +14,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDirs": ["./src", "./guilds"],
     "baseUrl": ".",
     "paths": {
       "@openconnect/shared/*": ["packages/shared/src/*"],
