@@ -156,12 +156,12 @@ model AdminUser {
   facility             Facility?         @relation(fields: [facilityId], references: [id])
   approvedContactsReviewed ApprovedContact[] @relation("ReviewedByAdmin")
   blockedNumbers       BlockedNumber[]
+  flaggedKeywords      FlaggedKeyword[]
   terminatedVoiceCalls VoiceCall[]       @relation("TerminatedByAdmin")
   approvedVideoCalls   VideoCall[]       @relation("ApprovedByAdmin")
   terminatedVideoCalls VideoCall[]       @relation("TerminatedByAdmin")
   blockedConversations Conversation[]    @relation("BlockedByAdmin")
   reviewedMessages     Message[]         @relation("ReviewedByAdmin")
-  flaggedKeywords      FlaggedKeyword[]
 
   @@map("admin_users")
 }
