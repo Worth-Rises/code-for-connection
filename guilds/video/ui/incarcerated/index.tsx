@@ -1,36 +1,88 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import { Card } from '@openconnect/ui';
+import { ScheduledCallsList } from './ScheduledCallsList.js';
+import { VideoCallRoom } from '../shared/VideoCallRoom.js';
 
-function VideoHome() {
+const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'http://localhost:3001';
+
+interface ActiveCall {
+  callId: string;
+  scheduledEnd: string;
+}
+
+function getUserIdFromToken(): string {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return '';
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.userId ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function IncarceratedVideoHome() {
+  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const userId = getUserIdFromToken();
+
+  if (activeCall) {
+    return (
+      <VideoCallRoom
+        callId={activeCall.callId}
+        userId={userId}
+        userRole="incarcerated"
+        scheduledEnd={activeCall.scheduledEnd}
+        signalingUrl={SIGNALING_URL}
+        onExit={() => setActiveCall(null)}
+      />
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900">Video Calls</h1>
-      <Card padding="lg">
-        <div className="text-center py-8">
-          <span className="text-6xl mb-4 block">📹</span>
-          <h2 className="text-xl font-semibold mb-2">Video Visits</h2>
-          <p className="text-gray-600 mb-6">
-            This is where the Video Guild will build the video calling interface.
-          </p>
-          <p className="text-sm text-gray-500">Features to implement:</p>
-          <ul className="text-sm text-gray-500 mt-2 space-y-1">
-            <li>View scheduled video visits</li>
-            <li>Join video calls</li>
-            <li>Camera/mic controls</li>
-            <li>Background blur option</li>
-            <li>Call timer with warnings</li>
-          </ul>
-        </div>
-      </Card>
+    <div style={{
+      minHeight: '100vh',
+      background: '#0f172a',
+      fontFamily: 'Inter, sans-serif',
+      padding: '24px',
+    }}>
+      <h1 style={{
+        color: '#e2e8f0',
+        fontSize: '22px',
+        fontWeight: 700,
+        marginBottom: '24px',
+      }}>
+        Scheduled Video Calls
+      </h1>
+      <ScheduledCallsList
+        onJoinCall={(callId, scheduledEnd) => {
+          // First POST to join the call to mark it in_progress, then open the room
+          fetch(`/api/video/join/${callId}`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('token') ?? ''}`,
+              'Content-Type': 'application/json',
+            },
+          })
+            .then((r) => r.json())
+            .then((body) => {
+              if (body.success) {
+                setActiveCall({ callId, scheduledEnd: body.data.scheduledEnd });
+              } else {
+                alert(`Cannot join: ${body.error?.message ?? 'Unknown error'}`);
+              }
+            })
+            .catch(() => alert('Failed to join call. Please try again.'));
+        }}
+      />
     </div>
   );
 }
 
-export default function VideoIncarcerated() {
+// Default export for guild-loading conventions
+export default function IncarceratedVideoUI() {
   return (
     <Routes>
-      <Route index element={<VideoHome />} />
+      <Route index element={<IncarceratedVideoHome />} />
     </Routes>
   );
 }

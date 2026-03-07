@@ -184,6 +184,154 @@ videoRouter.post('/terminate-call/:callId', requireAuth, requireRole('facility_a
   }
 });
 
+// ─── GET /api/video/my-scheduled ──────────────────────────────────────────
+videoRouter.get('/my-scheduled', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    const calls = await prisma.videoCall.findMany({
+      where: {
+        OR: [
+          { incarceratedPersonId: userId },
+          { familyMemberId: userId },
+        ],
+        status: { in: ['scheduled', 'in_progress'] },
+      },
+      include: {
+        incarceratedPerson: true,
+        familyMember: true,
+      },
+      orderBy: { scheduledStart: 'asc' },
+    });
+
+    res.json(createSuccessResponse(calls));
+  } catch (error) {
+    console.error('Error fetching scheduled calls:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to fetch scheduled calls' }));
+  }
+});
+
+// ─── POST /api/video/join/:callId ─────────────────────────────────────────
+videoRouter.post('/join/:callId', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { callId } = req.params;
+    const userId = req.user!.id;
+    const now = new Date();
+    const TOLERANCE_MS = 60_000; // 60-second clock-drift tolerance
+
+    const call = await prisma.videoCall.findUnique({
+      where: { id: callId },
+      include: { incarceratedPerson: true, familyMember: true },
+    });
+
+    if (!call) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Call not found' }));
+      return;
+    }
+
+    // Participant check
+    if (call.incarceratedPersonId !== userId && call.familyMemberId !== userId) {
+      res.status(403).json(createErrorResponse({ code: 'FORBIDDEN', message: 'You are not a participant in this call' }));
+      return;
+    }
+
+    // Status check — must be scheduled or in_progress (reconnect)
+    if (!['scheduled', 'in_progress'].includes(call.status)) {
+      res.status(400).json(createErrorResponse({ code: 'CALL_NOT_READY', message: `Call cannot be joined in status: ${call.status}` }));
+      return;
+    }
+
+    // Timing window check
+    const windowStart = new Date(call.scheduledStart.getTime() - TOLERANCE_MS);
+    const windowEnd = new Date(call.scheduledEnd.getTime() + TOLERANCE_MS);
+
+    if (now < windowStart) {
+      res.status(400).json(createErrorResponse({ code: 'TOO_EARLY', message: 'This call has not started yet' }));
+      return;
+    }
+
+    if (now > windowEnd) {
+      res.status(400).json(createErrorResponse({ code: 'TOO_LATE', message: 'This call window has passed' }));
+      return;
+    }
+
+    // First join: set in_progress + actualStart. Reconnect: skip actualStart.
+    const isFirstJoin = call.status === 'scheduled';
+    const updated = await prisma.videoCall.update({
+      where: { id: callId },
+      data: {
+        status: 'in_progress',
+        ...(isFirstJoin ? { actualStart: now } : {}),
+      },
+    });
+
+    res.json(createSuccessResponse({
+      roomId: updated.id,
+      scheduledEnd: updated.scheduledEnd,
+    }));
+  } catch (error) {
+    console.error('Error joining video call:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to join call' }));
+  }
+});
+
+// ─── POST /api/video/end/:callId ──────────────────────────────────────────
+videoRouter.post('/end/:callId', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { callId } = req.params;
+    const userId = req.user!.id;
+    const { reason } = req.body as { reason?: string };
+    const now = new Date();
+
+    const call = await prisma.videoCall.findUnique({ where: { id: callId } });
+
+    if (!call) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Call not found' }));
+      return;
+    }
+
+    if (call.incarceratedPersonId !== userId && call.familyMemberId !== userId) {
+      res.status(403).json(createErrorResponse({ code: 'FORBIDDEN', message: 'You are not a participant in this call' }));
+      return;
+    }
+
+    // Idempotent — already completed, do nothing
+    if (call.status === 'completed' || call.status === 'terminated_by_admin') {
+      res.json(createSuccessResponse({ message: 'Call already ended' }));
+      return;
+    }
+
+    // Determine endedBy
+    let endedBy: 'incarcerated' | 'family' | 'time_limit';
+    if (reason === 'time_limit') {
+      endedBy = 'time_limit';
+    } else {
+      endedBy = userId === call.incarceratedPersonId ? 'incarcerated' : 'family';
+    }
+
+    // Compute duration from actualStart if available
+    const durationSeconds = call.actualStart
+      ? Math.round((now.getTime() - new Date(call.actualStart).getTime()) / 1000)
+      : null;
+
+    const updated = await prisma.videoCall.update({
+      where: { id: callId },
+      data: {
+        status: 'completed',
+        actualEnd: now,
+        endedBy,
+        ...(durationSeconds !== null ? { durationSeconds } : {}),
+      },
+    });
+
+    res.json(createSuccessResponse(updated));
+  } catch (error) {
+    console.error('Error ending video call:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to end call' }));
+  }
+});
+
+// ─── GET /api/video/stats ─────────────────────────────────────────────────
 videoRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const { facilityId, date } = req.query;
