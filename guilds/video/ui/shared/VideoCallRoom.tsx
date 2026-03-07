@@ -93,6 +93,15 @@ export function VideoCallRoom({
     }
   }, [isBlurOn, blurLoading, rawStream, startBlur, stopBlur, replaceVideoTrack]);
 
+  // Auto-enable blur for incarcerated users
+  const blurAutoStarted = useRef(false);
+  useEffect(() => {
+    if (userRole === 'incarcerated' && rawStream && !blurAutoStarted.current && !isBlurOn && !blurLoading) {
+      blurAutoStarted.current = true;
+      toggleBlur();
+    }
+  }, [userRole, rawStream, isBlurOn, blurLoading, toggleBlur]);
+
   // Wire streams to video elements
   useEffect(() => {
     if (localVideoRef.current && localStream) {
