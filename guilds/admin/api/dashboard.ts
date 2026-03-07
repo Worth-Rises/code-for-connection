@@ -7,6 +7,7 @@ import {
   prisma,
 } from '@openconnect/shared';
 import { buildFacilityFilter } from './helpers.js';
+import { auditLog, getClientIp } from './audit.js';
 
 export const dashboardRouter = Router();
 
@@ -74,11 +75,78 @@ dashboardRouter.get('/stats', async (req: Request, res: Response) => {
       video: videoStats,
       messaging: messagingStats,
     }));
+
+    // Update lastLoginAt (fire and forget)
+    prisma.adminUser.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    }).catch(() => {});
   } catch (error) {
     console.error('Error fetching dashboard stats:', error);
     res.status(500).json(createErrorResponse({
       code: 'INTERNAL_ERROR',
       message: 'Failed to fetch dashboard stats',
     }));
+  }
+});
+
+// GET /since-last-login - counts of items created since admin's last login
+dashboardRouter.get('/since-last-login', async (req: Request, res: Response) => {
+  try {
+    const user = req.user!;
+    const facilityFilter = buildFacilityFilter(user);
+
+    // Get lastLoginAt from AdminUser
+    const admin = await prisma.adminUser.findUnique({ where: { id: user.id } });
+    const since = admin?.lastLoginAt || new Date(Date.now() - 24 * 60 * 60 * 1000); // default: 24h ago
+
+    const [newContacts, newMessages, newVoiceCalls, newVideoCalls] = await Promise.all([
+      prisma.approvedContact.count({
+        where: { requestedAt: { gte: since }, incarceratedPerson: facilityFilter },
+      }),
+      prisma.message.count({
+        where: { createdAt: { gte: since }, conversation: { incarceratedPerson: facilityFilter } },
+      }),
+      prisma.voiceCall.count({
+        where: { startedAt: { gte: since }, ...facilityFilter },
+      }),
+      prisma.videoCall.count({
+        where: { scheduledStart: { gte: since }, ...facilityFilter },
+      }),
+    ]);
+
+    res.json(createSuccessResponse({
+      since: since.toISOString(),
+      newContacts,
+      newMessages,
+      newVoiceCalls,
+      newVideoCalls,
+    }));
+  } catch (error) {
+    console.error('Error fetching since-last-login:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to fetch since-last-login data' }));
+  }
+});
+
+// GET /recent-activity - recent audit log entries
+dashboardRouter.get('/recent-activity', async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 10, 50);
+    const user = req.user!;
+
+    // Agency admins see all; facility admins see only their own actions
+    const where = user.role === 'facility_admin' ? { adminUserId: user.id } : {};
+
+    const entries = await prisma.auditLog.findMany({
+      where,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      include: { adminUser: { select: { firstName: true, lastName: true } } },
+    });
+
+    res.json(createSuccessResponse(entries));
+  } catch (error) {
+    console.error('Error fetching recent activity:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to fetch recent activity' }));
   }
 });

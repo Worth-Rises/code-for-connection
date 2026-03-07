@@ -10,6 +10,7 @@ import { blockedNumbersRouter } from './blocked-numbers.js';
 import { facilityRouter } from './facility.js';
 import { usersRouter } from './users.js';
 import { dashboardRouter } from './dashboard.js';
+import { monitoringRouter } from './monitoring.routes.js';
 
 export const adminRouter = Router();
 
@@ -20,6 +21,7 @@ adminRouter.use('/facility', facilityRouter);
 adminRouter.use('/users', usersRouter);
 adminRouter.use('/user', usersRouter);
 adminRouter.use('/dashboard', dashboardRouter);
+adminRouter.use('/monitoring', monitoringRouter);
 
 adminRouter.get('/housing-unit-type/:unitTypeId', requireAuth, async (req: Request, res: Response) => {
   try {
