@@ -284,7 +284,7 @@ function ConversationThread() {
     });
     if (data.success) {
       shouldScrollRef.current = true;
-      setMessages(prev => [...prev, data.data]);
+      setMessages(prev => [...prev, data.data.message]);
       setText('');
     }
     setSending(false);
