@@ -6,6 +6,7 @@ import {
   createErrorResponse,
   prisma,
 } from '@openconnect/shared';
+import twilio from 'twilio';
 
 export const voiceAdminRouter = Router();
 
@@ -94,26 +95,89 @@ voiceAdminRouter.get('/call-logs', requireAuth, async (req: Request, res: Respon
   }
 });
 
-voiceAdminRouter.post('/terminate-call/:callId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+/**
+ * POST /terminate-calls — Bulk-terminate active calls.
+ * Body: { callIds: string[] }
+ * Terminates each call's Twilio conference and updates the DB record.
+ */
+voiceAdminRouter.post('/terminate-calls', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
-    const { callId } = req.params;
-    
-    const call = await prisma.voiceCall.update({
-      where: { id: callId },
-      data: {
-        status: 'terminated_by_admin',
-        endedAt: new Date(),
-        endedBy: 'admin',
-        terminatedByAdminId: req.user!.id,
-      },
-    });
+    const { callIds } = req.body;
 
-    res.json(createSuccessResponse({ success: true, call }));
+    if (!Array.isArray(callIds) || callIds.length === 0) {
+      return res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'callIds must be a non-empty array of strings',
+      }));
+    }
+
+    const client = twilio(
+      process.env.TWILIO_ACCOUNT_SID,
+      process.env.TWILIO_AUTH_TOKEN,
+    );
+
+    const results: Array<{ callId: string; success: boolean; error?: string }> = [];
+
+    for (const callId of callIds) {
+      try {
+        const call = await prisma.voiceCall.findUnique({ where: { id: callId } });
+
+        if (!call) {
+          results.push({ callId, success: false, error: 'Call not found' });
+          continue;
+        }
+
+        if (!['ringing', 'connected'].includes(call.status)) {
+          results.push({ callId, success: false, error: 'Call is not active' });
+          continue;
+        }
+
+        // Terminate the Twilio conference
+        const conferenceName = `call-${callId}`;
+        try {
+          const conferences = await client.conferences.list({
+            friendlyName: conferenceName,
+            status: 'in-progress',
+          });
+          for (const conf of conferences) {
+            await conf.update({ status: 'completed' });
+            console.log(`[voice] Admin terminate: conference ${conf.sid} terminated`);
+          }
+        } catch (twilioError) {
+          console.error(`[voice] Error ending Twilio conference for call ${callId}:`, twilioError);
+          // Continue to update DB even if Twilio cleanup fails
+        }
+
+        // Update the DB record
+        const durationSeconds = call.connectedAt
+          ? Math.floor((Date.now() - call.connectedAt.getTime()) / 1000)
+          : 0;
+
+        await prisma.voiceCall.update({
+          where: { id: callId },
+          data: {
+            status: 'terminated_by_admin',
+            endedAt: new Date(),
+            endedBy: 'admin',
+            terminatedByAdminId: req.user!.id,
+            durationSeconds,
+          },
+        });
+
+        results.push({ callId, success: true });
+      } catch (err) {
+        console.error(`[voice] Error terminating call ${callId}:`, err);
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        results.push({ callId, success: false, error: message });
+      }
+    }
+
+    res.json(createSuccessResponse({ results }));
   } catch (error) {
-    console.error('Error terminating call:', error);
+    console.error('Error in terminate-calls:', error);
     res.status(500).json(createErrorResponse({
       code: 'INTERNAL_ERROR',
-      message: 'Failed to terminate call',
+      message: 'Failed to terminate calls',
     }));
   }
 });
