@@ -83,6 +83,150 @@ contactsRouter.patch('/:contactId/attorney-flag', async (req: Request, res: Resp
   }
 });
 
+// PATCH /:contactId/edit - Edit contact details (relationship, notes)
+contactsRouter.patch('/:contactId/edit', async (req: Request, res: Response) => {
+  try {
+    const { contactId } = req.params;
+    const { relationship, notes } = req.body;
+
+    const contact = await prisma.approvedContact.findUnique({
+      where: { id: contactId },
+      include: { familyMember: true },
+    });
+    if (!contact) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Contact not found' }));
+      return;
+    }
+
+    const contactUpdate: Record<string, unknown> = {};
+    if (relationship !== undefined) contactUpdate.relationship = relationship;
+    if (notes !== undefined) contactUpdate.notes = notes;
+
+    // Update the contact relationship/notes
+    const updatedContact = await prisma.approvedContact.update({
+      where: { id: contactId },
+      data: contactUpdate,
+    });
+
+    // Update family member details if provided
+    const familyUpdate: Record<string, unknown> = {};
+    if (req.body.phone !== undefined) familyUpdate.phone = req.body.phone;
+    if (req.body.email !== undefined) familyUpdate.email = req.body.email;
+    if (req.body.firstName !== undefined) familyUpdate.firstName = req.body.firstName;
+    if (req.body.lastName !== undefined) familyUpdate.lastName = req.body.lastName;
+
+    let updatedFamily = null;
+    if (Object.keys(familyUpdate).length > 0) {
+      updatedFamily = await prisma.familyMember.update({
+        where: { id: contact.familyMemberId },
+        data: familyUpdate,
+      });
+    }
+
+    await auditLog(req.user!.id, 'update_contact', 'ApprovedContact', contactId, {
+      contactUpdate,
+      familyUpdate: Object.keys(familyUpdate).length > 0 ? familyUpdate : undefined,
+    }, getClientIp(req));
+
+    res.json(createSuccessResponse({
+      contact: updatedContact,
+      familyMember: updatedFamily || contact.familyMember,
+    }));
+  } catch (error) {
+    console.error('Error editing contact:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to edit contact',
+    }));
+  }
+});
+
+// POST /block-person-agency-wide - Block a family member across all facilities
+contactsRouter.post('/block-person-agency-wide', async (req: Request, res: Response) => {
+  try {
+    const { familyMemberId } = req.body;
+    const user = req.user!;
+
+    if (user.role !== 'agency_admin') {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'Only agency admins can block a person agency-wide',
+      }));
+      return;
+    }
+
+    if (!familyMemberId) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'familyMemberId is required',
+      }));
+      return;
+    }
+
+    const familyMember = await prisma.familyMember.findUnique({ where: { id: familyMemberId } });
+    if (!familyMember) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Person not found' }));
+      return;
+    }
+
+    const updated = await prisma.familyMember.update({
+      where: { id: familyMemberId },
+      data: {
+        isBlockedAgencyWide: true,
+        blockedAgencyId: user.agencyId,
+      },
+    });
+
+    await auditLog(user.id, 'block_person_agency_wide', 'FamilyMember', familyMemberId, {
+      agencyId: user.agencyId,
+    }, getClientIp(req));
+
+    res.json(createSuccessResponse(updated));
+  } catch (error) {
+    console.error('Error blocking person agency-wide:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to block person agency-wide',
+    }));
+  }
+});
+
+// DELETE /unblock-person-agency-wide - Unblock a family member
+contactsRouter.post('/unblock-person-agency-wide', async (req: Request, res: Response) => {
+  try {
+    const { familyMemberId } = req.body;
+    const user = req.user!;
+
+    if (user.role !== 'agency_admin') {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'Only agency admins can unblock a person agency-wide',
+      }));
+      return;
+    }
+
+    const updated = await prisma.familyMember.update({
+      where: { id: familyMemberId },
+      data: {
+        isBlockedAgencyWide: false,
+        blockedAgencyId: null,
+      },
+    });
+
+    await auditLog(user.id, 'unblock_person_agency_wide', 'FamilyMember', familyMemberId, {
+      agencyId: user.agencyId,
+    }, getClientIp(req));
+
+    res.json(createSuccessResponse(updated));
+  } catch (error) {
+    console.error('Error unblocking person:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to unblock person',
+    }));
+  }
+});
+
 // GET /:contactId/communication-history - Communication history between pair
 contactsRouter.get('/:contactId/communication-history', async (req: Request, res: Response) => {
   try {

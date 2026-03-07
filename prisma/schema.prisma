@@ -481,6 +481,14 @@ enum AuditAction {
   delete_blocked_number
   move_resident
   export_report
+  update_resident_profile
+  reset_pin
+  update_contact
+  block_person_agency_wide
+  unblock_person_agency_wide
+  create_time_slot
+  update_time_slot
+  delete_time_slot
 }
 
 enum FlaggedContentType {

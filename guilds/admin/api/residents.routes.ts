@@ -146,6 +146,110 @@ residentsRouter.patch('/:id/status', async (req: Request, res: Response) => {
   }
 });
 
+// PATCH /:id/profile - Edit resident profile (name, externalId)
+residentsRouter.patch('/:id/profile', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const facilityFilter = buildFacilityFilter(req.user!);
+
+    const person = await prisma.incarceratedPerson.findFirst({
+      where: { id, ...facilityFilter },
+    });
+    if (!person) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Resident not found' }));
+      return;
+    }
+
+    const allowedFields = ['firstName', 'lastName', 'externalId'];
+    const updateData: Record<string, unknown> = {};
+    const changes: Array<{ field: string; oldValue: unknown; newValue: unknown }> = [];
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+        changes.push({
+          field,
+          oldValue: (person as Record<string, unknown>)[field],
+          newValue: req.body[field],
+        });
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'No valid fields to update. Allowed: firstName, lastName, externalId',
+      }));
+      return;
+    }
+
+    const updated = await prisma.incarceratedPerson.update({
+      where: { id },
+      data: updateData,
+    });
+
+    for (const change of changes) {
+      await prisma.entityHistory.create({
+        data: {
+          entityType: 'IncarceratedPerson',
+          entityId: id,
+          field: change.field,
+          oldValue: change.oldValue != null ? String(change.oldValue) : null,
+          newValue: String(change.newValue),
+          changedBy: req.user!.id,
+        },
+      });
+    }
+
+    await auditLog(req.user!.id, 'update_resident_profile', 'IncarceratedPerson', id,
+      updateData, getClientIp(req));
+
+    res.json(createSuccessResponse(updated));
+  } catch (error) {
+    console.error('Error updating resident profile:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to update resident profile',
+    }));
+  }
+});
+
+// POST /:id/pin - Assign or reset PIN
+residentsRouter.post('/:id/pin', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { pin } = req.body;
+    const facilityFilter = buildFacilityFilter(req.user!);
+
+    const person = await prisma.incarceratedPerson.findFirst({
+      where: { id, ...facilityFilter },
+    });
+    if (!person) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Resident not found' }));
+      return;
+    }
+
+    // Generate a random 4-digit PIN if none provided
+    const newPin = pin || String(Math.floor(1000 + Math.random() * 9000));
+
+    const updated = await prisma.incarceratedPerson.update({
+      where: { id },
+      data: { pin: newPin },
+    });
+
+    await auditLog(req.user!.id, 'reset_pin', 'IncarceratedPerson', id, {
+      generated: !pin,
+    }, getClientIp(req));
+
+    res.json(createSuccessResponse({ id: updated.id, pin: newPin }));
+  } catch (error) {
+    console.error('Error resetting PIN:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to reset PIN',
+    }));
+  }
+});
+
 // PATCH /:id/risk-level - Change risk level
 residentsRouter.patch('/:id/risk-level', async (req: Request, res: Response) => {
   try {
