@@ -521,4 +521,51 @@ videoRouter.get('/scheduled-calls', requireAuth, async (req: Request, res: Respo
   }
 });
 
+// Family-facing: cancel a requested or scheduled video call
+videoRouter.post('/cancel-call/:callId', requireAuth, requireRole('family'), async (req: Request, res: Response) => {
+  try {
+    const { callId } = req.params;
+    const familyMemberId = req.user!.id;
+
+    const call = await prisma.videoCall.findFirst({
+      where: {
+        id: callId,
+        familyMemberId,
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (!call) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Call not found',
+      }));
+      return;
+    }
+
+    if (!['requested', 'scheduled'].includes(call.status)) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'Only requested or scheduled calls can be canceled',
+      }));
+      return;
+    }
+
+    await prisma.videoCall.delete({
+      where: { id: call.id },
+    });
+
+    res.json(createSuccessResponse({ success: true }));
+  } catch (error) {
+    console.error('Error canceling video call:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to cancel video call',
+    }));
+  }
+});
+
 export default videoRouter;

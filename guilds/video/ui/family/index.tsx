@@ -5,6 +5,7 @@ import { VideoCallRoom } from '../shared/VideoCallRoom.js';
 import ManageContact from './manage_contact';
 import ScheduleCall from './schedule';
 import ScheduledCalls from './scheduled';
+import { familyMessages } from '../messages';
 
 /**
  * Family UI — Development Stub
@@ -145,7 +146,7 @@ function VideoHome() {
         const data: ApprovedContactItem[] = json.data || json;
         if (mounted) setContacts(data);
       } catch (err: any) {
-        if (mounted) setError(err.message || 'Failed to load contacts');
+        if (mounted) setError(err.message || familyMessages.index.loadErrorFallback);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -156,7 +157,7 @@ function VideoHome() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900">Video Visits</h1>
+      <h1 className="text-2xl font-bold text-gray-900">{familyMessages.index.title}</h1>
 
       {/* Dev stub bypass block */}
       <div className="mb-4">
@@ -167,13 +168,13 @@ function VideoHome() {
 
       <Card padding="lg">
         <div className="space-y-4">
-          <p className="text-gray-600">Select a contact to schedule or manage video visits.</p>
+          <p className="text-gray-600">{familyMessages.index.selectContactPrompt}</p>
 
-          {loading && <div className="text-gray-500">Loading...</div>}
+          {loading && <div className="text-gray-500">{familyMessages.common.loading}</div>}
           {error && <div className="text-red-600">{error}</div>}
 
           {!loading && contacts && contacts.length === 0 && (
-            <div className="text-gray-500">No approved contacts found.</div>
+            <div className="text-gray-500">{familyMessages.index.noApprovedContacts}</div>
           )}
 
           <div className="grid gap-3">
