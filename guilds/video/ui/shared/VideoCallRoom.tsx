@@ -224,9 +224,9 @@ export function VideoCallRoom({
           onClick={toggleBlur}
           title={isBlurOn ? 'Disable background blur' : 'Enable background blur'}
           disabled={blurLoading}
-          style={controlBtnStyle(isBlurOn)}
+          style={{ ...controlBtnStyle(isBlurOn), fontSize: '11px', fontWeight: 700, color: '#e2e8f0' }}
         >
-          {blurLoading ? '⏳' : isBlurOn ? '🌫️' : '🖼️'}
+          {blurLoading ? '...' : 'BG'}
         </button>
 
         <button
