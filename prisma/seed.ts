@@ -292,7 +292,7 @@ async function main() {
     prisma.familyMember.create({
       data: {
         email: 'alice@example.com',
-        phone: '+15551234001',
+        phone: '+13478636959',
         firstName: 'Alice',
         lastName: 'Doe',
         passwordHash: await hashPassword('password123'),
@@ -355,7 +355,7 @@ async function main() {
     prisma.familyMember.create({
       data: {
         email: 'attorney@lawfirm.com',
-        phone: '+15551234008',
+        phone: '+19175966881',
         firstName: 'Henry',
         lastName: 'Attorney',
         passwordHash: await hashPassword('password123'),
