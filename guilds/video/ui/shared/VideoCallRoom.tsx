@@ -139,7 +139,7 @@ export function VideoCallRoom({
         />
 
         {/* Overlay when not yet connected */}
-        {connectionState !== 'CONNECTED' && connectionState !== 'ENDED' && (
+        {connectionState !== 'CONNECTED' && connectionState !== 'ENDED' && connectionState !== 'RECONNECTING' && (
           <div style={{
             position: 'absolute',
             inset: 0,
@@ -151,6 +151,26 @@ export function VideoCallRoom({
             <p style={{ color: '#94a3b8', fontSize: '18px', textAlign: 'center' }}>
               {STATE_LABELS[connectionState]}
             </p>
+          </div>
+        )}
+
+        {/* Non-blocking warning for RECONNECTING */}
+        {connectionState === 'RECONNECTING' && (
+          <div style={{
+            position: 'absolute',
+            top: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(239, 68, 68, 0.9)',
+            color: 'white',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            fontWeight: 500,
+            fontSize: '14px',
+            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+            zIndex: 10,
+          }}>
+            Poor connection. Trying to reconnect...
           </div>
         )}
       </div>

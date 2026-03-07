@@ -217,7 +217,7 @@ videoRouter.post('/join/:callId', requireAuth, async (req: Request, res: Respons
     const { callId } = req.params;
     const userId = req.user!.id;
     const now = new Date();
-    const TOLERANCE_MS = 60_000; // 60-second clock-drift tolerance
+    const TOLERANCE_MS = 900_000; // 15-minute clock-drift/early-join tolerance
 
     const call = await prisma.videoCall.findUnique({
       where: { id: callId },
