@@ -2,7 +2,7 @@
   "name": "@openconnect/voice",
   "version": "1.0.0",
   "description": "Voice calling component for Open Connect",
-  "main": "api/routes.ts",
+  "main": "api/index.ts",
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch"
