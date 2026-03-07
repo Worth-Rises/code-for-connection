@@ -151,4 +151,82 @@ voiceRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency_adm
   }
 });
 
+voiceRouter.get('/my-contacts', requireAuth, requireRole('incarcerated'), async (req: Request, res: Response) => {
+  try {
+    const contacts = await prisma.approvedContact.findMany({
+      where: {
+        incarceratedPersonId: req.user!.id,
+        status: 'approved',
+      },
+      include: { familyMember: true },
+      orderBy: { familyMember: { firstName: 'asc' } },
+    });
+
+    res.json(createSuccessResponse(contacts));
+  } catch (error) {
+    console.error('Error fetching contacts:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch contacts',
+    }));
+  }
+});
+
+voiceRouter.post('/initiate-call', requireAuth, requireRole('incarcerated'), async (req: Request, res: Response) => {
+  try {
+    const { contactId, familyMemberId } = req.body;
+    const user = req.user!;
+
+    const call = await prisma.voiceCall.create({
+      data: {
+        incarceratedPersonId: user.id,
+        familyMemberId,
+        facilityId: user.facilityId!,
+        status: 'ringing',
+      },
+    });
+
+    res.json(createSuccessResponse({ callId: call.id, roomId: `voice-${call.id}` }));
+  } catch (error) {
+    console.error('Error initiating call:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to initiate call',
+    }));
+  }
+});
+
+voiceRouter.get('/my-calls', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = req.user!;
+    const { status } = req.query;
+
+    const where: Record<string, unknown> = {
+      OR: [
+        { incarceratedPersonId: user.id },
+        { familyMemberId: user.id },
+      ],
+    };
+    if (status) where.status = String(status);
+
+    const calls = await prisma.voiceCall.findMany({
+      where,
+      include: {
+        incarceratedPerson: true,
+        familyMember: true,
+      },
+      orderBy: { startedAt: 'desc' },
+      take: 50,
+    });
+
+    res.json(createSuccessResponse(calls));
+  } catch (error) {
+    console.error('Error fetching calls:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch calls',
+    }));
+  }
+});
+
 export default voiceRouter;

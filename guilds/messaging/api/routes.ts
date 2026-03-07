@@ -156,4 +156,102 @@ messagingRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency
   }
 });
 
+messagingRouter.get('/conversations', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = req.user!;
+
+    const conversations = await prisma.conversation.findMany({
+      where: {
+        OR: [
+          { incarceratedPersonId: user.id },
+          { familyMemberId: user.id },
+        ],
+        isBlocked: false,
+      },
+      include: {
+        incarceratedPerson: true,
+        familyMember: true,
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(createSuccessResponse(conversations));
+  } catch (error) {
+    console.error('Error fetching conversations:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch conversations',
+    }));
+  }
+});
+
+messagingRouter.get('/conversations/:id/messages', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { page = '1', pageSize = '30' } = req.query;
+
+    const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize));
+    const take = parseInt(String(pageSize));
+
+    const [messages, total] = await Promise.all([
+      prisma.message.findMany({
+        where: { conversationId: id },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      prisma.message.count({ where: { conversationId: id } }),
+    ]);
+
+    res.json({
+      success: true,
+      data: messages.reverse(),
+      pagination: {
+        page: parseInt(String(page)),
+        pageSize: take,
+        total,
+        totalPages: Math.ceil(total / take),
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching messages:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch messages',
+    }));
+  }
+});
+
+messagingRouter.post('/conversations/:id/send', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { body: messageBody } = req.body;
+    const user = req.user!;
+
+    const senderType = user.role === 'incarcerated' ? 'incarcerated' : 'family';
+
+    const message = await prisma.message.create({
+      data: {
+        conversationId: id,
+        senderType,
+        senderId: user.id,
+        body: messageBody,
+        status: 'pending_review',
+      },
+    });
+
+    res.json(createSuccessResponse(message));
+  } catch (error) {
+    console.error('Error sending message:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to send message',
+    }));
+  }
+});
+
 export default messagingRouter;
