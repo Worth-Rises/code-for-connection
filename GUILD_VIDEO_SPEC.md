@@ -86,12 +86,12 @@ Video calling guild logic lives in `guilds/video`.
 
 ## Your Demo Should Show
 
-1. Family member logs in and requests a video call for a specific time slot
-2. Admin approves the request (or it auto-approves)
-3. Incarcerated person sees the scheduled call and gets a notification
-4. Both parties join at the scheduled time
-5. Video and audio work, both can toggle camera/mic
-6. Both sides can use background blur
-7. Timer shows remaining time
-8. Call ends at the limit or when either party leaves
-9. Admin can see active calls in their dashboard
+1. Family member logs in and requests a video call for a specific time slot [ ]
+2. Admin approves the request (or it auto-approves) [ ]
+3. Incarcerated person sees the scheduled call and gets a notification [ ]
+4. Both parties join at the scheduled time [ ]
+5. Video and audio work, both can toggle camera/mic [ ]
+6. Both sides can use background blur [ ]
+7. Timer shows remaining time [ ]
+8. Call ends at the limit or when either party leaves [ ]
+9. Admin can see active calls in their dashboard [ ]
