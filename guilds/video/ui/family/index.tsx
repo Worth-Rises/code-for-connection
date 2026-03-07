@@ -11,6 +11,7 @@ import { familyMessages } from '../messages';
  * Family UI — Development Stub
  */
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'http://localhost:3001';
+const IS_TEST_MODE = import.meta.env.VITE_TEST_MODE === 'true';
 
 function getUserIdFromToken(): string {
   try {
@@ -130,6 +131,9 @@ function VideoHome() {
   const [contacts, setContacts] = useState<ApprovedContactItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [testCallLoading, setTestCallLoading] = useState(false);
+  const [activeTestCall, setActiveTestCall] = useState<{ callId: string; scheduledEnd: string } | null>(null);
+  const userId = getUserIdFromToken();
 
   useEffect(() => {
     let mounted = true;
@@ -155,9 +159,70 @@ function VideoHome() {
     return () => { mounted = false; };
   }, []);
 
+  async function handleTestCall(incarceratedPersonId: string) {
+    setTestCallLoading(true);
+    try {
+      const token = localStorage.getItem('token') ?? '';
+      const res = await fetch('/api/video/test/create-call', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ incarceratedPersonId }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error?.message ?? 'Failed to create test call');
+
+      // Join the call immediately
+      const joinRes = await fetch(`/api/video/join/${json.data.id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      });
+      const joinJson = await joinRes.json();
+      if (!joinJson.success) throw new Error(joinJson.error?.message ?? 'Failed to join call');
+
+      setActiveTestCall({ callId: json.data.id, scheduledEnd: joinJson.data.scheduledEnd });
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setTestCallLoading(false);
+    }
+  }
+
+  if (activeTestCall) {
+    return (
+      <VideoCallRoom
+        callId={activeTestCall.callId}
+        userId={userId}
+        userRole="family"
+        scheduledEnd={activeTestCall.scheduledEnd}
+        signalingUrl={SIGNALING_URL}
+        onExit={() => setActiveTestCall(null)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold text-gray-900">{familyMessages.index.title}</h1>
+
+      {/* TEST MODE: instant call buttons */}
+      {IS_TEST_MODE && contacts && contacts.length > 0 && (
+        <div className="border-2 border-dashed border-yellow-400 rounded-lg p-4 bg-yellow-50">
+          <p className="text-sm font-semibold text-yellow-800 mb-2">TEST MODE — Start an instant call</p>
+          <div className="space-y-2">
+            {contacts.map((c) => (
+              <Button
+                key={c.id}
+                fullWidth
+                variant="primary"
+                disabled={testCallLoading}
+                onClick={() => handleTestCall(c.incarceratedPerson.id)}
+              >
+                {testCallLoading ? 'Creating...' : `Call ${c.incarceratedPerson.firstName} ${c.incarceratedPerson.lastName} NOW`}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Dev stub bypass block */}
       <div className="mb-4">
