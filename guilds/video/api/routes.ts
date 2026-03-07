@@ -824,4 +824,64 @@ videoRouter.post('/cancel-call/:callId', requireAuth, requireRole('family'), asy
   }
 });
 
+// GET /api/video/past-calls — completed/missed/terminated calls for the authenticated user
+videoRouter.get('/past-calls', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const role = req.user!.role;
+    const { page = '1', pageSize = '20' } = req.query;
+
+    const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize));
+    const take = parseInt(String(pageSize));
+
+    const where: Record<string, unknown> = {
+      status: { in: ['completed', 'missed', 'terminated_by_admin'] },
+    };
+
+    if (role === 'family') {
+      where.familyMemberId = userId;
+    } else if (role === 'incarcerated') {
+      where.incarceratedPersonId = userId;
+    } else {
+      const { facilityId } = req.query;
+      if (facilityId) where.facilityId = String(facilityId);
+    }
+
+    const [calls, total] = await Promise.all([
+      prisma.videoCall.findMany({
+        where,
+        include: {
+          incarceratedPerson: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          familyMember: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+        },
+        orderBy: { scheduledStart: 'desc' },
+        skip,
+        take,
+      }),
+      prisma.videoCall.count({ where }),
+    ]);
+
+    res.json({
+      success: true,
+      data: calls,
+      pagination: {
+        page: parseInt(String(page)),
+        pageSize: take,
+        total,
+        totalPages: Math.ceil(total / take),
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching past calls:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch past calls',
+    }));
+  }
+});
+
 export default videoRouter;

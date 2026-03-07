@@ -56,6 +56,24 @@ export const familyMessages = {
       denied: 'Denied',
     } as Record<string, string>,
   },
+  past: {
+    title: 'Past Calls',
+    loadErrorFallback: 'Failed to load past calls',
+    noPastCalls: 'No past calls found.',
+    durationLabel: 'Duration',
+    durationSeconds: (s: number) => `${Math.floor(s / 60)}m ${s % 60}s`,
+    statusLabels: {
+      completed: 'Completed',
+      missed: 'Missed',
+      terminated_by_admin: 'Ended by Staff',
+    } as Record<string, string>,
+    endedByLabels: {
+      incarcerated: 'Ended by resident',
+      family: 'Ended by you',
+      time_limit: 'Time limit reached',
+      admin: 'Ended by staff',
+    } as Record<string, string>,
+  },
   locale: {
     dateTime: 'en-US',
   },
