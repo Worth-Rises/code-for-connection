@@ -63,9 +63,13 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
 
     socketRef.current?.emit('call-ended', { roomId: callId, reason });
     socketRef.current?.disconnect();
+    socketRef.current = null;
+
     peerRef.current?.close();
+    peerRef.current = null;
 
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
+    localStreamRef.current = null;
 
     if (endTimerRef.current) clearTimeout(endTimerRef.current);
     if (countdownRef.current) clearInterval(countdownRef.current);
@@ -75,12 +79,12 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
 
   // ─── Media & Socket Initialization ───────────────────────────────────────
   useEffect(() => {
-    let isSubscribed = true;
+    let cancelled = false;
 
     async function init() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        if (!isSubscribed) {
+        if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
@@ -90,11 +94,13 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
         connectSocket(stream);
       } catch (err) {
         console.error('Failed to get local media:', err);
-        setConnectionState('ERROR');
+        if (!cancelled) setConnectionState('ERROR');
       }
     }
 
     function connectSocket(stream: MediaStream) {
+      if (cancelled) return;
+
       const socket = io(signalingUrl, { transports: ['websocket'] });
       socketRef.current = socket;
 
@@ -113,34 +119,46 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
       }
 
       socket.on('connect', () => {
+        if (cancelled) { socket.disconnect(); return; }
         socket.emit('join-room', { roomId: callId, userId, userRole, callType: 'video', scheduledEnd });
         setConnectionState('WAITING_FOR_PEER');
       });
 
       socket.on('room-joined', (data: { roomId: string; participants: any[] }) => {
         if (data.participants.length > 0) {
-          // You joined second, wait for their offer.
           setConnectionState('CONNECTING');
         }
       });
 
       socket.on('user-joined', async () => {
-        // You were here first, someone joined. Initialize call.
+        if (cancelled) return;
+        // Guard: only create one peer connection
+        if (peerRef.current) return;
         setConnectionState('CONNECTING');
         await createPeerAndOffer(socket, stream);
       });
 
       socket.on('offer', async (data: { sdp: RTCSessionDescriptionInit }) => {
+        if (cancelled) return;
+        // Guard: only handle one offer
+        if (peerRef.current) return;
         setConnectionState('CONNECTING');
         await handleOffer(socket, stream, data.sdp);
       });
 
       socket.on('answer', async (data: { sdp: RTCSessionDescriptionInit }) => {
-        await peerRef.current?.setRemoteDescription(data.sdp);
+        if (!peerRef.current) return;
+        await peerRef.current.setRemoteDescription(data.sdp);
+        applyRemoteTracks(peerRef.current);
       });
 
       socket.on('ice-candidate', async (data: { candidate: RTCIceCandidateInit }) => {
-        await peerRef.current?.addIceCandidate(data.candidate);
+        if (!peerRef.current) return;
+        try {
+          await peerRef.current.addIceCandidate(data.candidate);
+        } catch (e) {
+          // ICE candidate errors are non-fatal
+        }
       });
 
       socket.on('peer-connected', () => setConnectionState('CONNECTED'));
@@ -150,17 +168,38 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
     init();
 
     return () => {
-      isSubscribed = false;
-      if (!endedRef.current) {
-        socketRef.current?.disconnect();
-        localStreamRef.current?.getTracks().forEach((t) => t.stop());
-        if (endTimerRef.current) clearTimeout(endTimerRef.current);
-        if (countdownRef.current) clearInterval(countdownRef.current);
-      }
+      cancelled = true;
+      // Full cleanup — critical for React StrictMode double-mount
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+
+      peerRef.current?.close();
+      peerRef.current = null;
+
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+
+      if (endTimerRef.current) clearTimeout(endTimerRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── WebRTC helpers ──────────────────────────────────────────────────────
+
+  /** Build a MediaStream from pc.getReceivers() — works even when event.streams[0] is empty */
+  function applyRemoteTracks(pc: RTCPeerConnection) {
+    const stream = new MediaStream();
+    for (const receiver of pc.getReceivers()) {
+      if (receiver.track) {
+        stream.addTrack(receiver.track);
+      }
+    }
+    if (stream.getTracks().length > 0) {
+      setRemoteStream(stream);
+      setConnectionState('CONNECTED');
+    }
+  }
+
   async function createPeerAndOffer(socket: Socket, stream: MediaStream) {
     const pc = createPeerConnection(socket);
     peerRef.current = pc;
@@ -179,6 +218,7 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
     stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
     await pc.setRemoteDescription(sdp);
+    applyRemoteTracks(pc);
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     socket.emit('answer', { sdp: answer, roomId: callId });
@@ -197,10 +237,11 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
       if (e.candidate) socket.emit('ice-candidate', { candidate: e.candidate, roomId: callId });
     };
 
-    pc.ontrack = (e) => setRemoteStream(e.streams[0]);
+    pc.ontrack = () => applyRemoteTracks(pc);
 
     pc.oniceconnectionstatechange = () => {
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        applyRemoteTracks(pc);
         setConnectionState('CONNECTED');
         socket.emit('peer-connected', { roomId: callId });
       } else if (['disconnected', 'failed'].includes(pc.iceConnectionState)) {
