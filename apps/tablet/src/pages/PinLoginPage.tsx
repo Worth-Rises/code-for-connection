@@ -1,26 +1,58 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button, Card } from '@openconnect/ui';
+import { useAuth } from '../context/AuthContext';
+
+interface Facility {
+  id: string;
+  name: string;
+}
 
 export default function PinLoginPage() {
   const [pin, setPin] = useState('');
+  const [facilityId, setFacilityId] = useState('');
+  const [facilities, setFacilities] = useState<Facility[]>([]);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { pinLogin } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    fetch('/api/admin/facilities')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.data?.length > 0) {
+          setFacilities(data.data);
+          setFacilityId(data.data[0].id);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handlePinInput = (digit: string) => {
-    if (pin.length < 4) {
-      setPin(pin + digit);
-    }
+    if (pin.length < 4) setPin(pin + digit);
   };
-
-  const handleBackspace = () => setPin(pin.slice(0, -1));
-  const handleClear = () => setPin('');
 
   const handleSubmit = async () => {
     if (pin.length !== 4) {
       setError('Please enter a 4-digit PIN');
       return;
     }
+    if (!facilityId) {
+      setError('Please select a facility');
+      return;
+    }
     setError('');
-    console.log('Logging in with PIN:', pin);
+    setLoading(true);
+    try {
+      await pinLogin(pin, facilityId);
+      navigate('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed');
+      setPin('');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -35,6 +67,25 @@ export default function PinLoginPage() {
           {error && (
             <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
               {error}
+            </div>
+          )}
+
+          {facilities.length > 0 && (
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Facility
+              </label>
+              <select
+                value={facilityId}
+                onChange={(e) => setFacilityId(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {facilities.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 
@@ -64,7 +115,7 @@ export default function PinLoginPage() {
               </button>
             ))}
             <button
-              onClick={handleClear}
+              onClick={() => setPin('')}
               className="h-20 text-lg font-medium bg-gray-100 hover:bg-gray-200 rounded-xl"
             >
               Clear
@@ -76,14 +127,20 @@ export default function PinLoginPage() {
               0
             </button>
             <button
-              onClick={handleBackspace}
+              onClick={() => setPin(pin.slice(0, -1))}
               className="h-20 text-2xl bg-gray-100 hover:bg-gray-200 rounded-xl"
             >
               ⌫
             </button>
           </div>
 
-          <Button onClick={handleSubmit} fullWidth size="lg" disabled={pin.length !== 4}>
+          <Button
+            onClick={handleSubmit}
+            fullWidth
+            size="lg"
+            loading={loading}
+            disabled={pin.length !== 4 || !facilityId}
+          >
             Login
           </Button>
         </Card>

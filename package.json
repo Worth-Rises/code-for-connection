@@ -15,6 +15,7 @@
     "dev:api": "npm run dev -w @openconnect/api-gateway",
     "dev:signaling": "npm run dev -w @openconnect/signaling",
     "dev:web": "npm run dev -w @openconnect/web",
+    "dev:tablet": "npm run dev -w @openconnect/tablet",
     "build": "npm run build -w @openconnect/shared && npm run build -w @openconnect/ui && npm run build --workspaces --if-present",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
