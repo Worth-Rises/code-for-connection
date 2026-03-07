@@ -22,6 +22,10 @@ const MessagingFamily = lazy(() => import('../../../guilds/messaging/ui/family')
 const MessagingAdmin = lazy(() => import('../../../guilds/messaging/ui/admin'));
 
 const AdminDashboard = lazy(() => import('../../../guilds/admin/ui'));
+const ContactsPage = lazy(() => import('../../../guilds/admin/ui/pages/ContactsPage'));
+const BlockedNumbersPage = lazy(() => import('../../../guilds/admin/ui/pages/BlockedNumbersPage'));
+const UsersPage = lazy(() => import('../../../guilds/admin/ui/pages/UsersPage'));
+const FacilityConfigPage = lazy(() => import('../../../guilds/admin/ui/pages/FacilityConfigPage'));
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
   const { user, loading } = useAuth();
@@ -128,6 +132,10 @@ function App() {
           }
         >
           <Route index element={<AdminDashboard />} />
+          <Route path="contacts" element={<ContactsPage />} />
+          <Route path="blocked-numbers" element={<BlockedNumbersPage />} />
+          <Route path="users" element={<UsersPage />} />
+          <Route path="facility" element={<FacilityConfigPage />} />
           <Route path="voice/*" element={<VoiceAdmin />} />
           <Route path="video/*" element={<VideoAdmin />} />
           <Route path="messaging/*" element={<MessagingAdmin />} />

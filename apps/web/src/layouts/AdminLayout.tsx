@@ -20,6 +20,15 @@ export default function AdminLayout() {
       ],
     },
     {
+      title: 'Management',
+      items: [
+        { path: '/admin/contacts', label: 'Contacts', icon: '👥' },
+        { path: '/admin/users', label: 'Users', icon: '👤' },
+        { path: '/admin/blocked-numbers', label: 'Blocked Numbers', icon: '🚫' },
+        { path: '/admin/facility', label: 'Facility Config', icon: '🏢' },
+      ],
+    },
+    {
       title: 'Communication',
       items: [
         { path: '/admin/voice', label: 'Voice Calls', icon: '📞' },
