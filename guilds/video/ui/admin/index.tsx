@@ -2,6 +2,8 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Card } from '@openconnect/ui';
 
+import { ApprovalRequest } from './ApprovalRequest';
+
 function VideoDashboard() {
   return (
     <div className="space-y-6">
@@ -30,10 +32,11 @@ function VideoDashboard() {
 
       <Card padding="lg">
         <h2 className="text-lg font-semibold mb-4">Pending Approval Requests</h2>
-        <div className="text-center py-8 text-gray-500">
+        {/* <div className="text-center py-8 text-gray-500">
           <p>Video Guild will implement the approval queue here.</p>
           <p className="text-sm mt-2">Features: Approve, deny, view details</p>
-        </div>
+        </div> */}
+        <ApprovalRequest name='Jane Doe' onApprove={() => {}} onDeny={() => {}}></ApprovalRequest>
       </Card>
 
       <Card padding="lg">
