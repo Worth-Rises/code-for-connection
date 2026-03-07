@@ -8,611 +8,555 @@
 
 ## How to Read This Document
 
-Each ticket has:
-- **ID**: `[LAYER]-[NUMBER]` (e.g., `DATA-001`, `BE-003`, `FE-012`, `QA-007`)
+Each ticket is a **full-stack feature slice** organized by API endpoint. The person who picks up a ticket owns the entire vertical: schema changes, backend endpoint, frontend UI, and tests.
+
 - **Priority**: P0 (must ship), P1 (should ship), P2 (nice to have)
-- **Depends on**: tickets that must be completed first
-- **Spec ref**: section of the design spec that defines this
+- **Wireframe ref**: ASCII wireframe file in `docs/mockups/`
+- **Spec ref**: section of the design spec
 
 ---
 
-## DATA — Schema & Migrations
+## TICKET-01: Deactivate Resident
 
-### DATA-001: Add deactivation and release fields to IncarceratedPerson
+**Endpoint:** `POST /api/admin/residents/:id/deactivate`
 **Priority:** P0
-**Depends on:** —
-**Spec ref:** Section 4, IncarceratedPerson modifications
+**Wireframe:** `02-residents.md` (Screen D: Deactivate Resident Modal)
+**Spec ref:** Section 8 Residents; Journey J10
 
-Add fields to `IncarceratedPerson`:
-- `deactivatedBy` (String?, FK → AdminUser)
-- `deactivationReason` (String?)
-- `releaseReason` (String?)
-- `releasedBy` (String?, FK → AdminUser)
-- `lastContactChangeAt` (DateTime?)
+### What this feature does
 
-**Acceptance:**
-- `npx prisma@5 validate` passes
-- Migration runs cleanly on empty + seeded DB
-- Existing rows unaffected (all new fields nullable)
+Admin clicks [Deactivate] on a resident profile → modal with required reason → resident status set to `deactivated` → all communication access removed → audit logged.
 
----
+### Schema
 
-### DATA-002: Add contactChangeFrequencyDays to HousingUnitType
-**Priority:** P1
-**Depends on:** —
-**Spec ref:** Section 4, HousingUnitType modifications
-
-Add field:
-- `contactChangeFrequencyDays` (Int?, nullable = no limit)
-
-Seed data: set `general` to 90 days, `minimum` to 60 days, `restricted` to 120 days, `segregated` to null (admin-only changes).
-
-**Acceptance:**
-- `npx prisma@5 validate` passes
-- Seed data includes values for all 3 existing HousingUnitTypes
-
----
-
-### DATA-003: Add address field to FamilyMember
-**Priority:** P1
-**Depends on:** —
-**Spec ref:** Section 4, FamilyMember modifications
-
-Add field:
-- `address` (String?, nullable)
-
-**Acceptance:**
-- `npx prisma@5 validate` passes
-
----
-
-### DATA-004: Add relations for deactivatedBy/releasedBy on AdminUser
-**Priority:** P0
-**Depends on:** DATA-001
-**Spec ref:** Section 4
-
-Add reverse relations on AdminUser:
-- `deactivatedResidents IncarceratedPerson[] @relation("DeactivatedByAdmin")`
-- `releasedResidents IncarceratedPerson[] @relation("ReleasedByAdmin")`
-
-**Acceptance:**
-- `npx prisma@5 validate` passes
-- Relations queryable in both directions
-
----
-
-## BE — Backend API Endpoints
-
-### BE-001: POST /api/admin/residents/:id/deactivate
-**Priority:** P0
-**Depends on:** DATA-001
-**Spec ref:** Section 8, Residents; Journey J10
-
-Endpoint to deactivate a resident:
-- Requires `reason` in request body
-- Sets `status` → `deactivated`, records `deactivatedBy`, `deactivationReason`
-- Audit logs action `resident_status_changed`
-- Returns updated resident
-
-**Validation:**
-- 400 if resident already deactivated
-- 400 if `reason` empty
-- 403 if admin lacks permission
-
-**Acceptance:**
-- Resident status changes to `deactivated`
-- Audit log entry created
-- Subsequent comms attempts by this resident are blocked by existing status checks
-
----
-
-### BE-002: POST /api/admin/residents/:id/release
-**Priority:** P0
-**Depends on:** DATA-001
-**Spec ref:** Section 8, Residents; Journey J11
-
-Endpoint to process a release:
-- Requires `reason` in request body, optional `releaseDate` (defaults to now)
-- Sets `status` → `released`, records `releasedAt`, `releasedBy`, `releaseReason`
-- Audit logs action `resident_status_changed`
-
-**Validation:**
-- 400 if resident already released
-- 400 if `reason` empty
-
-**Acceptance:**
-- Resident status changes to `released`
-- `releasedAt` is set
-- Audit log entry created
-
----
-
-### BE-003: POST /api/admin/residents/:id/reset-pin
-**Priority:** P0
-**Depends on:** —
-**Spec ref:** Section 8, Residents; Journey J8
-
-Endpoint to generate a new 4-digit PIN:
-- Generates random 4-digit PIN
-- Hashes and stores it (or stores plaintext if existing pattern does so — match codebase)
-- Returns `{ newPin }` in response (one-time display)
-- Audit logs action `resident_status_changed` (or new `pin_reset` action)
-
-**Validation:**
-- 404 if resident not found
-- 403 if admin lacks permission
-
-**Acceptance:**
-- New PIN replaces old PIN
-- Old PIN no longer works for auth
-- Response includes the new PIN exactly once
-
----
-
-### BE-004: PATCH /api/admin/contacts/:id (edit contact info)
-**Priority:** P1
-**Depends on:** DATA-003
-**Spec ref:** Section 8, Contacts; Journey J14
-
-Endpoint to edit contact (FamilyMember) info:
-- Accepts optional fields: `phone`, `email`, `address`, `relationship`
-- Updates FamilyMember record and/or ApprovedContact relationship field
-- Updates `lastContactChangeAt` on the resident
-- Audit logs action `contact_approved` (or new `contact_edited` action)
-
-**Validation:**
-- Check contact change frequency eligibility first (see BE-005)
-- 400 if no fields provided
-- 409 if contact change frequency not met
-
-**Acceptance:**
-- Contact info updated
-- `lastContactChangeAt` updated on resident
-- Audit log entry created
-
----
-
-### BE-005: GET /api/admin/contacts/change-eligibility/:residentId
-**Priority:** P1
-**Depends on:** DATA-002
-**Spec ref:** Section 8, Contacts; Journey J60
-
-Returns whether a resident's contact list can be modified:
-- Looks up resident's HousingUnitType → `contactChangeFrequencyDays`
-- Compares `lastContactChangeAt` + frequency against current date
-- Returns `{ eligible: boolean, nextEligibleDate?: string, daysSinceLastChange: number }`
-
-**Acceptance:**
-- Returns `eligible: true` if no frequency set (null)
-- Returns `eligible: true` if enough days have passed
-- Returns `eligible: false` with `nextEligibleDate` if too recent
-
----
-
-### BE-006: POST /api/admin/residents/bulk-import
-**Priority:** P2
-**Depends on:** —
-**Spec ref:** Section 8, Residents; Journey J58
-
-CSV upload endpoint for bulk user creation:
-- Accepts `multipart/form-data` with CSV file
-- Required columns: `first_name`, `last_name`, `external_id`, `facility_id`, `housing_unit_id`
-- Validates each row: facility exists, housing unit exists, external_id not duplicate
-- Auto-generates PIN for each imported resident
-- Returns `{ imported: number, skipped: number, errors: { row, field, message }[] }`
-- Single audit log entry with filename, imported count
-
-**Validation:**
-- 400 if file not CSV
-- 400 if required columns missing
-- Max 500 rows per upload
-- Agency admin only
-
-**Acceptance:**
-- Valid rows create IncarceratedPerson records with auto-generated PINs
-- Invalid rows returned in error array with row number and reason
-- Duplicate external_ids skipped (not errored)
-- Audit log records bulk import action
-
----
-
-### BE-007: Add manual refresh support to active call endpoints
-**Priority:** P0
-**Depends on:** —
-**Spec ref:** Section 8, Voice/Video Monitoring; Journey J59
-
-No new endpoints needed — the existing `GET /api/admin/monitoring/voice/active` and `GET /api/admin/monitoring/video/active` endpoints already support this. This ticket is to verify they work correctly when called on-demand (not just via polling) and return a `timestamp` field for "Last updated" display.
-
-**Acceptance:**
-- Response includes `timestamp` or `fetchedAt` field
-- Endpoint responds in <500ms under normal load
-
----
-
-### BE-008: Integration endpoint stubs for case management system
-**Priority:** P2
-**Depends on:** DATA-001
-**Spec ref:** Requirements #8, #9 from original scope
-
-Create stub endpoints for future case management integration:
-```
-POST /api/admin/integration/sync-residents    → accepts array of resident records from external system
-POST /api/admin/integration/sync-housing      → accepts housing assignment updates
+Add to `IncarceratedPerson`:
+```prisma
+deactivatedBy        String?    @map("deactivated_by")
+deactivationReason   String?    @map("deactivation_reason")
 ```
 
-MVP: stub routes that return 501 Not Implemented with a message. These are placeholders for hackathon demo; real integration requires external system specs.
+Add reverse relation on `AdminUser`:
+```prisma
+deactivatedResidents IncarceratedPerson[] @relation("DeactivatedByAdmin")
+```
 
-**Acceptance:**
-- Routes registered and return 501
-- Response body: `{ message: "Integration endpoint reserved for case management system" }`
+Run: `DATABASE_URL="..." npx prisma@5 migrate dev --name add-deactivation-fields`
+
+### Backend
+
+Route: `guilds/admin/api/residents.routes.ts`
+
+```
+POST /api/admin/residents/:id/deactivate
+  Body: { reason: string }
+  Response: updated IncarceratedPerson
+```
+
+Logic:
+- Validate resident exists and is not already `deactivated`
+- Set `status` → `deactivated`, `deactivatedBy` → admin ID, `deactivationReason` → reason
+- Create audit log entry: `resident_status_changed`
+- Return updated resident
+
+Errors:
+- `400` — already deactivated, or empty reason
+- `403` — admin lacks permission (requires `facility_admin` or `agency_admin`)
+- `404` — resident not found
+
+### Frontend
+
+Location: `guilds/admin/ui/residents/ResidentProfilePage.tsx`
+
+Components:
+- **[Deactivate] button** in resident profile header — only visible when status is `active` or `transferred`
+- **DeactivateResidentModal** — lists consequences ("Communication access will be removed. Records are preserved. This is reversible."), required reason textarea, [Cancel] / [Confirm Deactivation]
+- On success: update profile status badge → "Deactivated", show success toast
+
+### Tests / QA
+
+- [ ] Deactivated resident cannot: place voice calls, join video calls, send messages, log in via tablet
+- [ ] Historical data (calls, messages, contacts) still visible to admins
+- [ ] Audit log entry contains admin ID, resident ID, reason, timestamp
+- [ ] PIN value does NOT appear in audit log
+- [ ] `401` without auth, `403` with wrong role
 
 ---
 
-## FE — Frontend Components & Pages
+## TICKET-02: Release Resident
 
-### FE-001: ResidentProfilePage — PIN management section
+**Endpoint:** `POST /api/admin/residents/:id/release`
 **Priority:** P0
-**Depends on:** BE-003
-**Spec ref:** Section 6, ResidentProfilePage; Wireframe 02-residents
+**Wireframe:** `02-residents.md` (Screen E: Release Resident Modal)
+**Spec ref:** Section 8 Residents; Journey J11
 
-Add PIN management section to ResidentProfilePage:
-- Shows "PIN: ••••" (masked) with "Set: [date]"
-- [Reset PIN] button opens ResetPinModal
-- ResetPinModal: warning text, [Generate New PIN] button
-- On success: displays new PIN in highlighted box, one-time view
-- Copies PIN to clipboard on click
+### What this feature does
 
-**Acceptance:**
-- PIN section visible on resident profile
-- Reset generates new PIN and displays it
-- Modal warns about communicating PIN to resident
+Admin clicks [Release] on a resident profile → modal with required reason + release date → resident status set to `released` → all communication access removed → audit logged.
+
+### Schema
+
+Add to `IncarceratedPerson`:
+```prisma
+releaseReason   String?    @map("release_reason")
+releasedBy      String?    @map("released_by")
+```
+
+Note: `releasedAt` and `status` (with `released` enum value) already exist in schema.
+
+Add reverse relation on `AdminUser`:
+```prisma
+releasedResidents IncarceratedPerson[] @relation("ReleasedByAdmin")
+```
+
+Run migration alongside TICKET-01 or separately.
+
+### Backend
+
+Route: `guilds/admin/api/residents.routes.ts`
+
+```
+POST /api/admin/residents/:id/release
+  Body: { reason: string, releaseDate?: string }
+  Response: updated IncarceratedPerson
+```
+
+Logic:
+- Validate resident exists and is not already `released`
+- Set `status` → `released`, `releasedAt` → releaseDate or now(), `releasedBy` → admin ID, `releaseReason` → reason
+- Create audit log entry: `resident_status_changed`
+- Return updated resident
+
+Errors:
+- `400` — already released, or empty reason
+- `403` — requires `facility_admin` or `agency_admin`
+- `404` — resident not found
+
+### Frontend
+
+Location: `guilds/admin/ui/residents/ResidentProfilePage.tsx`
+
+Components:
+- **[Release] button** in resident profile header — only visible when status is `active`
+- **ReleaseResidentModal** — release date picker (default: today), required reason textarea, [Cancel] / [Confirm Release]
+- On success: update profile to show "Released" status badge with release date, show success toast
+
+### Tests / QA
+
+- [ ] Released resident blocked from all communication channels (same checks as TICKET-01)
+- [ ] `releasedAt` timestamp recorded
+- [ ] Released residents appear under "Released" filter on ResidentListPage
+- [ ] Released residents excluded from active counts on DashboardPage
+- [ ] Audit log entry created with admin, reason, release date
+- [ ] `401` without auth, `403` with wrong role
 
 ---
 
-### FE-002: ResidentProfilePage — Deactivate action
+## TICKET-03: Assign / Reset PIN
+
+**Endpoint:** `POST /api/admin/residents/:id/reset-pin`
 **Priority:** P0
-**Depends on:** BE-001
-**Spec ref:** Section 6, DeactivateResidentModal; Journey J10
+**Wireframe:** `02-residents.md` (Screen C: Reset PIN Modal)
+**Spec ref:** Section 8 Residents; Journey J8
 
-Add [Deactivate] button to resident profile header:
-- Opens DeactivateResidentModal
-- Modal lists consequences (comms access removed, records preserved, reversible)
-- Reason textarea (required)
-- On confirm: calls BE-001, updates profile status badge, shows toast
+### What this feature does
 
-**Acceptance:**
-- Button only visible for `active` or `transferred` residents
-- Modal requires reason before enabling confirm
-- Profile updates to show "Deactivated" status badge after action
+Admin views a resident's PIN section → clicks [Reset PIN] → modal generates new 4-digit PIN → new PIN displayed once → admin communicates PIN to resident out-of-band.
+
+### Schema
+
+No changes needed — `IncarceratedPerson.pin` (String) already exists.
+
+### Backend
+
+Route: `guilds/admin/api/residents.routes.ts`
+
+```
+POST /api/admin/residents/:id/reset-pin
+  Body: { }
+  Response: { newPin: string }
+```
+
+Logic:
+- Generate random 4-digit PIN (check existing pattern — if PINs are hashed, hash the new one before storing)
+- Store new PIN, overwriting old
+- Create audit log entry: `pin_reset` (or `resident_status_changed`) — **log that a reset happened but NEVER log the PIN value**
+- Return `{ newPin }` — this is the only time the plaintext PIN is available
+
+Errors:
+- `403` — requires `manage_contacts` or facility admin role
+- `404` — resident not found
+
+### Frontend
+
+Location: `guilds/admin/ui/residents/ResidentProfilePage.tsx`
+
+Components:
+- **PIN section** on resident profile: shows "PIN: ••••" (masked) with "Set: [date]"
+- **[Reset PIN] button** → opens **ResetPinModal**
+- **ResetPinModal**: warning text ("This will generate a new PIN. The old PIN will stop working immediately. You must communicate the new PIN to the resident."), [Generate New PIN] button
+- On success: display new PIN in highlighted box (large, monospace font), [Copy to Clipboard] button — **one-time view, not retrievable after closing**
+
+### Tests / QA (Security-Critical)
+
+- [ ] New PIN works for tablet auth immediately after reset
+- [ ] Old PIN fails tablet auth immediately after reset
+- [ ] PIN never appears in: server logs, audit log `details`, any GET response
+- [ ] Audit log records WHO reset but NOT the PIN value
+- [ ] PIN returned exactly once in the POST response, never cached
+- [ ] `401` without auth, `403` with wrong role
 
 ---
 
-### FE-003: ResidentProfilePage — Release action
-**Priority:** P0
-**Depends on:** BE-002
-**Spec ref:** Section 6, ReleaseResidentModal; Journey J11
+## TICKET-04: Edit Contact Info
 
-Add [Release] button to resident profile header:
-- Opens ReleaseResidentModal
-- Release date input (default: today)
-- Reason textarea (required)
-- On confirm: calls BE-002, updates profile
-
-**Acceptance:**
-- Button only visible for `active` residents
-- Modal requires reason
-- Profile shows "Released" status with release date after action
-
----
-
-### FE-004: ContactListPage — Edit Contact modal
+**Endpoint:** `PATCH /api/admin/contacts/:id`
 **Priority:** P1
-**Depends on:** BE-004, BE-005
-**Spec ref:** Section 6, EditContactModal; Journey J14
+**Wireframe:** `03-contacts.md` (Screen E: Edit Contact Modal)
+**Spec ref:** Section 8 Contacts; Journey J14
 
-Add [Edit] action button to approved contacts table:
-- Before opening modal, check change eligibility (BE-005)
-- If not eligible: show inline error with next eligible date
-- If eligible: open EditContactModal with current values
-- Fields: phone, email, address, relationship
-- On save: calls BE-004, updates table row, shows toast
+### What this feature does
 
-**Acceptance:**
-- [Edit] button visible on approved contacts
-- Frequency check prevents editing if within cooldown period
-- Saved changes reflect immediately in the table
+Admin clicks [Edit] on an approved contact → modal pre-filled with current info → admin updates phone/email/address/relationship → changes saved → audit logged.
+
+### Schema
+
+Add to `FamilyMember`:
+```prisma
+address   String?
+```
+
+Add to `IncarceratedPerson` (if not already added by TICKET-05):
+```prisma
+lastContactChangeAt   DateTime?   @map("last_contact_change_at")
+```
+
+### Backend
+
+Route: `guilds/admin/api/contacts.routes.ts`
+
+```
+PATCH /api/admin/contacts/:id
+  Body: { phone?: string, email?: string, address?: string, relationship?: string }
+  Response: updated FamilyMember + ApprovedContact
+```
+
+Logic:
+- Validate at least one field is provided
+- **Check contact change eligibility** before allowing edit — call the same logic as TICKET-05's endpoint. If not eligible, return `409` with `nextEligibleDate`
+- Update `FamilyMember` fields (phone, email, address) and/or `ApprovedContact.relationship`
+- Set `lastContactChangeAt` = now() on the resident
+- Create audit log entry: `contact_edited` with old → new diff
+- Return updated records
+
+Errors:
+- `400` — no fields provided
+- `403` — requires `manage_contacts` permission
+- `409` — contact change frequency not met (include `nextEligibleDate` in response)
+
+### Frontend
+
+Location: `guilds/admin/ui/contacts/ContactListPage.tsx`
+
+Components:
+- **[Edit] button** on approved contacts in the Approved tab — disabled with tooltip if in cooldown window
+- **EditContactModal**: fields for First Name (read-only), Last Name (read-only), Phone, Email, Address, Relationship (dropdown), [Cancel] / [Save Changes]
+- On `409` response: show inline error "Contact changes locked until [date]"
+- On success: update table row, show toast
+
+### Tests / QA
+
+- [ ] Edit saves correctly and reflects in table immediately
+- [ ] Contact change frequency enforcement: edit blocked if within cooldown period (API-level, not just UI)
+- [ ] Audit log captures old → new values for each changed field
+- [ ] Only `manage_contacts` permission holders see the [Edit] button
+- [ ] `401` / `403` / `409` responses work correctly
 
 ---
 
-### FE-005: ContactListPage — Change frequency banner
+## TICKET-05: Contact Change Frequency Enforcement
+
+**Endpoint:** `GET /api/admin/contacts/change-eligibility/:residentId`
 **Priority:** P1
-**Depends on:** BE-005
-**Spec ref:** Journey J60
+**Wireframe:** `03-contacts.md` (Screen A: Contact Change Frequency banner)
+**Spec ref:** Section 8 Contacts; Journey J60
 
-Show info banner at top of ContactListPage:
-- "Contact list changes allowed every [N] days. Last changed: [date]. Next eligible: [date]."
-- If within cooldown: banner is amber, [Edit] and [Remove] buttons disabled
-- If eligible: banner is green or hidden
+### What this feature does
 
-**Acceptance:**
-- Banner displays correct dates from BE-005 response
-- Buttons disabled during cooldown period with tooltip explanation
+System enforces a minimum number of days between contact list changes (add/edit/remove) per resident. A banner at the top of the contacts page shows eligibility status. [Edit] and [Remove] buttons are disabled during cooldown.
+
+### Schema
+
+Add to `HousingUnitType`:
+```prisma
+contactChangeFrequencyDays   Int?   @map("contact_change_frequency_days")
+```
+
+Add to `IncarceratedPerson` (if not already added by TICKET-04):
+```prisma
+lastContactChangeAt   DateTime?   @map("last_contact_change_at")
+```
+
+Seed data: `general` → 90 days, `minimum` → 60 days, `restricted` → 120 days, `segregated` → null (admin-only, no limit).
+
+### Backend
+
+Route: `guilds/admin/api/contacts.routes.ts`
+
+```
+GET /api/admin/contacts/change-eligibility/:residentId
+  Response: { eligible: boolean, nextEligibleDate?: string, daysSinceLastChange: number, frequencyDays: number | null }
+```
+
+Logic:
+- Look up resident → housing unit → housing unit type → `contactChangeFrequencyDays`
+- If `contactChangeFrequencyDays` is null → return `eligible: true` (no restriction)
+- Compare `lastContactChangeAt` + `contactChangeFrequencyDays` against today
+- Return eligibility status with computed dates
+
+### Frontend
+
+Location: `guilds/admin/ui/contacts/ContactListPage.tsx`
+
+Components:
+- **Info banner** at top of contact list (below tabs, above table):
+  - Eligible: green — "Contact list changes are available."
+  - Not eligible: amber — "Contact list changes allowed every [N] days. Last changed: [date]. Next eligible: [date]."
+  - When not eligible: [Edit] and [Remove] buttons render as disabled with tooltip "Contact changes are locked until [date]."
+- Call the eligibility endpoint on page load and after any contact change action
+- **Agency admin override**: agency admins can bypass the cooldown (banner shows "Locked for facility admins" but buttons remain enabled for agency admins)
+
+### Tests / QA
+
+- [ ] `eligible: true` when frequency is null (unlimited)
+- [ ] `eligible: true` when enough days have passed
+- [ ] `eligible: false` with correct `nextEligibleDate` when too recent
+- [ ] Enforcement at API level — PATCH/DELETE on contacts returns `409` if ineligible (not just UI disabled)
+- [ ] Resident transferred to unit with different frequency → uses new unit's frequency
+- [ ] Banner displays correct dates
+- [ ] Agency admin can override lockout
 
 ---
 
-### FE-006: VoiceMonitoringPage — Manual refresh button
-**Priority:** P0
-**Depends on:** BE-007
-**Spec ref:** Section 6, VoiceMonitoringPage; Journey J59
+## TICKET-06: Bulk User Import
 
-Add refresh button to Active Calls tab:
-- "Active Calls (3) &nbsp; [↻ Refresh] &nbsp; Last updated: 2:45:12 PM"
-- Button calls `GET /api/admin/monitoring/voice/active`
-- Shows loading spinner on button while fetching
-- Updates "Last updated" timestamp on completion
-- Disable auto-polling if it exists; manual refresh only
-
-**Acceptance:**
-- Button visible in active calls tab header
-- Clicking refreshes the call list
-- Timestamp updates on each refresh
-- No stale data displayed
-
----
-
-### FE-007: VideoMonitoringPage — Manual refresh button
-**Priority:** P0
-**Depends on:** BE-007
-**Spec ref:** Section 6, VideoMonitoringPage; Journey J59
-
-Same pattern as FE-006 but for video active sessions tab:
-- "Active Sessions (2) &nbsp; [↻ Refresh] &nbsp; Last updated: 2:45:12 PM"
-
-**Acceptance:**
-- Same criteria as FE-006 but for video sessions
-
----
-
-### FE-008: BulkImportPage
+**Endpoint:** `POST /api/admin/residents/bulk-import`
 **Priority:** P2
-**Depends on:** BE-006
-**Spec ref:** Section 6, BulkImportPage; Journey J58; Wireframe 14-bulk-import
+**Wireframe:** `14-bulk-import.md` (Screen 1: Upload, Screen 2: Preview & Validation)
+**Spec ref:** Section 8 Residents; Journey J58
 
-New page at `/admin/bulk-import`:
-- Step 1: Upload area with drag-and-drop, [Browse Files], download template link
-- Step 2: Preview table showing parsed rows with validation status per row
-  - Valid rows: green checkmark
-  - Warning rows: amber icon with message
-  - Error rows: red X with field-level error message
-- Validation summary cards: Valid (green), Warnings (amber), Errors (red)
-- [Import N Valid Records] button (N = valid count)
-- On import: progress indicator, then success toast with count
+### What this feature does
 
-**Acceptance:**
-- CSV file uploads and parses correctly
-- Validation errors display per-row with clear messages
-- Only valid rows are imported
-- Success shows imported count
+Agency admin uploads a CSV file → system parses and validates each row → preview table shows valid/warning/error status per row → admin confirms import → valid rows create resident profiles with auto-generated PINs.
+
+### Schema
+
+No new schema changes — uses existing `IncarceratedPerson` model.
+
+### Backend
+
+Route: `guilds/admin/api/residents.routes.ts`
+
+```
+POST /api/admin/residents/bulk-import
+  Content-Type: multipart/form-data
+  Body: CSV file
+  Response: { imported: number, skipped: number, warnings: number, errors: { row: number, field: string, message: string }[] }
+```
+
+Required CSV columns: `firstName`, `lastName`, `dateOfBirth`, `inmateId`, `pin`, `housingUnitName`, `clearanceLevel`
+Optional CSV columns: `email`, `phone`, `notes`
+
+Logic:
+- Parse CSV, validate headers
+- Per-row validation:
+  - Required fields present
+  - `dateOfBirth` is valid date
+  - `housingUnitName` matches an existing HousingUnit at admin's facility
+  - `inmateId` not already in DB (warn if duplicate)
+  - `clearanceLevel` is valid enum value
+- Auto-generate 4-digit PIN for each imported resident (if `pin` column empty)
+- Insert valid rows in a transaction — rollback entire batch on DB error
+- Create single audit log entry: `bulk_import` with filename, imported count, skipped count
+
+Errors:
+- `400` — not a CSV, missing required columns, >500 rows
+- `403` — agency admin only
+
+### Frontend
+
+Location: `guilds/admin/ui/residents/BulkImportPage.tsx` (new page)
+Nav: add "📥 Bulk Import" under Operations in sidebar — agency admin only
+
+**Screen 1 — Upload:**
+- Info card: "Import resident profiles from a CSV file. Max 500 rows."
+- [Download CSV Template] link
+- Drag-and-drop zone + [Browse Files] button
+- Accepted: `.csv` only, max 2 MB
+
+**Screen 2 — Preview & Validation:**
+- File info: name, row count, size
+- 3 stat cards: ✓ Valid (green), ⚠ Warnings (amber), ✕ Errors (red)
+- Filter tabs: All / Valid / Warnings / Errors
+- Preview table: row #, name, inmate ID, DOB, unit, clearance, status
+  - `✓ Valid` — passes all checks
+  - `⚠ Warn` — importable but flagged (e.g., duplicate inmateId in DB)
+  - `✕ Error` — blocked (missing field, invalid format, unknown unit)
+- [Cancel] returns to upload, [Import N Valid Records] triggers import
+- Confirmation modal: "Import N records into [facility]? This cannot be undone."
+- Progress indicator during import, success summary on completion
+
+### Tests / QA
+
+- [ ] Valid CSV imports correctly, all rows become `IncarceratedPerson` records
+- [ ] PINs auto-generated and functional for tablet auth
+- [ ] Empty CSV → appropriate error
+- [ ] Wrong columns → column mapping error
+- [ ] >500 rows → max rows error
+- [ ] Duplicate `inmateId` within file → deduplicated
+- [ ] Existing `inmateId` in DB → warning, still importable
+- [ ] Invalid housing unit → per-row error
+- [ ] Missing required fields → per-row error
+- [ ] Non-CSV file → rejected
+- [ ] Valid rows import even when other rows have errors (no all-or-nothing on validation)
+- [ ] Transaction: if DB insert fails mid-batch, entire batch rolls back
+- [ ] Audit log: single entry with filename + counts
+- [ ] `403` for non-agency-admin
 
 ---
 
-### FE-009: Add BulkImportPage to sidebar navigation
+## TICKET-07: Manual Refresh on Active Monitoring
+
+**Endpoints:**
+- `GET /api/admin/monitoring/voice/active`
+- `GET /api/admin/monitoring/video/active`
+
+**Priority:** P0
+**Wireframe:** `05-voice-monitoring.md` (Screen 1), `06-video-monitoring.md` (Screen 3)
+**Spec ref:** Section 8 Voice/Video Monitoring; Journey J59
+
+### What this feature does
+
+Admin clicks [↻ Refresh Now] on the active calls/sessions tab → table re-fetches from the server → "Last updated" timestamp updates. Provides manual control over data freshness without waiting for auto-polling.
+
+### Schema
+
+No changes.
+
+### Backend
+
+No new endpoints — the existing `GET /active` endpoints already return the data. This ticket verifies they:
+- Respond in <500ms under normal load
+- Include a `timestamp` or `fetchedAt` field in the response (add if missing)
+- Work correctly when called on-demand (not just via interval polling)
+
+### Frontend
+
+**Voice — `guilds/admin/ui/monitoring/voice/VoiceMonitoringPage.tsx`:**
+- Add to Active Calls tab header: `Active Calls (3)  [↻ Refresh Now]  Last updated: 2:45:12 PM`
+- [↻ Refresh Now] button calls `GET /api/admin/monitoring/voice/active`
+- Show spinner on button while fetching
+- Update "Last updated" timestamp from response `fetchedAt`
+- Keep existing auto-refresh (5s interval) running alongside manual refresh
+
+**Video — `guilds/admin/ui/monitoring/video/VideoMonitoringPage.tsx`:**
+- Same pattern on Active Sessions tab: `Active Sessions (2)  [↻ Refresh Now]  Last updated: 2:45:12 PM`
+- Same behavior as voice
+
+### Tests / QA
+
+- [ ] Start a call → click refresh on admin → call appears in table
+- [ ] End a call → click refresh → call disappears from active list
+- [ ] No active calls → refresh shows empty state, not stale data
+- [ ] Rapid clicks → no duplicate requests, no UI glitches (debounce or disable during fetch)
+- [ ] "Last updated" timestamp updates on each successful refresh
+- [ ] Auto-refresh continues working alongside manual refresh
+
+---
+
+## TICKET-08: Case Management Integration Stubs
+
+**Endpoints:**
+- `POST /api/admin/integration/sync-residents`
+- `POST /api/admin/integration/sync-housing`
+
 **Priority:** P2
-**Depends on:** FE-008
-**Spec ref:** Section 3
+**Spec ref:** Requirements #8, #9 from original scope (auto-create profiles, housing assignment via integration)
 
-Add "📥 Bulk Import" link under Operations section in sidebar, or under Settings. Link to `/admin/bulk-import`. Agency admin only — hidden for facility admins.
+### What this feature does
 
-**Acceptance:**
-- Link visible for agency admins
-- Link hidden for facility admins
-- Navigates to BulkImportPage
+Placeholder endpoints for future case management system integration. Returns `501 Not Implemented` for now — reserves the route structure for when the external system specs are available.
 
----
+### Schema
 
-## QA — Security, Testing & Quality Assurance
+No changes.
 
-### QA-001: PIN reset — security review
-**Priority:** P0
-**Depends on:** BE-003, FE-001
-**Spec ref:** —
+### Backend
 
-Security review of PIN reset flow:
-- Verify new PIN is returned only once and not stored in logs
-- Verify old PIN is invalidated immediately
-- Verify PIN is not included in API responses other than the reset endpoint
-- Verify audit log records WHO reset the PIN but NOT the PIN value
-- Test: reset PIN → attempt auth with old PIN → fails
-- Test: reset PIN → attempt auth with new PIN → succeeds
+Route: `guilds/admin/api/integration.routes.ts` (new file)
 
-**Acceptance:**
-- PIN never appears in server logs, audit log details, or GET responses
-- Old PIN invalidated before new PIN is returned
+```
+POST /api/admin/integration/sync-residents
+  → 501 { message: "Integration endpoint reserved for case management system" }
 
----
+POST /api/admin/integration/sync-housing
+  → 501 { message: "Integration endpoint reserved for case management system" }
+```
 
-### QA-002: Deactivation — access removal verification
-**Priority:** P0
-**Depends on:** BE-001, FE-002
-**Spec ref:** Journey J10
+Mount in `guilds/admin/api/routes.ts`.
 
-Verify deactivated residents cannot:
-- Place voice calls (blocked at call initiation)
-- Join video calls (blocked at request/join)
-- Send messages (blocked at message creation)
-- Receive messages (sender notified)
-- Log in via tablet app (blocked at auth)
+### Frontend
 
-Test that records are preserved:
-- Call history still visible to admins
-- Message history still visible to admins
-- Contact list preserved (in case of reactivation)
+None — these are API-only stubs.
 
-**Acceptance:**
-- All 5 communication channels blocked for deactivated residents
-- All historical data accessible to admins
+### Tests / QA
 
----
-
-### QA-003: Release — access removal verification
-**Priority:** P0
-**Depends on:** BE-002, FE-003
-**Spec ref:** Journey J11
-
-Same verification as QA-002 but for released residents. Additionally:
-- Verify `releasedAt` is recorded
-- Verify released residents appear in "Released" filter on ResidentListPage
-- Verify released residents do NOT appear in active resident counts on dashboard
-
-**Acceptance:**
-- Same access removal as deactivation
-- Release date and reason recorded
-- Dashboard counts exclude released residents
-
----
-
-### QA-004: Contact change frequency — enforcement testing
-**Priority:** P1
-**Depends on:** BE-004, BE-005, FE-004, FE-005
-**Spec ref:** Journey J60
-
-Test the contact change frequency enforcement:
-- Set frequency to 90 days, make a change, try again immediately → blocked
-- Set frequency to 1 day, make a change, advance clock 2 days → allowed
-- Set frequency to null (unlimited) → always allowed
-- Verify the banner shows correct dates
-- Verify [Edit] and [Remove] are disabled during cooldown
-- Test with different HousingUnitTypes having different frequencies
-
-**Acceptance:**
-- Frequency enforced at API level (not just UI)
-- UI correctly reflects eligibility state
-- Edge case: resident transferred to unit with different frequency → uses new frequency
-
----
-
-### QA-005: Bulk import — validation and error handling
-**Priority:** P2
-**Depends on:** BE-006, FE-008
-**Spec ref:** Journey J58
-
-Test bulk import edge cases:
-- Upload empty CSV → appropriate error
-- Upload CSV with wrong columns → column mapping error
-- Upload CSV with >500 rows → max rows error
-- Upload CSV with duplicate external_ids (within file) → deduplicated
-- Upload CSV with external_ids that already exist in DB → skipped with warning
-- Upload CSV with invalid facility_id → per-row error
-- Upload CSV with invalid housing_unit_id → per-row error
-- Upload CSV with missing required fields → per-row error
-- Upload non-CSV file → rejected
-- Test concurrent uploads → no race conditions
-
-**Acceptance:**
-- Each error case produces a clear, actionable message
-- Valid rows import despite invalid rows in same file
-- No partial state on upload failure (transaction)
-
----
-
-### QA-006: Manual refresh — no stale data
-**Priority:** P0
-**Depends on:** FE-006, FE-007
-**Spec ref:** Journey J59
-
-Test manual refresh behavior:
-- Start a call on one browser, refresh on admin portal → call appears
-- End a call, refresh → call disappears
-- Refresh while no calls active → shows empty state
-- Rapid clicks on refresh → no duplicate requests or UI glitches
-- Verify "Last updated" timestamp updates on each refresh
-
-**Acceptance:**
-- Data is fresh after every manual refresh
-- No visual artifacts from rapid refreshing
-- Timestamp accurately reflects last successful fetch
-
----
-
-### QA-007: Audit log coverage for new actions
-**Priority:** P0
-**Depends on:** BE-001, BE-002, BE-003, BE-004, BE-006
-**Spec ref:** Section 9, Audit Logging
-
-Verify audit log entries are created for ALL new actions:
-- `pin_reset` — records admin, resident, timestamp (NOT the PIN)
-- `resident_deactivated` — records admin, resident, reason
-- `resident_released` — records admin, resident, reason, release date
-- `contact_edited` — records admin, contact, changed fields (old → new)
-- `bulk_import` — records admin, filename, imported count, skipped count
-
-**Acceptance:**
-- Each action produces exactly one audit log entry
-- Entries contain sufficient detail for investigation
-- No sensitive data (PINs, passwords) in audit log details
-
----
-
-### QA-008: Permission checks for new endpoints
-**Priority:** P0
-**Depends on:** All BE tickets
-**Spec ref:** Section 5, RBAC
-
-Verify RBAC enforcement:
-- PIN reset: requires `manage_contacts` or facility admin role
-- Deactivate/Release: requires facility admin or agency admin
-- Edit contact: requires `manage_contacts`
-- Bulk import: requires agency admin ONLY
-- Manual refresh: requires `monitor_calls`
-
-Test:
-- Call each endpoint without auth → 401
-- Call each endpoint with wrong role → 403
-- Call each endpoint with correct role → 200
-
-**Acceptance:**
-- Every new endpoint returns 401/403 for unauthorized access
-- No endpoint is accessible without authentication
+- [ ] Both routes return `501` with expected message
+- [ ] Routes are registered and reachable (not 404)
+- [ ] Auth still required (401 without token)
 
 ---
 
 ## Dependency Graph
 
 ```
-DATA-001 ──┬──→ BE-001 ──→ FE-002 ──→ QA-002
-           ├──→ BE-002 ──→ FE-003 ──→ QA-003
-           └──→ DATA-004
-
-DATA-002 ──→ BE-005 ──┬──→ FE-004 ──→ QA-004
-                      └──→ FE-005
-
-DATA-003 ──→ BE-004 ──→ FE-004
-
-(independent)
-BE-003 ──→ FE-001 ──→ QA-001
-BE-006 ──→ FE-008 ──→ FE-009 ──→ QA-005
-BE-007 ──→ FE-006 ──→ QA-006
-       ──→ FE-007
-
-All BE ──→ QA-007
-All BE ──→ QA-008
+TICKET-01 (Deactivate)     — independent, can start immediately
+TICKET-02 (Release)        — independent, can start immediately
+                             (shares schema migration with TICKET-01 — coordinate)
+TICKET-03 (Reset PIN)      — independent, can start immediately
+TICKET-04 (Edit Contact)   — depends on TICKET-05 (uses eligibility check)
+TICKET-05 (Change Freq.)   — independent, can start immediately
+TICKET-06 (Bulk Import)    — independent, can start immediately
+TICKET-07 (Manual Refresh) — independent, can start immediately
+TICKET-08 (Integration)    — independent, can start immediately
 ```
 
-## Suggested Sprint Breakdown
+**Recommended pairing:** TICKET-01 + TICKET-02 should be done by the same person — they share schema fields on `IncarceratedPerson` and `AdminUser`, same migration, same test patterns.
 
-### Sprint 1 (P0 — Must Ship)
-- DATA-001, DATA-004
-- BE-001, BE-002, BE-003, BE-007
-- FE-001, FE-002, FE-003, FE-006, FE-007
-- QA-001, QA-002, QA-003, QA-006, QA-007, QA-008
+**Recommended sequencing:** TICKET-05 before TICKET-04 — the edit contact endpoint needs the eligibility check.
 
-### Sprint 2 (P1 — Should Ship)
-- DATA-002, DATA-003
-- BE-004, BE-005
-- FE-004, FE-005
-- QA-004
+## Priority Breakdown
 
-### Sprint 3 (P2 — Nice to Have)
-- BE-006, BE-008
-- FE-008, FE-009
-- QA-005
+### P0 — Must Ship
+- TICKET-01: Deactivate Resident
+- TICKET-02: Release Resident
+- TICKET-03: Assign / Reset PIN
+- TICKET-07: Manual Refresh on Active Monitoring
+
+### P1 — Should Ship
+- TICKET-04: Edit Contact Info
+- TICKET-05: Contact Change Frequency Enforcement
+
+### P2 — Nice to Have
+- TICKET-06: Bulk User Import
+- TICKET-08: Case Management Integration Stubs
+
+## Validation Commands
+
+```bash
+# Schema validation (run after any schema change)
+DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma@5 validate
+
+# Push changes
+git push fork guild-admin-keeks
+git push fork guild-admin-keeks:main
+```
