@@ -9,6 +9,59 @@ import {
 
 export const videoRouter = Router();
 
+const TEST_MODE = process.env.TEST_MODE === 'true';
+const ADMIN_APPROVAL_REQUIRED = process.env.ADMIN_APPROVAL_REQUIRED === 'true';
+
+// ─── TEST ENDPOINT (only available when TEST_MODE=true) ──────────────────────
+if (TEST_MODE) {
+  videoRouter.post('/test/create-call', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const role = req.user!.role;
+
+      if (role !== 'family') {
+        res.status(400).json(createErrorResponse({ code: 'BAD_REQUEST', message: 'Only family members can create test calls' }));
+        return;
+      }
+
+      const { incarceratedPersonId } = req.body;
+
+      const contact = await prisma.approvedContact.findFirst({
+        where: { familyMemberId: userId, incarceratedPersonId, status: 'approved' },
+        include: { incarceratedPerson: { include: { housingUnit: { include: { unitType: true } } } } },
+      });
+
+      if (!contact) {
+        res.status(403).json(createErrorResponse({ code: 'FORBIDDEN', message: 'Not an approved contact' }));
+        return;
+      }
+
+      const now = new Date();
+      const durationMs = (contact.incarceratedPerson.housingUnit?.unitType?.videoCallDurationMinutes ?? 30) * 60 * 1000;
+      const end = new Date(now.getTime() + durationMs);
+
+      const call = await prisma.videoCall.create({
+        data: {
+          incarceratedPersonId,
+          familyMemberId: userId,
+          facilityId: contact.incarceratedPerson.facilityId,
+          status: 'scheduled',
+          isLegal: false,
+          scheduledStart: now,
+          scheduledEnd: end,
+          requestedBy: userId,
+        },
+        include: { incarceratedPerson: true, familyMember: true },
+      });
+
+      res.status(201).json(createSuccessResponse(call));
+    } catch (error) {
+      console.error('Error creating test call:', error);
+      res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to create test call' }));
+    }
+  });
+}
+
 videoRouter.get('/active-calls', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const { facilityId } = req.query;
@@ -369,6 +422,119 @@ videoRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency_adm
   }
 });
 
+// GET /api/video/time-slots — available time slots for a facility, filtered by availability
+videoRouter.get('/time-slots', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { facilityId, date } = req.query;
+
+    if (!facilityId) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'facilityId is required',
+      }));
+      return;
+    }
+
+    const slots = await prisma.videoCallTimeSlot.findMany({
+      where: { facilityId: String(facilityId) },
+      include: { housingUnitType: true },
+      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    });
+
+    if (!date) {
+      res.json(createSuccessResponse(slots));
+      return;
+    }
+
+    // When a specific date is provided, check concurrency for each slot
+    const targetDate = new Date(String(date));
+    const dayOfWeek = targetDate.getDay(); // 0 = Sunday
+
+    const slotsForDay = slots.filter((s: { dayOfWeek: number; }) => s.dayOfWeek === dayOfWeek);
+
+    const slotsWithAvailability = await Promise.all(
+      slotsForDay.map(async (slot: any) => {
+        // Build the absolute DateTime for the slot's start/end on the target date
+        const [startHour, startMin] = slot.startTime.split(':').map(Number);
+        const [endHour, endMin] = slot.endTime.split(':').map(Number);
+
+        const slotStart = new Date(targetDate);
+        slotStart.setHours(startHour, startMin, 0, 0);
+        const slotEnd = new Date(targetDate);
+        slotEnd.setHours(endHour, endMin, 0, 0);
+
+        const concurrentBookings = await prisma.videoCall.count({
+          where: {
+            facilityId: String(facilityId),
+            status: { in: ['requested', 'scheduled', 'in_progress'] },
+            scheduledStart: { lt: slotEnd },
+            scheduledEnd: { gt: slotStart },
+          },
+        });
+
+        return {
+          ...slot,
+          available: concurrentBookings < slot.maxConcurrent,
+          remaining: Math.max(0, slot.maxConcurrent - concurrentBookings),
+        };
+      }),
+    );
+
+    res.json(createSuccessResponse(slotsWithAvailability));
+  } catch (error) {
+    console.error('Error fetching time slots:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch time slots',
+    }));
+  }
+});
+
+// GET /api/video/my-calls — upcoming scheduled/approved/requested calls for the authenticated user
+// Works for incarcerated users too, includes in-progress calls, and uses scheduledEnd as the cutoff so active calls aren't dropped from the list.
+videoRouter.get('/my-calls', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const role = req.user!.role;
+
+    const where: Record<string, unknown> = {
+      status: { in: ['requested', 'scheduled', 'approved', 'in_progress'] },
+      scheduledEnd: { gte: new Date() },
+    };
+
+    if (role === 'family') {
+      where.familyMemberId = userId;
+    } else if (role === 'incarcerated') {
+      where.incarceratedPersonId = userId;
+    } else {
+      // Admins can optionally filter by facilityId
+      const { facilityId } = (req as Request).query;
+      if (facilityId) where.facilityId = String(facilityId);
+    }
+
+    const calls = await prisma.videoCall.findMany({
+      where,
+      include: {
+        incarceratedPerson: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+        familyMember: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
+      orderBy: { scheduledStart: 'asc' },
+    });
+
+    res.json(createSuccessResponse(calls));
+  } catch (error) {
+    console.error('Error fetching upcoming calls:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch upcoming calls',
+    }));
+  }
+});
+
 // Family-facing: get approved contacts for the authenticated family member
 videoRouter.get('/approved-contacts', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -440,9 +606,9 @@ videoRouter.post('/request', requireAuth, async (req: Request, res: Response) =>
       return;
     }
 
-    // Validate time is in the future
+    // Validate time is in the future (skipped in TEST_MODE)
     const startTime = new Date(scheduledStart);
-    if (startTime <= new Date()) {
+    if (!TEST_MODE && startTime <= new Date()) {
       res.status(400).json(createErrorResponse({
         code: 'VALIDATION_ERROR',
         message: 'Scheduled time must be in the future',
@@ -450,7 +616,10 @@ videoRouter.post('/request', requireAuth, async (req: Request, res: Response) =>
       return;
     }
 
-    // Create video call request
+    // Auto-approve if contact is approved and admin approval is not required
+    const isAutoApproved = contact.status === 'approved' && !ADMIN_APPROVAL_REQUIRED;
+
+    // Create video call — 'scheduled' if auto-approved, 'requested' if needs admin review
     const call = await prisma.videoCall.create({
       data: {
         incarceratedPersonId,
@@ -458,7 +627,7 @@ videoRouter.post('/request', requireAuth, async (req: Request, res: Response) =>
         facilityId: contact.incarceratedPerson.facilityId,
         scheduledStart: new Date(scheduledStart),
         scheduledEnd: new Date(scheduledEnd),
-        status: 'requested',
+        status: isAutoApproved ? 'scheduled' : 'requested',
         requestedBy: familyMemberId,
       },
       include: {
@@ -517,6 +686,93 @@ videoRouter.get('/scheduled-calls', requireAuth, async (req: Request, res: Respo
     res.status(500).json(createErrorResponse({
       code: 'INTERNAL_ERROR',
       message: 'Failed to fetch scheduled calls',
+    }));
+  }
+});
+
+// Family-facing: reschedule a requested or scheduled video call
+videoRouter.post('/reschedule-call/:callId', requireAuth, requireRole('family'), async (req: Request, res: Response) => {
+  try {
+    const { callId } = req.params;
+    const { scheduledStart, scheduledEnd } = req.body;
+    const familyMemberId = req.user!.id;
+
+    if (!scheduledStart || !scheduledEnd) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'scheduledStart and scheduledEnd are required',
+      }));
+      return;
+    }
+
+    const start = new Date(scheduledStart);
+    const end = new Date(scheduledEnd);
+
+    if (start <= new Date()) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'Scheduled time must be in the future',
+      }));
+      return;
+    }
+
+    if (end <= start) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'scheduledEnd must be after scheduledStart',
+      }));
+      return;
+    }
+
+    const existingCall = await prisma.videoCall.findFirst({
+      where: {
+        id: callId,
+        familyMemberId,
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (!existingCall) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Call not found',
+      }));
+      return;
+    }
+
+    if (!['requested', 'scheduled'].includes(existingCall.status)) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'Only requested or scheduled calls can be rescheduled',
+      }));
+      return;
+    }
+
+    const updatedCall = await prisma.videoCall.update({
+      where: { id: existingCall.id },
+      data: {
+        scheduledStart: start,
+        scheduledEnd: end,
+        // scheduled calls must be re-approved after reschedule.
+        // requested calls stay requested.
+        status: 'requested',
+        approvedBy: null,
+      },
+      include: {
+        incarceratedPerson: true,
+        familyMember: true,
+      },
+    });
+
+    res.json(createSuccessResponse(updatedCall));
+  } catch (error) {
+    console.error('Error rescheduling video call:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to reschedule video call',
     }));
   }
 });

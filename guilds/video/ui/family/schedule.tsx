@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Card } from '@openconnect/ui';
 import { familyMessages } from '../messages';
 
 export default function ScheduleCall() {
   const { contactId } = useParams<{ contactId: string }>();
+  const [searchParams] = useSearchParams();
+  const rescheduleCallId = searchParams.get('rescheduleCallId');
+  const isRescheduleMode = !!rescheduleCallId;
   const navigate = useNavigate();
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -31,18 +34,29 @@ export default function ScheduleCall() {
 
       // @ts-ignore
       const token: string | null = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
-      
-      const res = await fetch('/api/video/request', {
+
+      const endpoint = isRescheduleMode
+        ? `/api/video/reschedule-call/${rescheduleCallId}`
+        : '/api/video/request';
+
+      const requestBody = isRescheduleMode
+        ? {
+            scheduledStart: selectedDateTime.toISOString(),
+            scheduledEnd: scheduledEnd.toISOString(),
+          }
+        : {
+            incarceratedPersonId: contactId,
+            scheduledStart: selectedDateTime.toISOString(),
+            scheduledEnd: scheduledEnd.toISOString(),
+          };
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({
-          incarceratedPersonId: contactId,
-          scheduledStart: selectedDateTime.toISOString(),
-          scheduledEnd: scheduledEnd.toISOString(),
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!res.ok) {
@@ -55,7 +69,12 @@ export default function ScheduleCall() {
         navigate(`/family/video/manage_contact/${contactId}/scheduled`);
       }, 1500);
     } catch (err: any) {
-      setError(err.message || familyMessages.schedule.submitErrorFallback);
+      setError(
+        err.message
+        || (isRescheduleMode
+          ? familyMessages.schedule.rescheduleErrorFallback
+          : familyMessages.schedule.submitErrorFallback)
+      );
     } finally {
       setLoading(false);
     }
@@ -78,14 +97,20 @@ export default function ScheduleCall() {
     <div className="space-y-4">
       <Link to=".." className="text-blue-600 hover:text-blue-700">&larr; {familyMessages.common.back}</Link>
       
-      <h1 className="text-2xl font-bold text-gray-900">{familyMessages.schedule.title}</h1>
+      <h1 className="text-2xl font-bold text-gray-900">
+        {isRescheduleMode ? familyMessages.schedule.rescheduleTitle : familyMessages.schedule.title}
+      </h1>
 
       <Card padding="lg">
         {success ? (
           <div className="text-center py-8">
             <div className="text-6xl mb-4">✅</div>
-            <h2 className="text-xl font-semibold mb-2 text-green-600">{familyMessages.schedule.successTitle}</h2>
-            <p className="text-gray-600">{familyMessages.schedule.successDescription}</p>
+            <h2 className="text-xl font-semibold mb-2 text-green-600">
+              {isRescheduleMode ? familyMessages.schedule.rescheduleSuccessTitle : familyMessages.schedule.successTitle}
+            </h2>
+            <p className="text-gray-600">
+              {isRescheduleMode ? familyMessages.schedule.rescheduleSuccessDescription : familyMessages.schedule.successDescription}
+            </p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -134,7 +159,9 @@ export default function ScheduleCall() {
                 disabled={loading}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
-                {loading ? familyMessages.schedule.requestingButton : familyMessages.schedule.requestCallButton}
+                {loading
+                  ? (isRescheduleMode ? familyMessages.schedule.reschedulingButton : familyMessages.schedule.requestingButton)
+                  : (isRescheduleMode ? familyMessages.schedule.rescheduleCallButton : familyMessages.schedule.requestCallButton)}
               </button>
               <button
                 type="button"

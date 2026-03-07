@@ -78,6 +78,7 @@ export default function ScheduledCalls() {
   };
 
   const canCancelCall = (status: string) => ['requested', 'scheduled'].includes(status);
+  const canRescheduleCall = (status: string) => ['requested', 'scheduled'].includes(status);
 
   const handleCancelCall = async (callId: string) => {
     setError(null);
@@ -116,14 +117,7 @@ export default function ScheduledCalls() {
 
           {!loading && calls.length === 0 && (
             <div className="text-center py-8">
-              <div className="text-4xl mb-2">📅</div>
               <div className="text-gray-500">{familyMessages.scheduled.noScheduledCalls}</div>
-              <Link
-                to={schedulePath}
-                className="mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-              >
-                {familyMessages.scheduled.scheduleCallButton}
-              </Link>
             </div>
           )}
 
@@ -146,16 +140,26 @@ export default function ScheduledCalls() {
                 </div>
                 {canCancelCall(call.status) && (
                   <div className="mt-3">
-                    <button
-                      type="button"
-                      onClick={() => handleCancelCall(call.id)}
-                      disabled={cancelingCallId === call.id}
-                      className="px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded hover:bg-red-50 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {cancelingCallId === call.id
-                        ? familyMessages.scheduled.cancelingCallButton
-                        : familyMessages.scheduled.cancelCallButton}
-                    </button>
+                    <div className="flex gap-2">
+                      {canRescheduleCall(call.status) && (
+                        <Link
+                          to={`${schedulePath}?rescheduleCallId=${call.id}`}
+                          className="inline-flex items-center justify-center px-3 py-1.5 text-sm border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
+                        >
+                          {familyMessages.scheduled.rescheduleCallButton}
+                        </Link>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleCancelCall(call.id)}
+                        disabled={cancelingCallId === call.id}
+                        className="inline-flex items-center justify-center px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded hover:bg-red-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {cancelingCallId === call.id
+                          ? familyMessages.scheduled.cancelingCallButton
+                          : familyMessages.scheduled.cancelCallButton}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
