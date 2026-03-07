@@ -139,23 +139,27 @@ voiceAdminRouter.post('/terminate-calls', requireAuth, requireRole('facility_adm
       }
     }
 
-    // Fire off all Twilio conference terminations in parallel
-    const twilioResults = await Promise.allSettled(
-      eligible.map(async (call) => {
-        const conferenceName = `call-${call.id}`;
-        const conferences = await client.conferences.list({
-          friendlyName: conferenceName,
-          status: 'in-progress',
-        });
-        await Promise.all(
-          conferences.map(conf => {
-            console.log(`[voice] Admin terminate: conference ${conf.sid} terminating`);
-            return conf.update({ status: 'completed' });
-          }),
-        );
-        return call.id;
-      }),
-    );
+    // Process items in batches to respect Twilio rate limits
+    const BATCH_SIZE = 20;
+    async function processBatch<T, R>(items: T[], fn: (item: T) => Promise<R>): Promise<PromiseSettledResult<R>[]> {
+      const results: PromiseSettledResult<R>[] = [];
+      for (let i = 0; i < items.length; i += BATCH_SIZE) {
+        const batch = items.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(batch.map(fn));
+        results.push(...batchResults);
+      }
+      return results;
+    }
+
+    // Terminate Twilio conferences in batches
+    const twilioResults = await processBatch(eligible, async (call) => {
+      if (!call.conferenceSid) {
+        throw new Error(`No conferenceSid stored for call ${call.id}`);
+      }
+      console.log(`[voice] Admin terminate: conference ${call.conferenceSid} terminating`);
+      await client.conferences(call.conferenceSid).update({ status: 'completed' });
+      return call.id;
+    });
 
     // Log any Twilio failures (but don't block DB update)
     for (const result of twilioResults) {
@@ -164,25 +168,23 @@ voiceAdminRouter.post('/terminate-calls', requireAuth, requireRole('facility_adm
       }
     }
 
-    // Bulk-update all eligible calls in the DB
+    // Update all eligible calls in the DB in batches
     const now = new Date();
-    await Promise.all(
-      eligible.map(call => {
-        const durationSeconds = call.connectedAt
-          ? Math.floor((now.getTime() - call.connectedAt.getTime()) / 1000)
-          : 0;
-        return prisma.voiceCall.update({
-          where: { id: call.id },
-          data: {
-            status: 'terminated_by_admin',
-            endedAt: now,
-            endedBy: 'admin',
-            terminatedByAdminId: req.user!.id,
-            durationSeconds,
-          },
-        });
-      }),
-    );
+    await processBatch(eligible, (call) => {
+      const durationSeconds = call.connectedAt
+        ? Math.floor((now.getTime() - call.connectedAt.getTime()) / 1000)
+        : 0;
+      return prisma.voiceCall.update({
+        where: { id: call.id },
+        data: {
+          status: 'terminated_by_admin',
+          endedAt: now,
+          endedBy: 'admin',
+          terminatedByAdminId: req.user!.id,
+          durationSeconds,
+        },
+      });
+    });
 
     // Mark all eligible as success
     for (const call of eligible) {
