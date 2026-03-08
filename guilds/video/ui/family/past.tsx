@@ -90,11 +90,11 @@ export default function PastCalls() {
 
   return (
     <div className="space-y-4">
-      <Link to={manageContactPath} className="text-blue-600 hover:text-blue-700">
+      <Link to={manageContactPath} className="inline-flex items-center min-h-[44px] text-blue-600 hover:text-blue-700 hover:underline">
         &larr; {familyMessages.common.back}
       </Link>
 
-      <h1 className="text-2xl font-bold text-gray-900">{familyMessages.past.title}</h1>
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{familyMessages.past.title}</h1>
 
       <Card padding="lg">
         <div className="space-y-4">
@@ -111,13 +111,15 @@ export default function PastCalls() {
             {calls.map((call) => (
               <div key={call.id} className="p-4 border rounded-md">
                 <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <div className="font-medium text-gray-900">
+                  <div className="min-w-0 pr-3">
+                    <div className="font-medium text-gray-900 truncate">
                       {call.incarceratedPerson.firstName} {call.incarceratedPerson.lastName}
                     </div>
-                    <div className="text-sm text-gray-600">{formatDateTime(call.scheduledStart)}</div>
+                    <div className="text-sm text-gray-600 truncate">{formatDateTime(call.scheduledStart)}</div>
                   </div>
-                  {getStatusBadge(call.status)}
+                  <div className="flex-shrink-0">
+                    {getStatusBadge(call.status)}
+                  </div>
                 </div>
 
                 <div className="space-y-1 text-xs text-gray-500">

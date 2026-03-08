@@ -18,7 +18,7 @@ export default function IncarceratedLayout() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className="min-h-screen bg-gray-100 flex flex-col overflow-x-hidden">
       <header className="bg-blue-900 text-white px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
@@ -43,15 +43,15 @@ export default function IncarceratedLayout() {
               key={item.path}
               to={item.path}
               className={({ isActive }) =>
-                `flex-1 px-4 py-4 text-center border-b-2 transition-colors ${
+                `flex-1 px-2 sm:px-4 py-3 sm:py-4 text-center border-b-2 transition-colors ${
                   isActive
                     ? 'border-blue-600 text-blue-600 bg-blue-50'
                     : 'border-transparent text-gray-600 hover:text-gray-900'
                 }`
               }
             >
-              <span className="text-2xl block mb-1">{item.icon}</span>
-              <span className="text-sm font-medium">{item.label}</span>
+              <span className="text-xl sm:text-2xl block mb-1">{item.icon}</span>
+              <span className="text-xs sm:text-sm font-medium hidden sm:block">{item.label}</span>
             </NavLink>
           ))}
         </div>

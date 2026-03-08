@@ -19,8 +19,12 @@ type RoomParticipant = {
 type CallRoom = {
   roomId: string;
   callType: 'voice' | 'video';
+  phase: 'waiting' | 'active';
   participants: Map<string, RoomParticipant>;
   createdAt: Date;
+  scheduledStart?: Date;
+  scheduledStartTimer?: ReturnType<typeof setTimeout>;
+  scheduledEnd?: Date;
   scheduledEndTimer?: ReturnType<typeof setTimeout>;
 };
 
@@ -29,6 +33,52 @@ function createSignalingServer() {
   const io = new Server(httpServer, { cors: { origin: '*' } });
   const rooms = new Map<string, CallRoom>();
 
+  function toPublicParticipants(room: CallRoom) {
+    return Array.from(room.participants.entries()).map(([socketId, p]) => ({
+      socketId,
+      userId: p.userId,
+      userRole: p.userRole,
+    }));
+  }
+
+  function activateRoom(roomId: string) {
+    const room = rooms.get(roomId);
+    if (!room || room.phase === 'active') return;
+
+    room.phase = 'active';
+    if (room.scheduledStartTimer) {
+      clearTimeout(room.scheduledStartTimer);
+      room.scheduledStartTimer = undefined;
+    }
+
+    io.to(roomId).emit('call-started', {
+      roomId,
+      phase: 'active',
+      scheduledStart: room.scheduledStart?.toISOString(),
+      scheduledEnd: room.scheduledEnd?.toISOString(),
+      participants: toPublicParticipants(room),
+    });
+
+    // Backward compatibility: emit user-joined at activation so peers can
+    // begin negotiation when the call actually starts.
+    const participants = Array.from(room.participants.entries());
+    for (const [socketId] of participants) {
+      for (const [otherSocketId, other] of participants) {
+        if (otherSocketId === socketId) continue;
+        io.to(socketId).emit('user-joined', {
+          socketId: otherSocketId,
+          userId: other.userId,
+          userRole: other.userRole,
+        });
+      }
+    }
+  }
+
+  function isRoomActiveForSocket(socketId: string, roomId: string) {
+    const room = rooms.get(roomId);
+    return !!room && room.phase === 'active' && room.participants.has(socketId);
+  }
+
   function forceEndRoom(roomId: string, reason: string) {
     const room = rooms.get(roomId);
     if (!room) return;
@@ -36,6 +86,7 @@ function createSignalingServer() {
     room.participants.forEach((_, socketId) => {
       io.sockets.sockets.get(socketId)?.leave(roomId);
     });
+    if (room.scheduledStartTimer) clearTimeout(room.scheduledStartTimer);
     if (room.scheduledEndTimer) clearTimeout(room.scheduledEndTimer);
     rooms.delete(roomId);
   }
@@ -46,22 +97,45 @@ function createSignalingServer() {
       userId: string;
       userRole: 'incarcerated' | 'family';
       callType: 'voice' | 'video';
+      scheduledStart?: string;
       scheduledEnd?: string;
     }) => {
-      const { roomId, userId, userRole, callType, scheduledEnd } = data;
+      const { roomId, userId, userRole, callType, scheduledStart, scheduledEnd } = data;
       let room = rooms.get(roomId);
 
       if (!room) {
+        const parsedStart = scheduledStart ? new Date(scheduledStart) : undefined;
+        const parsedEnd = scheduledEnd ? new Date(scheduledEnd) : undefined;
+
+        if (parsedStart && Number.isNaN(parsedStart.getTime())) {
+          socket.emit('join-error', { code: 'INVALID_SCHEDULE', message: 'Invalid scheduledStart' });
+          return;
+        }
+        if (parsedEnd && Number.isNaN(parsedEnd.getTime())) {
+          socket.emit('join-error', { code: 'INVALID_SCHEDULE', message: 'Invalid scheduledEnd' });
+          return;
+        }
+
         room = {
           roomId,
           callType,
+          phase: parsedStart && Date.now() < parsedStart.getTime() ? 'waiting' : 'active',
           participants: new Map(),
           createdAt: new Date(),
+          scheduledStart: parsedStart,
+          scheduledEnd: parsedEnd,
         };
 
+        if (room.phase === 'waiting' && parsedStart) {
+          const startMsRemaining = parsedStart.getTime() - Date.now();
+          room.scheduledStartTimer = setTimeout(() => {
+            activateRoom(roomId);
+          }, startMsRemaining);
+        }
+
         // Server-side scheduled end enforcement
-        if (scheduledEnd) {
-          const msRemaining = new Date(scheduledEnd).getTime() - Date.now();
+        if (parsedEnd) {
+          const msRemaining = parsedEnd.getTime() - Date.now();
           if (msRemaining <= 0) {
             // Already past the end — immediately close
             socket.emit('call-ended', { reason: 'time_limit' });
@@ -86,8 +160,35 @@ function createSignalingServer() {
       const otherParticipants = Array.from(room.participants.entries())
         .filter(([id]) => id !== socket.id)
         .map(([id, p]) => ({ socketId: id, userId: p.userId }));
-      socket.emit('room-joined', { roomId, participants: otherParticipants });
-      socket.to(roomId).emit('user-joined', { socketId: socket.id, userId, userRole });
+      socket.emit('room-joined', {
+        roomId,
+        phase: room.phase,
+        scheduledStart: room.scheduledStart?.toISOString(),
+        scheduledEnd: room.scheduledEnd?.toISOString(),
+        participants: otherParticipants,
+      });
+
+      if (room.phase === 'active') {
+        socket.to(roomId).emit('user-joined', { socketId: socket.id, userId, userRole });
+      } else {
+        socket.to(roomId).emit('waiting-user-joined', { socketId: socket.id, userId, userRole });
+      }
+
+      if (room.phase === 'waiting' && room.scheduledStart && Date.now() >= room.scheduledStart.getTime()) {
+        activateRoom(roomId);
+      }
+    });
+
+    socket.on('offer', (data: { roomId: string; sdp: unknown }) => {
+      if (!isRoomActiveForSocket(socket.id, data.roomId)) {
+        socket.emit('call-not-active', { roomId: data.roomId, phase: rooms.get(data.roomId)?.phase ?? 'waiting' });
+        return;
+      }
+      socket.to(data.roomId).emit('offer', {
+        roomId: data.roomId,
+        senderSocketId: socket.id,
+        sdp: data.sdp,
+      });
     });
 
     socket.on('call-ended', (data: { roomId: string; reason: string }) => {
@@ -95,6 +196,7 @@ function createSignalingServer() {
       socket.to(roomId).emit('call-ended', { reason });
       const room = rooms.get(roomId);
       if (room) {
+        if (room.scheduledStartTimer) clearTimeout(room.scheduledStartTimer);
         if (room.scheduledEndTimer) clearTimeout(room.scheduledEndTimer);
         room.participants.forEach((_, socketId) => {
           io.sockets.sockets.get(socketId)?.leave(roomId);
@@ -109,6 +211,7 @@ function createSignalingServer() {
           room.participants.delete(socket.id);
           socket.to(roomId).emit('user-left', { socketId: socket.id });
           if (room.participants.size === 0) {
+            if (room.scheduledStartTimer) clearTimeout(room.scheduledStartTimer);
             if (room.scheduledEndTimer) clearTimeout(room.scheduledEndTimer);
             rooms.delete(roomId);
           }
