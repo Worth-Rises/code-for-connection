@@ -42,6 +42,8 @@ export interface RegisterRequest {
 export interface AuthResponse {
   token: string;
   user: AuthUser;
+  /** Present for PIN login: true when incarcerated person has not yet recorded name audio */
+  needsNameRecording?: boolean;
 }
 
 export interface TokenValidationResult {

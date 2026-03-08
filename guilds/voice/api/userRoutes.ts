@@ -16,6 +16,45 @@ export const voiceUserRouter = Router();
 // In-memory map of callId -> { twilioSids, conferenceName }
 const callMetadata = new Map<string, { clientSid?: string; phoneSid?: string; conferenceName: string }>();
 
+// ==========================================
+// PUBLIC URL DISCOVERY
+// ==========================================
+
+/**
+ * Resolves the public URL for Twilio webhooks.
+ * Checks process.env.PUBLIC_URL first, then attempts to auto-discover
+ * an ngrok tunnel on localhost:4040. Result is cached for the lifetime
+ * of the server process.
+ */
+let _cachedPublicUrl: string | null | undefined = undefined; // undefined = not yet resolved
+
+async function getPublicUrl(): Promise<string | null> {
+  if (_cachedPublicUrl !== undefined) return _cachedPublicUrl;
+
+  if (process.env.PUBLIC_URL) {
+    _cachedPublicUrl = process.env.PUBLIC_URL;
+    console.log(`[voice] Using PUBLIC_URL from env: ${_cachedPublicUrl}`);
+    return _cachedPublicUrl;
+  }
+
+  // Dev fallback: discover ngrok
+  try {
+    const res = await fetch('http://127.0.0.1:4040/api/tunnels');
+    const data = await res.json() as { tunnels: Array<{ proto: string; public_url: string }> };
+    const tunnel = data.tunnels.find((t) => t.proto === 'https');
+    if (tunnel) {
+      _cachedPublicUrl = tunnel.public_url;
+      console.log(`[voice] Discovered ngrok URL: ${_cachedPublicUrl}`);
+      return _cachedPublicUrl;
+    }
+  } catch {
+    // ngrok not running
+  }
+
+  _cachedPublicUrl = null;
+  console.warn('[voice] No PUBLIC_URL set and ngrok not detected. IVR webhooks will not work.');
+  return null;
+}
 
 // ==========================================
 // TWILIO VOICE SDK — TOKEN
@@ -314,34 +353,49 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
         conferenceName,
       });
 
-      // Step 2: Add the contact's phone number to the conference
-      console.log(`[voice] Step 2: Adding ${contact.familyMember.phone} to conference ${conferenceName}`);
+      // Step 2: Call the contact's phone with IVR greeting
+      const publicUrl = await getPublicUrl();
+      if (!publicUrl) {
+        // Cannot proceed without a public URL for TwiML webhooks
+        console.error('[voice] No PUBLIC_URL available — cannot initiate IVR call');
+        try {
+          await client.calls(clientParticipant.callSid).update({ status: 'completed' });
+        } catch (cleanupErr) {
+          console.error('[voice] Failed to clean up client participant:', cleanupErr);
+        }
+        callMetadata.delete(voiceCall.id);
+
+        await prisma.voiceCall.update({
+          where: { id: voiceCall.id },
+          data: { status: 'missed', endedAt: new Date() },
+        });
+
+        return res.status(500).json(createErrorResponse({
+          code: 'CONFIG_ERROR',
+          message: 'Server is not configured for outbound calls (PUBLIC_URL not available)',
+        }));
+      }
+
+      console.log(`[voice] Step 2: Calling ${contact.familyMember.phone} with IVR greeting`);
       try {
-        const phoneParticipant = await client.conferences(conferenceName)
-          .participants
-          .create({
-            from: twilioFrom,
-            to: contact.familyMember.phone,
-            label: contact.familyMember.phone,
-            startConferenceOnEnter: true,
-            endConferenceOnExit: true,
-            // Status callback: Twilio POSTs here when the phone call ends
-            ...(process.env.PUBLIC_URL ? {
-              statusCallback: `${process.env.PUBLIC_URL}/api/voice/users/status-callback/${voiceCall.id}`,
-              statusCallbackEvent: ['answered', 'completed'],
-            } : {}),
-          });
-        console.log(`[voice] Step 2 done: phoneCallSid=${phoneParticipant.callSid} conferenceSid=${phoneParticipant.conferenceSid}`);
+        const phoneCall = await client.calls.create({
+          from: twilioFrom,
+          to: contact.familyMember.phone,
+          url: `${publicUrl}/api/voice/twiml/greeting/${voiceCall.id}`,
+          statusCallback: `${publicUrl}/api/voice/users/status-callback/${voiceCall.id}`,
+          statusCallbackEvent: ['answered', 'completed'],
+        });
+        console.log(`[voice] Step 2 done: phoneCallSid=${phoneCall.sid}`);
 
         // Update metadata with phone SID
         callMetadata.set(voiceCall.id, {
           clientSid: clientParticipant.callSid,
-          phoneSid: phoneParticipant.callSid,
+          phoneSid: phoneCall.sid,
           conferenceName,
         });
       } catch (phoneError: unknown) {
-        // Phone participant failed — clean up the client participant
-        console.error('[voice] Phone participant failed:', phoneError);
+        // Phone call failed — clean up the client participant
+        console.error('[voice] Phone call failed:', phoneError);
         try {
           await client.calls(clientParticipant.callSid).update({ status: 'completed' });
         } catch (cleanupErr) {
@@ -555,6 +609,28 @@ voiceUserRouter.post('/status-callback/:callId', async (req: Request, res: Respo
           },
         });
         console.log(`[voice] Call ${callId} marked as ended by receiver (${CallStatus})`);
+
+        // Terminate the conference so the web/tablet user is disconnected
+        try {
+          const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+          if (call.conferenceSid) {
+            await client.conferences(call.conferenceSid).update({ status: 'completed' });
+          } else {
+            const conferences = await client.conferences.list({
+              friendlyName: `call-${callId}`,
+              status: 'in-progress',
+            });
+            for (const conf of conferences) {
+              await conf.update({ status: 'completed' });
+            }
+          }
+          console.log(`[voice] Conference terminated for call ${callId}`);
+        } catch (confErr) {
+          console.error(`[voice] Error terminating conference for call ${callId}:`, confErr);
+        }
+
+        // Clean up in-memory metadata
+        callMetadata.delete(callId);
       }
     }
   } catch (err) {

@@ -13,6 +13,10 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
+  /** True when incarcerated person has not yet recorded their name audio (first login) */
+  needsNameRecording: boolean;
+  /** Call after successfully recording name audio */
+  clearNeedsNameRecording: () => void;
   pinLogin: (pin: string, facilityId: string) => Promise<void>;
   logout: () => void;
 }
@@ -25,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [needsNameRecording, setNeedsNameRecording] = useState(false);
 
   useEffect(() => {
     const storedToken = localStorage.getItem('token');
@@ -35,10 +40,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
         .then((res) => res.json())
         .then((data) => {
-          if (data.success) setUser(data.data);
-          else localStorage.removeItem('token');
+          if (data.success) {
+            setUser(data.data);
+            // /auth/me does not return needsNameRecording; check status endpoint for incarcerated users
+            if (data.data?.role === 'incarcerated') {
+              fetch(`${API_BASE}/voice/users/name-audio/status`, {
+                headers: { Authorization: `Bearer ${storedToken}` },
+              })
+                .then((r) => r.json())
+                .then((d) => {
+                  if (d.success && !d.data?.hasNameAudio) setNeedsNameRecording(true);
+                })
+                .catch((err) => console.error('[AuthContext] Failed to check name-audio status:', err));
+            }
+          } else localStorage.removeItem('token');
         })
-        .catch(() => localStorage.removeItem('token'))
+        .catch((err) => { console.error('[AuthContext] Failed to fetch /auth/me:', err); localStorage.removeItem('token'); })
         .finally(() => setLoading(false));
     } else {
       setLoading(false);
@@ -58,16 +75,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('token', data.data.token);
     setToken(data.data.token);
     setUser(data.data.user);
+    setNeedsNameRecording(Boolean(data.data.needsNameRecording));
   }, []);
+
+  const clearNeedsNameRecording = useCallback(() => setNeedsNameRecording(false), []);
 
   const logout = useCallback(() => {
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
+    setNeedsNameRecording(false);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, pinLogin, logout }}>
+    <AuthContext.Provider value={{ user, token, loading, needsNameRecording, clearNeedsNameRecording, pinLogin, logout }}>
       {children}
     </AuthContext.Provider>
   );
