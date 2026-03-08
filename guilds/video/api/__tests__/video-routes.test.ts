@@ -116,6 +116,13 @@ describe('GET /api/video/my-scheduled', () => {
     );
   });
 
+  it('requires admin approval for incarcerated my-scheduled calls', async () => {
+    (prisma.videoCall.findMany as any).mockResolvedValue([]);
+    await request(app).get('/api/video/my-scheduled');
+    const whereClause = (prisma.videoCall.findMany as any).mock.calls[0][0].where;
+    expect(whereClause.approvedBy).toEqual({ not: null });
+  });
+
   it('orders results by scheduledStart ascending', async () => {
     (prisma.videoCall.findMany as any).mockResolvedValue([]);
     await request(app).get('/api/video/my-scheduled');

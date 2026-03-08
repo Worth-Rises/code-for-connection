@@ -31,15 +31,16 @@ export function ScheduledCallsList({ onJoinCall }: ScheduledCallsListProps) {
   if (loading) return <p style={{ color: '#94a3b8', textAlign: 'center' }}>Loading scheduled calls…</p>;
   if (error)   return <p style={{ color: '#f87171', textAlign: 'center' }}>{error}</p>;
 
+  const visibleCalls = calls.filter((call) => Boolean(call.approvedBy));
   const now = Date.now();
   const TOLERANCE_MS = 900_000;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      {calls.length === 0 && (
+      {visibleCalls.length === 0 && (
         <p style={{ color: '#94a3b8', textAlign: 'center' }}>No upcoming calls scheduled.</p>
       )}
-      {calls.map((call) => {
+      {visibleCalls.map((call) => {
         const start = new Date(call.scheduledStart).getTime();
         const end   = new Date(call.scheduledEnd).getTime();
         const canJoin = Boolean(call.approvedBy)

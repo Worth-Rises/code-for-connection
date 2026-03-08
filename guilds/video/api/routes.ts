@@ -241,15 +241,23 @@ videoRouter.post('/terminate-call/:callId', requireAuth, requireRole('facility_a
 videoRouter.get('/my-scheduled', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+    const role = req.user!.role;
+
+    const where: Record<string, unknown> = {
+      OR: [
+        { incarceratedPersonId: userId },
+        { familyMemberId: userId },
+      ],
+      status: { in: ['scheduled', 'in_progress'] },
+    };
+
+    // Incarcerated users should only see calls once staff has approved them.
+    if (role === 'incarcerated') {
+      where.approvedBy = { not: null };
+    }
 
     const calls = await prisma.videoCall.findMany({
-      where: {
-        OR: [
-          { incarceratedPersonId: userId },
-          { familyMemberId: userId },
-        ],
-        status: { in: ['scheduled', 'in_progress'] },
-      },
+      where,
       include: {
         incarceratedPerson: true,
         familyMember: true,
