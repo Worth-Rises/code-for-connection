@@ -153,7 +153,7 @@ function VideoDashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Video Call Management</h1>
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Video Call Management</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card padding="md">
@@ -211,7 +211,7 @@ function VideoDashboard() {
           <div className="space-y-3">
             {activeCalls.map(call => (
               <div key={call.id} className="border border-gray-300 rounded-lg bg-white shadow-sm p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   {/* Left: Call Info */}
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-gray-900">
@@ -236,8 +236,8 @@ function VideoDashboard() {
                   </div>
 
                   {/* Right: Time Left & Terminate Button */}
-                  <div className="flex flex-col items-end gap-3 ml-4">
-                    <div className="text-center">
+                  <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-3 ml-0 sm:ml-4">
+                    <div className="text-left sm:text-center">
                       <p className="text-gray-600 text-sm">Time Remaining</p>
                       <p className="text-3xl font-bold text-blue-600">
                         {timeLeft[call.id] || '—'}
@@ -246,7 +246,7 @@ function VideoDashboard() {
                     <button
                       onClick={() => handleTerminate(call.id)}
                       disabled={loadingStates[call.id] || false}
-                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full sm:w-auto px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Terminate
                     </button>

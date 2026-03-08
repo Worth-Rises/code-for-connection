@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@openconnect/ui';
 
 interface VideoCall {
@@ -54,32 +54,31 @@ export function ScheduledCallsList({ onJoinCall }: ScheduledCallsListProps) {
           <div
             key={call.id}
             id={`call-${call.id}`}
+            className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 rounded-xl border"
             style={{
               background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '12px',
-              padding: '16px 20px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
+              borderColor: 'rgba(255,255,255,0.1)',
             }}
           >
             <div>
-              <p style={{ margin: 0, fontWeight: 600, color: '#e2e8f0' }}>
+              <p className="font-semibold text-slate-200 m-0">
                 {call.familyMember
                   ? `${call.familyMember.firstName} ${call.familyMember.lastName}`
                   : 'Family Member'}
               </p>
-              <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#94a3b8' }}>{startStr}</p>
+              <p className="text-sm text-slate-400 mt-1 mb-0">{startStr}</p>
             </div>
-            <Button
-              id={`join-btn-${call.id}`}
-              disabled={!canJoin}
-              variant="primary"
-              onClick={() => onJoinCall(call.id, call.scheduledEnd)}
-            >
-              {canJoin ? 'Join' : 'Upcoming'}
-            </Button>
+            <div className="w-full sm:w-auto mt-3 sm:mt-0 flex">
+              <Button
+                id={`join-btn-${call.id}`}
+                disabled={!canJoin}
+                variant="primary"
+                onClick={() => onJoinCall(call.id, call.scheduledEnd)}
+                className="w-full sm:w-auto"
+              >
+                {canJoin ? 'Join' : 'Upcoming'}
+              </Button>
+            </div>
           </div>
         );
       })}

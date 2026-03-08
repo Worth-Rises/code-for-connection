@@ -37,9 +37,9 @@ export const ApprovalRequest: React.FC<ApprovalRequestProps> = ({
   return (
     <div className="border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition-colors">
       {/* Header */}
-      <div className="flex items-center justify-between p-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4">
         {/* Left: Name, Expand Button, and Subtext */}
-        <div className="flex items-center gap-4 flex-1">
+        <div className="flex items-start sm:items-center gap-4 flex-1 w-full">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="flex items-center justify-center w-6 h-6 text-gray-600 hover:text-gray-900 transition-colors flex-shrink-0"
@@ -62,18 +62,18 @@ export const ApprovalRequest: React.FC<ApprovalRequestProps> = ({
         </div>
 
         {/* Right: Action Buttons */}
-        <div className="flex items-center gap-2 ml-4">
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end sm:ml-4">
           <button
             onClick={onApprove}
             disabled={isLoading}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 sm:flex-none px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Approve
           </button>
           <button
             onClick={onDeny}
             disabled={isLoading}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 sm:flex-none px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Deny
           </button>
@@ -83,7 +83,7 @@ export const ApprovalRequest: React.FC<ApprovalRequestProps> = ({
       {/* Expandable Details Section */}
       {isExpanded && (
         <div className="border-t border-gray-200 bg-gray-50 p-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <p className="text-xs font-semibold text-gray-600 uppercase">Incarcerated Person</p>
               <p className="text-sm font-medium text-gray-900 mt-1">{incarceratedPerson}</p>

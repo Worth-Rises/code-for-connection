@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { ScheduledCallsList } from './ScheduledCallsList.js';
 import { VideoCallRoom } from '../shared/VideoCallRoom.js';
@@ -39,41 +39,33 @@ function IncarceratedVideoHome() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: '#0f172a',
-      fontFamily: 'Inter, sans-serif',
-      padding: '24px',
-    }}>
-      <h1 style={{
-        color: '#e2e8f0',
-        fontSize: '22px',
-        fontWeight: 700,
-        marginBottom: '24px',
-      }}>
-        Scheduled Video Calls
-      </h1>
-      <ScheduledCallsList
-        onJoinCall={(callId, scheduledEnd) => {
-          // First POST to join the call to mark it in_progress, then open the room
-          fetch(`/api/video/join/${callId}`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem('token') ?? ''}`,
-              'Content-Type': 'application/json',
-            },
-          })
-            .then((r) => r.json())
-            .then((body) => {
-              if (body.success) {
-                setActiveCall({ callId, scheduledEnd: body.data.scheduledEnd });
-              } else {
-                alert(`Cannot join: ${body.error?.message ?? 'Unknown error'}`);
-              }
+    <div className="min-h-full bg-slate-900 p-4 sm:p-6 lg:p-8 flex flex-col items-center">
+      <div className="w-full max-w-4xl">
+        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-6 text-center sm:text-left">
+          Scheduled Video Calls
+        </h1>
+        <ScheduledCallsList
+          onJoinCall={(callId, scheduledEnd) => {
+            // First POST to join the call to mark it in_progress, then open the room
+            fetch(`/api/video/join/${callId}`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem('token') ?? ''}`,
+                'Content-Type': 'application/json',
+              },
             })
-            .catch(() => alert('Failed to join call. Please try again.'));
-        }}
-      />
+              .then((r) => r.json())
+              .then((body) => {
+                if (body.success) {
+                  setActiveCall({ callId, scheduledEnd: body.data.scheduledEnd });
+                } else {
+                  alert(`Cannot join: ${body.error?.message ?? 'Unknown error'}`);
+                }
+              })
+              .catch(() => alert('Failed to join call. Please try again.'));
+          }}
+        />
+      </div>
     </div>
   );
 }

@@ -325,19 +325,35 @@ videoRouter.post('/join/:callId', requireAuth, async (req: Request, res: Respons
       return;
     }
 
-    // First join: set in_progress + actualStart. Reconnect: skip actualStart.
-    const isFirstJoin = call.status === 'scheduled';
-    const updated = await prisma.videoCall.update({
-      where: { id: callId },
-      data: {
-        status: 'in_progress',
-        ...(isFirstJoin ? { actualStart: now } : {}),
-      },
-    });
+    // Waiting-room semantics:
+    // - Before scheduledStart (within tolerance): allow join, stay scheduled, phase=waiting
+    // - At/after scheduledStart: transition scheduled -> in_progress and set actualStart
+    // - Reconnect when already in_progress: phase=active
+    let effectiveCall = call;
+    let phase: 'waiting' | 'active' = 'active';
+
+    if (call.status === 'scheduled') {
+      if (now < call.scheduledStart) {
+        phase = 'waiting';
+      } else {
+        effectiveCall = await prisma.videoCall.update({
+          where: { id: callId },
+          data: {
+            status: 'in_progress',
+            actualStart: call.actualStart ?? now,
+          },
+        });
+        phase = 'active';
+      }
+    } else {
+      phase = 'active';
+    }
 
     res.json(createSuccessResponse({
-      roomId: updated.id,
-      scheduledEnd: updated.scheduledEnd,
+      roomId: effectiveCall.id,
+      scheduledStart: effectiveCall.scheduledStart,
+      scheduledEnd: effectiveCall.scheduledEnd,
+      phase,
     }));
   } catch (error) {
     console.error('Error joining video call:', error);

@@ -48,9 +48,9 @@ export default function ManageContact() {
 
   return (
     <div className="space-y-4">
-      <Link to=".." className="text-blue-600 hover:text-blue-700">&larr; {familyMessages.common.backToContacts}</Link>
+      <Link to=".." className="inline-flex items-center min-h-[44px] text-blue-600 hover:text-blue-700 hover:underline">&larr; {familyMessages.common.backToContacts}</Link>
       
-      <h1 className="text-2xl font-bold text-gray-900">{loading ? familyMessages.common.loading : contactName}</h1>
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{loading ? familyMessages.common.loading : contactName}</h1>
 
       <Card padding="lg">
         <div className="space-y-4">
