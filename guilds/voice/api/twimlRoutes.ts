@@ -50,7 +50,7 @@ twimlRouter.get('/name-audio/:callId', async (req: Request, res: Response) => {
       return;
     }
 
-    const contentType = person.nameAudioContentType || 'audio/webm';
+    const contentType = person.nameAudioContentType || 'audio/mpeg';
     const buffer = Buffer.isBuffer(person.nameAudioBytes)
       ? person.nameAudioBytes
       : Buffer.from(person.nameAudioBytes as ArrayBuffer);
@@ -128,6 +128,7 @@ twimlRouter.post('/greeting/:callId', async (req: Request, res: Response) => {
       // Play recorded name audio, then TTS for facility and instructions
       const audioUrl = `${publicBase}/api/voice/twiml/name-audio/${callId}`;
       console.log(`[twiml] greeting: PLAYING recorded name audio from ${audioUrl}`);
+      gather.say({ voice: 'Polly.Joanna' }, 'You are receiving a call from');
       gather.play({}, audioUrl);
       gather.say(
         { voice: 'Polly.Joanna' },
