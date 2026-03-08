@@ -127,6 +127,28 @@ messagingRouter.post('/approve/:messageId', requireAuth, requireRole('facility_a
   }
 });
 
+messagingRouter.post('/reject/:messageId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { messageId } = req.params;
+
+    const message = await prisma.message.update({
+      where: { id: messageId },
+      data: {
+        status: 'blocked',
+        reviewedBy: req.user!.id,
+      },
+    });
+
+    res.json(createSuccessResponse({ success: true, message }));
+  } catch (error) {
+    console.error('Error rejecting message:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to reject message',
+    }));
+  }
+});
+
 messagingRouter.post('/block-conversation/:conversationId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const { conversationId } = req.params;
