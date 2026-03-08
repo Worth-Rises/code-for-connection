@@ -67,6 +67,7 @@ function IncarceratedVideoHome() {
           <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-6 text-center lg:text-left">
             Scheduled Calls
           </h2>
+         <div className="overflow-y-auto max-h-[70vh] rounded-xl border border-white/10 bg-white/5 p-4">
           <ScheduledCallsList
             onJoinCall={(callId, scheduledStart, scheduledEnd) => {
               // First POST to join the call to determine waiting/active phase, then open the room
@@ -90,10 +91,11 @@ function IncarceratedVideoHome() {
                   } else {
                     alert(`Cannot join: ${body.error?.message ?? 'Unknown error'}`);
                   }
-                })
+                 })
                 .catch(() => alert('Failed to join call. Please try again.'));
-            }}
-          />
+              }}
+            />
+          </div>
         </div>
 
         {/* Right column — past calls */}
@@ -101,7 +103,9 @@ function IncarceratedVideoHome() {
           <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-6 text-center lg:text-left">
             Past Calls
           </h2>
-          <PastCallsList />
+          <div className="overflow-y-auto max-h-[70vh] rounded-xl border border-white/10 bg-white/5 p-4">
+            <PastCallsList />
+          </div>
         </div>
       </div>
     </div>
