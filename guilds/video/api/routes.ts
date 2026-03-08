@@ -91,6 +91,23 @@ videoRouter.get('/active-calls', requireAuth, requireRole('facility_admin', 'age
 videoRouter.get('/call-logs', requireAuth, async (req: Request, res: Response) => {
   try {
     const { facilityId, startDate, endDate, userId, page = '1', pageSize = '20' } = req.query;
+    const now = new Date();
+
+    // Auto-complete any in_progress or scheduled calls that have passed their scheduled end time
+    if (facilityId) {
+      await prisma.videoCall.updateMany({
+        where: {
+          facilityId: String(facilityId),
+          status: { in: ['in_progress', 'scheduled'] },
+          scheduledEnd: { lt: now },
+        },
+        data: {
+          status: 'completed',
+          actualEnd: now,
+          endedBy: 'time_limit',
+        },
+      });
+    }
     
     const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize));
     const take = parseInt(String(pageSize));
@@ -241,6 +258,24 @@ videoRouter.post('/terminate-call/:callId', requireAuth, requireRole('facility_a
 videoRouter.get('/my-scheduled', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+    const now = new Date();
+
+    // Auto-complete any in_progress or scheduled calls that have passed their scheduled end time
+    await prisma.videoCall.updateMany({
+      where: {
+        OR: [
+          { incarceratedPersonId: userId },
+          { familyMemberId: userId },
+        ],
+        status: { in: ['in_progress', 'scheduled'] },
+        scheduledEnd: { lt: now },
+      },
+      data: {
+        status: 'completed',
+        actualEnd: now,
+        endedBy: 'time_limit',
+      },
+    });
 
     const where: Record<string, unknown> = {
       OR: [
@@ -670,6 +705,21 @@ videoRouter.get('/scheduled-calls', requireAuth, async (req: Request, res: Respo
   try {
     const { contactId } = req.query;
     const familyMemberId = req.user!.id;
+    const now = new Date();
+
+    // Auto-complete any in_progress or scheduled calls that have passed their scheduled end time
+    await prisma.videoCall.updateMany({
+      where: {
+        familyMemberId,
+        status: { in: ['in_progress', 'scheduled'] },
+        scheduledEnd: { lt: now },
+      },
+      data: {
+        status: 'completed',
+        actualEnd: now,
+        endedBy: 'time_limit',
+      },
+    });
 
     const where: any = {
       familyMemberId,
