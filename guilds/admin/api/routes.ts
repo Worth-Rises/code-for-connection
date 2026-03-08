@@ -348,6 +348,113 @@ adminRouter.post('/residents/:id/reset-pin', requireAuth, async (req: Request, r
   }
 });
 
+function requireResidentAdmin(req: Request, res: Response, next: () => void): void {
+  if (!req.user) {
+    res.status(401).json(createErrorResponse({ code: 'UNAUTHORIZED', message: 'Not authenticated' }));
+    return;
+  }
+  if (req.user.role !== 'facility_admin' && req.user.role !== 'agency_admin') {
+    res.status(403).json(createErrorResponse({ code: 'FORBIDDEN', message: 'Insufficient permissions' }));
+    return;
+  }
+  next();
+}
+
+adminRouter.post('/residents/:id/release', requireAuth, requireResidentAdmin, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const body = req.body as { reason?: string; releaseDate?: string };
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    if (!reason) {
+      res.status(400).json(createErrorResponse({ code: 'VALIDATION_ERROR', message: 'Reason is required' }));
+      return;
+    }
+
+    const resident = await prisma.incarceratedPerson.findUnique({
+      where: { id },
+      include: { facility: { select: { id: true, name: true } }, housingUnit: { select: { id: true, name: true, unitType: true } } },
+    });
+    if (!resident) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Resident not found' }));
+      return;
+    }
+    if (resident.status === 'released') {
+      res.status(400).json(createErrorResponse({ code: 'VALIDATION_ERROR', message: 'Resident is already released' }));
+      return;
+    }
+
+    const user = req.user!;
+    if (user.role === 'facility_admin' && user.facilityId !== resident.facilityId) {
+      res.status(403).json(createErrorResponse({ code: 'FORBIDDEN', message: 'No access to this resident' }));
+      return;
+    }
+
+    const releaseDate = body.releaseDate ? new Date(body.releaseDate) : new Date();
+    const _previousStatus = resident.status;
+
+    const updated = await prisma.incarceratedPerson.update({
+      where: { id },
+      data: { status: 'released', releasedAt: releaseDate },
+      include: { facility: { select: { id: true, name: true } }, housingUnit: { select: { id: true, name: true, unitType: true } } },
+    });
+    const { pin: _pin, ...safeResident } = updated;
+
+    // TODO: when AuditLog exists: prisma.auditLog.create({ data: { adminUserId: user.id, action: 'resident_status_changed', entityType: 'incarcerated_person', entityId: id, details: { reason, releaseDate, previousStatus: _previousStatus } } })
+
+    res.json(createSuccessResponse(safeResident));
+  } catch (error) {
+    console.error('Error releasing resident:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to release resident' }));
+  }
+});
+
+adminRouter.post('/residents/:id/deactivate', requireAuth, requireResidentAdmin, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const body = req.body as { reason?: string };
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    if (!reason) {
+      res.status(400).json(createErrorResponse({ code: 'VALIDATION_ERROR', message: 'Reason is required' }));
+      return;
+    }
+
+    const resident = await prisma.incarceratedPerson.findUnique({
+      where: { id },
+      include: { facility: { select: { id: true, name: true } }, housingUnit: { select: { id: true, name: true, unitType: true } } },
+    });
+    if (!resident) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Resident not found' }));
+      return;
+    }
+    if (resident.status === 'deactivated') {
+      res.status(400).json(createErrorResponse({ code: 'VALIDATION_ERROR', message: 'Resident is already deactivated' }));
+      return;
+    }
+
+    const user = req.user!;
+    if (user.role === 'facility_admin' && user.facilityId !== resident.facilityId) {
+      res.status(403).json(createErrorResponse({ code: 'FORBIDDEN', message: 'No access to this resident' }));
+      return;
+    }
+
+    const _previousStatus = resident.status;
+
+    const updated = await prisma.incarceratedPerson.update({
+      where: { id },
+      data: { status: 'deactivated' },
+      include: { facility: { select: { id: true, name: true } }, housingUnit: { select: { id: true, name: true, unitType: true } } },
+    });
+    const { pin: _pin, ...safeResident } = updated;
+
+    // TODO: when AuditLog exists: prisma.auditLog.create({ data: { adminUserId: user.id, action: 'resident_status_changed', entityType: 'incarcerated_person', entityId: id, details: { reason, previousStatus: _previousStatus } } })
+
+    res.json(createSuccessResponse(safeResident));
+  } catch (error) {
+    console.error('Error deactivating resident:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to deactivate resident' }));
+  }
+});
+
 adminRouter.get('/blocked-numbers/check', requireAuth, async (req: Request, res: Response) => {
   try {
     const { phoneNumber, facilityId } = req.query;

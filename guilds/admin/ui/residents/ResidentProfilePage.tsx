@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../../../apps/web/src/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import ResetPinModal from './ResetPinModal';
+import DeactivateResidentModal from './DeactivateResidentModal';
+import ReleaseResidentModal from './ReleaseResidentModal';
 
 interface Resident {
   id: string;
@@ -34,10 +36,25 @@ export default function ResidentProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [resetPinOpen, setResetPinOpen] = useState(false);
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [releaseOpen, setReleaseOpen] = useState(false);
+
+  const refetchResident = useCallback(() => {
+    if (!id) return;
+    fetch(`/api/admin/residents/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) setResident(data.data);
+      })
+      .catch(() => {});
+  }, [id, token]);
 
   useEffect(() => {
     if (!id) return;
-
+    setLoading(true);
+    setError(null);
     fetch(`/api/admin/residents/${id}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -77,13 +94,17 @@ export default function ResidentProfilePage() {
           </div>
         </div>
 
-        {/* Action buttons — placeholders for TICKET-01 and TICKET-02 */}
+        {/* Action buttons */}
         <div className="flex gap-2">
           {resident.status === 'active' && (
-            <>
-              <Button variant="outline" disabled>Release</Button>
-              <Button variant="destructive" disabled>Deactivate</Button>
-            </>
+            <Button variant="outline" onClick={() => setReleaseOpen(true)}>
+              Release
+            </Button>
+          )}
+          {(resident.status === 'active' || resident.status === 'transferred') && (
+            <Button variant="destructive" onClick={() => setDeactivateOpen(true)}>
+              Deactivate
+            </Button>
           )}
         </div>
       </div>
@@ -139,6 +160,20 @@ export default function ResidentProfilePage() {
           residentName={`${resident.firstName} ${resident.lastName}`}
           open={resetPinOpen}
           onOpenChange={setResetPinOpen}
+        />
+        <DeactivateResidentModal
+          residentId={resident.id}
+          residentName={`${resident.firstName} ${resident.lastName}`}
+          open={deactivateOpen}
+          onOpenChange={setDeactivateOpen}
+          onSuccess={refetchResident}
+        />
+        <ReleaseResidentModal
+          residentId={resident.id}
+          residentName={`${resident.firstName} ${resident.lastName}`}
+          open={releaseOpen}
+          onOpenChange={setReleaseOpen}
+          onSuccess={refetchResident}
         />
       </div>
     </div>
