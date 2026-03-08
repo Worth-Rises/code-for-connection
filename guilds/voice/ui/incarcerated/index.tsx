@@ -5,11 +5,11 @@ import { Card } from '@openconnect/ui';
 function VoiceHome() {
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900">Voice Calls</h1>
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Voice Calls</h1>
       <Card padding="lg">
-        <div className="text-center py-8">
-          <span className="text-6xl mb-4 block">📞</span>
-          <h2 className="text-xl font-semibold mb-2">Voice Calling</h2>
+        <div className="text-center py-4 sm:py-8">
+          <span className="text-5xl sm:text-6xl mb-4 block">📞</span>
+          <h2 className="text-lg sm:text-xl font-semibold mb-2">Voice Calling</h2>
           <p className="text-gray-600 mb-6">
             This is where the Voice Guild will build the calling interface.
           </p>

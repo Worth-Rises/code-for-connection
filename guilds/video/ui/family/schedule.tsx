@@ -221,9 +221,9 @@ export default function ScheduleCall() {
 
   return (
     <div className="space-y-4">
-      <Link to=".." className="text-blue-600 hover:text-blue-700">&larr; {familyMessages.common.back}</Link>
+      <Link to=".." className="inline-flex items-center min-h-[44px] text-blue-600 hover:text-blue-700 hover:underline">&larr; {familyMessages.common.back}</Link>
       
-      <h1 className="text-2xl font-bold text-gray-900">
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
         {isRescheduleMode ? familyMessages.schedule.rescheduleTitle : familyMessages.schedule.title}
       </h1>
 
@@ -292,7 +292,7 @@ export default function ScheduleCall() {
               <button
                 type="button"
                 onClick={() => navigate('..')}
-                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 flex-shrink-0"
               >
                 {familyMessages.schedule.cancelButton}
               </button>
