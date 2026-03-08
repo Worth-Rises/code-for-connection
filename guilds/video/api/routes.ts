@@ -65,6 +65,20 @@ if (TEST_MODE) {
 videoRouter.get('/active-calls', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const { facilityId } = req.query;
+    const now = new Date();
+
+    // Auto-transition scheduled calls that are within their time window to in_progress
+    await prisma.videoCall.updateMany({
+      where: {
+        status: 'scheduled',
+        scheduledStart: { lte: now },
+        scheduledEnd: { gt: now },
+        ...(facilityId ? { facilityId: String(facilityId) } : {}),
+      },
+      data: {
+        status: 'in_progress',
+      },
+    });
     
     const activeCalls = await prisma.videoCall.findMany({
       where: {
@@ -363,6 +377,13 @@ videoRouter.post('/join/:callId', requireAuth, async (req: Request, res: Respons
     if (call.status === 'scheduled') {
       if (now < call.scheduledStart) {
         phase = 'waiting';
+        effectiveCall = await prisma.videoCall.update({
+          where: { id: callId },
+          data: {
+            actualStart: call.actualStart ?? now,
+          },
+          include: { incarceratedPerson: true, familyMember: true },
+        });
       } else {
         effectiveCall = await prisma.videoCall.update({
           where: { id: callId },
