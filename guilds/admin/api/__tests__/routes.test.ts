@@ -83,4 +83,10 @@ describe('admin routes auth coverage', () => {
     expect(layer).toBeDefined();
     expect(getMiddlewareNames(layer!)).toContain('requireAuth');
   });
+
+  it('POST /residents/:id/reset-pin requires auth', () => {
+    const layer = findRouteLayer('/residents/:id/reset-pin', 'post');
+    expect(layer).toBeDefined();
+    expect(getMiddlewareNames(layer!)).toContain('requireAuth');
+  });
 });
