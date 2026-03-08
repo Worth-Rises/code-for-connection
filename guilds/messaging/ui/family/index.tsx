@@ -396,7 +396,7 @@ function ConversationThread() {
     });
   }, [conversationId]);
 
-  // Poll for new messages at the end
+  // Poll for new messages and status updates
   useEffect(() => {
     if (!conversationId) return;
     const poll = async () => {
@@ -404,21 +404,27 @@ function ConversationThread() {
       if (!data.success) return;
       const newTotal: number = data.pagination.total;
       const newTotalPages: number = Math.max(1, data.pagination.totalPages);
-      if (newTotal > prevTotalRef.current) {
-        const last = await apiFetch(`/messaging/conversations/${conversationId}/messages?page=${newTotalPages}&pageSize=${PAGE_SIZE}`);
-        if (last.success) {
-          const newMsgs: Message[] = last.data;
-          shouldScrollRef.current = true;
-          setMessages(prev => {
-            const existingIds = new Set(prev.map(m => m.id));
-            const toAdd = newMsgs.filter(m => !existingIds.has(m.id));
+      const last = await apiFetch(`/messaging/conversations/${conversationId}/messages?page=${newTotalPages}&pageSize=${PAGE_SIZE}`);
+      if (last.success) {
+        const polledMsgs: Message[] = last.data;
+        const hasNew = newTotal > prevTotalRef.current;
+        if (hasNew) shouldScrollRef.current = true;
+        setMessages(prev => {
+          const polledById = new Map(polledMsgs.map(m => [m.id, m]));
+          const updated = prev.map(m =>
+            polledById.has(m.id) ? { ...m, status: polledById.get(m.id)!.status } : m
+          );
+          const existingIds = new Set(prev.map(m => m.id));
+          const toAdd = polledMsgs.filter(m => !existingIds.has(m.id));
+          if (toAdd.length > 0) {
             const incoming = toAdd.filter(m => m.senderType === 'incarcerated');
             if (incoming.length > 0) fireNotification('New message', incoming[incoming.length - 1].body);
-            return [...prev, ...toAdd];
-          });
-          if (newTotalPages > totalPages) setTotalPages(newTotalPages);
-          prevTotalRef.current = newTotal;
-        }
+          }
+          return [...updated, ...toAdd];
+        });
+        if (newTotalPages > totalPages) setTotalPages(newTotalPages);
+        prevTotalRef.current = newTotal;
+        if (hasNew) apiFetch(`/messaging/conversations/${conversationId}/read`, { method: 'PATCH' });
       }
     };
     const interval = setInterval(poll, 3000);
@@ -572,14 +578,23 @@ function ConversationThread() {
               >
                 {msg.attachments && msg.attachments.length > 0 && (
                   <div className="mt-1 space-y-1">
-                    {msg.attachments.map(att => (
-                      <img
-                        key={att.id}
-                        src={att.fileUrl}
-                        alt="attachment"
-                        className="max-w-full rounded-lg"
-                      />
-                    ))}
+                    {msg.attachments.map(att => {
+                      const isPending = att.status === 'pending_review';
+                      return (
+                        <div key={att.id} className="relative">
+                          <img
+                            src={att.fileUrl}
+                            alt="attachment"
+                            className={`max-w-full rounded-lg ${isPending ? 'blur-md' : ''}`}
+                          />
+                          {isPending && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <span className="text-xs font-medium text-white bg-black/50 px-2 py-1 rounded-full">Pending review</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 {msg.body && <p>{msg.body}</p>}
