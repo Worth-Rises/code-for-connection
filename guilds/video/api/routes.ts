@@ -241,20 +241,28 @@ videoRouter.post('/terminate-call/:callId', requireAuth, requireRole('facility_a
 videoRouter.get('/my-scheduled', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+    const role = req.user!.role;
+
+    const where: Record<string, unknown> = {
+      OR: [
+        { incarceratedPersonId: userId },
+        { familyMemberId: userId },
+      ],
+      status: { in: ['scheduled', 'in_progress'] },
+    };
+
+    // Incarcerated users should only see calls once staff has approved them.
+    if (role === 'incarcerated') {
+      where.approvedBy = { not: null };
+    }
 
     const calls = await prisma.videoCall.findMany({
-      where: {
-        OR: [
-          { incarceratedPersonId: userId },
-          { familyMemberId: userId },
-        ],
-        status: { in: ['scheduled', 'in_progress'] },
-      },
+      where,
       include: {
         incarceratedPerson: true,
         familyMember: true,
       },
-      orderBy: { scheduledStart: 'asc' },
+      orderBy: { scheduledStart: 'desc' },
     });
 
     res.json(createSuccessResponse(calls));
@@ -291,6 +299,15 @@ videoRouter.post('/join/:callId', requireAuth, async (req: Request, res: Respons
     // Status check — must be scheduled or in_progress (reconnect)
     if (!['scheduled', 'in_progress'].includes(call.status)) {
       res.status(400).json(createErrorResponse({ code: 'CALL_NOT_READY', message: `Call cannot be joined in status: ${call.status}` }));
+      return;
+    }
+
+    // Admin approval check — calls are not joinable until approved by staff.
+    if (!call.approvedBy) {
+      res.status(400).json(createErrorResponse({
+        code: 'CALL_NOT_APPROVED',
+        message: 'This call has not been approved by staff yet',
+      }));
       return;
     }
 
@@ -655,9 +672,10 @@ videoRouter.get('/scheduled-calls', requireAuth, async (req: Request, res: Respo
     const where: any = {
       familyMemberId,
       status: {
-        in: ['requested', 'approved', 'scheduled'],
+        in: ['requested', 'approved', 'scheduled', 'in_progress'],
       },
-      scheduledStart: {
+      // Keep calls visible through their end time so active calls do not disappear at start.
+      scheduledEnd: {
         gte: new Date(),
       },
     };

@@ -3,14 +3,17 @@ import { Routes, Route } from 'react-router-dom';
 import { Card } from '@openconnect/ui';
 
 import { ApprovalRequest } from './ApprovalRequest';
+import { CallCard } from './CallCard';
 
 function VideoDashboard() {
   const [stats, setStats] = useState({ activeCalls: 0, todayTotal: 0, pendingRequests: 0 });
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [activeCalls, setActiveCalls] = useState<any[]>([]);
+  const [scheduledToday, setScheduledToday] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingStates, setLoadingStates] = useState<{ [key: string]: boolean }>({});
   const [timeLeft, setTimeLeft] = useState<{ [key: string]: string }>({});
+  const [showDeniedCalls, setShowDeniedCalls] = useState(false);
 
   const getAuthHeaders = () => {
     const token = typeof globalThis !== 'undefined' ? (globalThis as any).localStorage?.getItem('token') : null;
@@ -52,10 +55,18 @@ function VideoDashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [statsRes, requestsRes, activeCallsRes] = await Promise.all([
+      
+      // Calculate today's date range
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      const [statsRes, requestsRes, activeCallsRes, callLogsRes] = await Promise.all([
         fetch('/api/video/stats', { headers: getAuthHeaders() }),
         fetch('/api/video/pending-requests', { headers: getAuthHeaders() }),
         fetch('/api/video/active-calls', { headers: getAuthHeaders() }),
+        fetch(`/api/video/call-logs?startDate=${today.toISOString()}&endDate=${tomorrow.toISOString()}`, { headers: getAuthHeaders() }),
       ]);
 
       if (statsRes.ok) {
@@ -71,6 +82,16 @@ function VideoDashboard() {
       if (activeCallsRes.ok) {
         const activeCallsData = await activeCallsRes.json() as any;
         setActiveCalls(activeCallsData.data as any[] || []);
+      }
+
+      if (callLogsRes.ok) {
+        const callLogsData = await callLogsRes.json() as any;
+        // Filter for today's calls - show scheduled and completed (same logic as stats endpoint)
+        const todaysCalls = (callLogsData.data as any[])?.filter((call: any) => {
+          return ['scheduled', 'completed', 'in_progress', 'denied'].includes(call.status);
+        }) || [];
+
+        setScheduledToday(todaysCalls);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -188,7 +209,11 @@ function VideoDashboard() {
               <ApprovalRequest
                 key={request.id}
                 name={`${request.familyMember?.firstName} ${request.familyMember?.lastName}`}
-                details={`Scheduled: ${new Date(request.scheduledStart).toLocaleString()}`}
+                startTime={request.scheduledStart}
+                endTime={request.scheduledEnd}
+                incarceratedPerson={`${request.incarceratedPerson?.firstName} ${request.incarceratedPerson?.lastName}`}
+                isAttorney={request.incarceratedPerson?.approvedContacts?.[0]?.isAttorney || false}
+                isLegal={request.isLegal || false}
                 onApprove={() => handleApprove(request.id, `${request.familyMember?.firstName} ${request.familyMember?.lastName}`)}
                 onDeny={() => handleDeny(request.id)}
                 isLoading={loadingStates[request.id] || false}
@@ -248,6 +273,40 @@ function VideoDashboard() {
                   </div>
                 </div>
               </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card padding="lg">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Scheduled Today</h2>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <span className="text-sm text-gray-600">Show Denied Calls</span>
+            <input
+              type="checkbox"
+              checked={showDeniedCalls}
+              onChange={(e: any) => setShowDeniedCalls(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+          </label>
+        </div>
+        {scheduledToday.length === 0 ? (
+          <p className="text-center text-gray-500 py-8">No calls scheduled for today</p>
+        ) : (
+          <div className="space-y-3">
+            {scheduledToday.filter(r => showDeniedCalls || r.status !== 'denied').map(call => (
+              <CallCard
+                key={call.id}
+                incarceratedPerson={`${call.incarceratedPerson?.firstName} ${call.incarceratedPerson?.lastName}`}
+                familyMember={`${call.familyMember?.firstName} ${call.familyMember?.lastName}`}
+                startTime={call.scheduledStart}
+                endTime={call.scheduledEnd}
+                duration={call.durationSeconds}
+                status={call.status}
+                actualStart={call.actualStart}
+                actualEnd={call.actualEnd}
+              />
             ))}
           </div>
         )}
