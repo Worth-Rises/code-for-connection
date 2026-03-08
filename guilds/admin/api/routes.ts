@@ -302,6 +302,14 @@ adminRouter.post('/residents/:id/reset-pin', requireAuth, async (req: Request, r
       return;
     }
 
+    if (req.user.role !== 'facility_admin' && req.user.role !== 'agency_admin') {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'Insufficient permissions',
+      }));
+      return;
+    }
+
     const resident = await prisma.incarceratedPerson.findUnique({
       where: { id: req.params.id },
     });

@@ -40,6 +40,18 @@ function buildApp(user?: { id: string; role: string; agencyId: string; facilityI
 const facilityAdmin = {
   id: 'admin-1',
   role: 'facility_admin',
+  firstName: 'Jane',
+  lastName: 'Admin',
+  email: 'jane@facility.com',
+  agencyId: 'agency-1',
+  facilityId: 'facility-1',
+};
+
+const incarceratedUser = {
+  id: 'inmate-1',
+  role: 'incarcerated',
+  firstName: 'Joe',
+  lastName: 'Resident',
   agencyId: 'agency-1',
   facilityId: 'facility-1',
 };
@@ -84,7 +96,7 @@ describe('POST /api/admin/residents/:id/reset-pin', () => {
     expect(res.status).toBe(403);
   });
 
-  it('returns a new 4-digit PIN on success', async () => {
+  it('allows facility admin to reset PIN for resident in their facility', async () => {
     mockedPrisma.incarceratedPerson.findUnique.mockResolvedValue(mockResident as any);
     mockedPrisma.incarceratedPerson.update.mockResolvedValue(mockResident as any);
 
@@ -94,6 +106,12 @@ describe('POST /api/admin/residents/:id/reset-pin', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.newPin).toMatch(/^\d{4}$/);
+  });
+
+  it('returns 403 when incarcerated user tries to reset a PIN', async () => {
+    const app = buildApp(incarceratedUser as any);
+    const res = await request(app).post('/api/admin/residents/resident-1/reset-pin');
+    expect(res.status).toBe(403);
   });
 
   it('stores a hashed PIN, not the plaintext', async () => {
