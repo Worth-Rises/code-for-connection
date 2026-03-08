@@ -404,13 +404,13 @@ function ConversationList() {
           );
         })()}
           <div className="mt-4 pt-4 border-t border-gray-200">
-            <button
+            {/* <button
             disabled
               className="text-sm text-blue-600 hover:text-blue-800 font-medium"
               onClick={() => { setShowRequest(v => !v); setRequestSent(false); }}
             >
               {showRequest ? 'Hide' : '+ Request a new contact'}
-            </button>
+            </button> */}
             {showRequest && (
               <div className="mt-3 space-y-3">
                 {requestSent ? (
