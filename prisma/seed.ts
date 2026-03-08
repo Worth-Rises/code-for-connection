@@ -765,7 +765,7 @@ async function main() {
   await prisma.systemConfiguration.create({
     data: {
       key: 'sms_send_setting',
-      value: 'SEND_SMS_WITH_NAME',
+      value: 'NO_SMS',
       description: 'Controls SMS before voice calls: NO_SMS, SEND_SMS (no inmate name), SEND_SMS_WITH_NAME (includes inmate name and facility)',
     },
   });
