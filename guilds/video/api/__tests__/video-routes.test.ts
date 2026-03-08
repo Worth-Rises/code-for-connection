@@ -123,11 +123,11 @@ describe('GET /api/video/my-scheduled', () => {
     expect(whereClause.approvedBy).toEqual({ not: null });
   });
 
-  it('orders results by scheduledStart ascending', async () => {
+  it('orders results by scheduledStart descending', async () => {
     (prisma.videoCall.findMany as any).mockResolvedValue([]);
     await request(app).get('/api/video/my-scheduled');
     const orderBy = (prisma.videoCall.findMany as any).mock.calls[0][0].orderBy;
-    expect(orderBy).toEqual({ scheduledStart: 'asc' });
+    expect(orderBy).toEqual({ scheduledStart: 'desc' });
   });
 });
 

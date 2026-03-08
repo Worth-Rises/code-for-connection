@@ -59,6 +59,12 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const warningFiredRef = useRef(false);
   const endedRef = useRef(false);
+  const statsRef = useRef<{
+    lastBytesAudio: number;
+    lastBytesVideo: number;
+    lastTimestamp: number;
+  }>({ lastBytesAudio: 0, lastBytesVideo: 0, lastTimestamp: 0 });
+  const statsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ─── End call (idempotent) ───────────────────────────────────────────────
   const hangUp = useCallback((reason = 'user') => {
@@ -78,6 +84,7 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
 
     if (endTimerRef.current) clearTimeout(endTimerRef.current);
     if (countdownRef.current) clearInterval(countdownRef.current);
+    stopStatsCollection();
 
     onCallEnded?.(reason);
   }, [callId, onCallEnded]);
@@ -187,6 +194,7 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
 
       if (endTimerRef.current) clearTimeout(endTimerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
+      stopStatsCollection();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -250,12 +258,98 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
         applyRemoteTracks(pc);
         setConnectionState('CONNECTED');
         socket.emit('peer-connected', { roomId: callId });
+        startStatsCollection(pc);
       } else if (['disconnected', 'failed'].includes(pc.iceConnectionState)) {
         setConnectionState('RECONNECTING');
+        stopStatsCollection();
       }
     };
 
     return pc;
+  }
+
+  function startStatsCollection(pc: RTCPeerConnection) {
+    if (statsIntervalRef.current) return;
+    
+    statsRef.current = { lastBytesAudio: 0, lastBytesVideo: 0, lastTimestamp: 0 };
+    
+    statsIntervalRef.current = setInterval(async () => {
+      if (!pc || endedRef.current) return;
+      
+      try {
+          const stats = await pc.getStats();
+          let audioBytes = 0;
+          let videoBytes = 0;
+          let packetsLostAudio = 0;
+          let packetsLostVideo = 0;
+          let packetsReceivedAudio = 0;
+          let packetsReceivedVideo = 0;
+          let jitterAudio = 0;
+          let jitterVideo = 0;
+          let rtt = 0;
+          let width = 0;
+          let height = 0;
+          let framesDecoded = 0;
+          let timestamp = 0;
+
+          stats.forEach((report) => {
+            if (report.type === 'outbound-rtp' && report.kind === 'audio') {
+              audioBytes += report.bytesSent || 0;
+            } else if (report.type === 'outbound-rtp' && report.kind === 'video') {
+              videoBytes += report.bytesSent || 0;
+            } else if (report.type === 'remote-inbound-rtp' && report.kind === 'audio') {
+              packetsLostAudio += report.packetsLost || 0;
+              packetsReceivedAudio += report.packetsReceived || 0;
+              jitterAudio = report.jitter || 0;
+            } else if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
+              packetsLostVideo += report.packetsLost || 0;
+              packetsReceivedVideo += report.packetsReceived || 0;
+              jitterVideo = report.jitter || 0;
+            } else if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+              rtt = report.currentRoundTripTime ? report.currentRoundTripTime * 1000 : 0;
+            } else if (report.type === 'inbound-rtp' && report.kind === 'video') {
+              width = report.frameWidth || 0;
+              height = report.framesDecoded || 0;
+              framesDecoded = report.framesDecoded || 0;
+              timestamp = report.timestamp || 0;
+            }
+          });
+
+          const now = Date.now();
+          const timeDiff = statsRef.current.lastTimestamp ? (now - statsRef.current.lastTimestamp) / 1000 : 1;
+          const audioBitrate = timeDiff > 0 ? ((audioBytes - statsRef.current.lastBytesAudio) * 8 / timeDiff / 1000) : 0;
+          const videoBitrate = timeDiff > 0 ? ((videoBytes - statsRef.current.lastBytesVideo) * 8 / timeDiff / 1000) : 0;
+
+          statsRef.current = { lastBytesAudio: audioBytes, lastBytesVideo: videoBytes, lastTimestamp: now };
+
+          const audioLossRate = packetsReceivedAudio + packetsLostAudio > 0 
+            ? (packetsLostAudio / (packetsReceivedAudio + packetsLostAudio)) * 100 
+            : 0;
+          const videoLossRate = packetsReceivedVideo + packetsLostVideo > 0 
+            ? (packetsLostVideo / (packetsReceivedVideo + packetsLostVideo)) * 100 
+            : 0;
+
+          const frameRate = framesDecoded > 0 && timeDiff > 0 ? Math.round(framesDecoded / (now / 1000)) : 0;
+
+          console.log(
+            `[Quality] Call ${callId} | ` +
+            `Bitrate: ${Math.round(audioBitrate)}kbps(A)/${Math.round(videoBitrate)}kbps(V) | ` +
+            `Loss: ${audioLossRate.toFixed(1)}%(A)/${videoLossRate.toFixed(1)}%(V) | ` +
+            `Jitter: ${(jitterAudio * 1000).toFixed(1)}ms(A)/${(jitterVideo * 1000).toFixed(1)}ms(V) | ` +
+            `RTT: ${rtt.toFixed(0)}ms | ` +
+            `Res: ${width}x${height} | FPS: ${frameRate}`
+          );
+        } catch (e) {
+          // Stats collection errors are non-fatal
+        }
+    }, 2000);
+  }
+
+  function stopStatsCollection() {
+    if (statsIntervalRef.current) {
+      clearInterval(statsIntervalRef.current);
+      statsIntervalRef.current = null;
+    }
   }
 
   // ─── Media controls ──────────────────────────────────────────────────────

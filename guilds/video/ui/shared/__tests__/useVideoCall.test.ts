@@ -213,3 +213,97 @@ describe('useVideoCall — media controls', () => {
     expect(camEmit![1]).toMatchObject({ type: 'video', muted: true });
   });
 });
+
+// ─── Quality metrics tests ─────────────────────────────────────────────────────
+describe('useVideoCall — quality metrics', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
+
+  it('does not collect stats before peer connects', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { result } = renderHook(() => useVideoCall(createHookProps()));
+    await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    
+    const qualityLogs = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    );
+    expect(qualityLogs).toHaveLength(0);
+    consoleSpy.mockRestore();
+  });
+
+  it('stops stats collection when hangUp is called', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { result } = renderHook(() => useVideoCall(createHookProps()));
+    await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => { mockSocket._trigger('user-joined', { socketId: 'peer', userId: 'user-2', userRole: 'family' }); });
+    
+    await act(async () => { vi.runAllTimers(); });
+    await act(async () => { vi.runAllTicks(); });
+    
+    const logsBeforeHangup = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    ).length;
+    
+    await act(async () => { result.current.hangUp('user'); });
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    
+    const logsAfterHangup = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    ).length;
+    
+    expect(logsAfterHangup).toBe(logsBeforeHangup);
+    consoleSpy.mockRestore();
+  });
+
+  it('stops stats collection when call-ended event received', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { result } = renderHook(() => useVideoCall(createHookProps()));
+    await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => { mockSocket._trigger('user-joined', { socketId: 'peer', userId: 'user-2', userRole: 'family' }); });
+    
+    await act(async () => { vi.runAllTimers(); });
+    await act(async () => { vi.runAllTicks(); });
+    
+    const logsBeforeEnd = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    ).length;
+    
+    await act(async () => { mockSocket._trigger('call-ended', { reason: 'user' }); });
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    
+    const logsAfterEnd = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    ).length;
+    
+    expect(logsAfterEnd).toBe(logsBeforeEnd);
+    consoleSpy.mockRestore();
+  });
+
+  it('clears stats interval on unmount', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { result, unmount } = renderHook(() => useVideoCall(createHookProps()));
+    await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => { mockSocket._trigger('user-joined', { socketId: 'peer', userId: 'user-2', userRole: 'family' }); });
+    
+    await act(async () => { vi.runAllTimers(); });
+    await act(async () => { vi.runAllTicks(); });
+    
+    mockSocket._trigger('peer-connected');
+    await act(async () => { vi.advanceTimersByTime(3000); });
+    
+    const logsBeforeUnmount = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    ).length;
+    
+    unmount();
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    
+    const logsAfterUnmount = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    ).length;
+    
+    expect(logsAfterUnmount).toBe(logsBeforeUnmount);
+    consoleSpy.mockRestore();
+  });
+});

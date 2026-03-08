@@ -173,3 +173,25 @@ export interface MessageAttachment {
   status: AttachmentStatus;
   createdAt: Date;
 }
+
+export interface ConnectionQualityMetrics {
+  timestamp: number;
+  bitrate: {
+    audio: number;
+    video: number;
+  };
+  packetLoss: {
+    audio: number;
+    video: number;
+  };
+  jitter: {
+    audio: number;
+    video: number;
+  };
+  rtt: number;
+  resolution: {
+    width: number;
+    height: number;
+  };
+  frameRate: number;
+}

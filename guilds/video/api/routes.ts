@@ -262,7 +262,7 @@ videoRouter.get('/my-scheduled', requireAuth, async (req: Request, res: Response
         incarceratedPerson: true,
         familyMember: true,
       },
-      orderBy: { scheduledStart: 'asc' },
+      orderBy: { scheduledStart: 'desc' },
     });
 
     res.json(createSuccessResponse(calls));
