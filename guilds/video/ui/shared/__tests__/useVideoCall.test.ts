@@ -251,15 +251,21 @@ describe('useVideoCall — timer enforcement', () => {
       mockSocket._trigger('room-joined', { roomId: 'call-test-1', phase: 'waiting', participants: [] });
     });
 
+    expect(result.current.timeRemaining).toBeLessThanOrEqual(60);
+    expect(result.current.timeRemaining).toBeGreaterThanOrEqual(59);
+
     const waitingTime = result.current.timeRemaining;
     await act(async () => { vi.advanceTimersByTime(10_000); });
-    expect(result.current.timeRemaining).toBe(waitingTime);
+    expect(result.current.timeRemaining).toBeLessThan(waitingTime);
+    expect(result.current.timeRemaining).toBeGreaterThanOrEqual(49);
 
     await act(async () => {
       mockSocket._trigger('call-started', { roomId: 'call-test-1', phase: 'active', participants: [] });
     });
 
     const afterStart = result.current.timeRemaining;
+    expect(afterStart).toBeGreaterThanOrEqual(29 * 60 + 49);
+    expect(afterStart).toBeLessThanOrEqual(30 * 60);
     await act(async () => { vi.advanceTimersByTime(2_000); });
     expect(result.current.timeRemaining).toBeLessThan(afterStart);
   });

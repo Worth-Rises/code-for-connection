@@ -22,7 +22,7 @@ interface VideoCallRoomProps {
 
 const STATE_LABELS: Record<ConnectionState, string> = {
   IDLE: 'Initialising…',
-  WAITING_FOR_START: 'In waiting room. Call will start at scheduled time…',
+  WAITING_FOR_START: 'In waiting room. Time shown is until scheduled call start…',
   WAITING_FOR_PEER: 'Waiting for the other person to join…',
   CONNECTING: 'Connecting…',
   CONNECTED: 'Connected',
