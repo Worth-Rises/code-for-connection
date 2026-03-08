@@ -564,50 +564,54 @@ function ConversationThread() {
           {messages.length === 0 && !loadingMore && (
             <p className="text-center text-gray-400 text-sm mt-8">No messages yet. Say hello!</p>
           )}
-          {messages.map(msg => (
-            <div
-              key={msg.id}
-              className={`flex ${msg.senderType === 'family' ? 'justify-end' : 'justify-start'}`}
-            >
+          {messages.map(msg => {
+            const isBlocked = msg.status === 'blocked';
+            return (
               <div
-                className={`max-w-sm px-3 py-2 rounded-2xl text-sm ${
-                  msg.senderType === 'family'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-800'
-                }`}
+                key={msg.id}
+                className={`flex ${msg.senderType === 'family' ? 'justify-end' : 'justify-start'}`}
               >
-                {msg.attachments && msg.attachments.length > 0 && (
-                  <div className="mt-1 space-y-1">
-                    {msg.attachments.map(att => {
-                      const isPending = att.status === 'pending_review';
-                      return (
-                        <div key={att.id} className="relative">
-                          <img
-                            src={att.fileUrl}
-                            alt="attachment"
-                            className={`max-w-full rounded-lg ${isPending ? 'blur-md' : ''}`}
-                          />
-                          {isPending && (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <span className="text-xs font-medium text-white bg-black/50 px-2 py-1 rounded-full">Pending review</span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {msg.body && <p>{msg.body}</p>}
-                <p className={`text-xs mt-1 ${msg.senderType === 'family' ? 'text-blue-200' : 'text-gray-400'}`}>
-                  {msg.status === 'pending_review' && '🕐 Pending review'}
-                  {msg.status === 'approved' && '✓ Approved'}
-                  {msg.status === 'sent' && '✓ Sent'}
-                  {msg.status === 'delivered' && '✓✓ Delivered'}
-                  {msg.status === 'read' && '✓✓ Read'}
-                </p>
+                <div
+                  className={`max-w-sm px-3 py-2 rounded-2xl text-sm ${
+                    msg.senderType === 'family'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}
+                >
+                  {!isBlocked && msg.attachments && msg.attachments.length > 0 && (
+                    <div className="mt-1 space-y-1">
+                      {msg.attachments.map(att => {
+                        const isPending = att.status === 'pending_review';
+                        return (
+                          <div key={att.id} className="relative">
+                            <img
+                              src={att.fileUrl}
+                              alt="attachment"
+                              className={`max-w-full rounded-lg ${isPending ? 'blur-md' : ''}`}
+                            />
+                            {isPending && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-xs font-medium text-white bg-black/50 px-2 py-1 rounded-full">Pending review</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {!isBlocked && msg.body && <p>{msg.body}</p>}
+                  <p className={`text-xs mt-1 ${msg.senderType === 'family' ? 'text-blue-200' : 'text-gray-400'}`}>
+                    {msg.status === 'blocked' && 'This message was blocked'}
+                    {msg.status === 'pending_review' && '🕐 Pending review'}
+                    {msg.status === 'approved' && '✓ Approved'}
+                    {msg.status === 'sent' && '✓ Sent'}
+                    {msg.status === 'delivered' && '✓✓ Delivered'}
+                    {msg.status === 'read' && '✓✓ Read'}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div ref={bottomRef} />
         </div>
         <div className="border-t">

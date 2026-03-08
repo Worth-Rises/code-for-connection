@@ -561,6 +561,7 @@ function ConversationThread() {
             const msgDate = new Date(msg.createdAt)
             const prevMsg = messages[index - 1]
             const prevDate = prevMsg ? new Date(prevMsg.createdAt) : null
+            const isBlocked = msg.status === "blocked"
 
             const isNewDay =
               !prevDate || msgDate.toDateString() !== prevDate.toDateString()
@@ -602,7 +603,7 @@ function ConversationThread() {
                         : "bg-gray-100 text-gray-800"
                     }`}
                   >
-                    {msg.attachments && msg.attachments.length > 0 && (
+                    {!isBlocked && msg.attachments && msg.attachments.length > 0 && (
                       <div className="mb-1 space-y-1">
                         {msg.attachments.map((att, i) => {
                           const isPending = att.status === 'pending_review';
@@ -623,14 +624,16 @@ function ConversationThread() {
                         })}
                       </div>
                     )}
-                    {msg.body && <p>{msg.body}</p>}
+                    {!isBlocked && msg.body && <p>{msg.body}</p>}
                     <div className="flex items-center justify-between text-xs mt-1">
                       <p
                         className={`${msg.senderType === "incarcerated" ? "text-blue-200" : "text-gray-400"}`}
                       >
-                        {msg.status === "pending_review"
-                          ? "pending"
-                          : msg.status}
+                        {msg.status === "blocked"
+                          ? "This message was blocked"
+                          : msg.status === "pending_review"
+                            ? "pending"
+                            : msg.status}
                       </p>
                       <p
                         className={`ml-2 ${msg.senderType === "incarcerated" ? "text-blue-200" : "text-gray-400"}`}
