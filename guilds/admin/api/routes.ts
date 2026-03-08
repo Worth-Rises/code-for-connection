@@ -7,14 +7,22 @@ import {
   prisma,
   hashPin,
 } from '@openconnect/shared';
-import { keywordAlertsRouter } from './keyword-alerts.routes.js';
-import { flaggedContentRouter } from './flagged-content.routes.js';
+// Admin guild's keyword-alerts and flagged-content routes are disabled.
+// The messaging guild (AmberAbreu/code-for-connection, guild-message branch)
+// built a working content moderation system using a simpler FlaggedKeyword model
+// with screening wired into POST /messaging/send. These admin routes used a
+// different model (KeywordAlert) with tiered severity + regex + pg_trgm fuzzy
+// matching that was never integrated into the message pipeline.
+// See: doc/explore-content-moderation-guild-conflict.md
+//
+// import { keywordAlertsRouter } from './keyword-alerts.routes.js';
+// import { flaggedContentRouter } from './flagged-content.routes.js';
 import { sessionLimitsRouter } from './session-limits.routes.js';
 
 export const adminRouter = Router();
 
-adminRouter.use('/keyword-alerts', keywordAlertsRouter);
-adminRouter.use('/flagged-content', flaggedContentRouter);
+// adminRouter.use('/keyword-alerts', keywordAlertsRouter);
+// adminRouter.use('/flagged-content', flaggedContentRouter);
 adminRouter.use('/session-limits', sessionLimitsRouter);
 
 adminRouter.get('/contacts/:incarceratedPersonId', requireAuth, async (req: Request, res: Response) => {
