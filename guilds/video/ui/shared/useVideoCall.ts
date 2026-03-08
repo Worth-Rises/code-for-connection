@@ -41,6 +41,8 @@ export interface UseVideoCallReturn {
   replaceVideoTrack: (newTrack: MediaStreamTrack) => void;
   /** The raw camera stream (before any processing). */
   rawStream: MediaStream | null;
+  /** Message shown when admin terminates the call. */
+  adminTerminationMessage: string | null;
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
@@ -71,6 +73,7 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
+  const [adminTerminationMessage, setAdminTerminationMessage] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<number>(() => {
     const endMs = new Date(scheduledEnd).getTime();
     const startMs = scheduledStart ? new Date(scheduledStart).getTime() : Number.NaN;
@@ -88,6 +91,7 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
   const rawStreamRef = useRef<MediaStream | null>(null);
   const endTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const statusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const warningFiredRef = useRef(false);
   const endedRef = useRef(false);
   const callPhaseRef = useRef<CallPhase>(initialCallPhase);
@@ -117,6 +121,7 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
 
     if (endTimerRef.current) clearTimeout(endTimerRef.current);
     if (countdownRef.current) clearInterval(countdownRef.current);
+    if (statusPollRef.current) clearInterval(statusPollRef.current);
     stopStatsCollection();
 
     onCallEnded?.(reason);
@@ -343,6 +348,33 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
 
       socket.on('peer-connected', () => setConnectionState('CONNECTED'));
       socket.on('call-ended', (data: { reason: string }) => hangUp(data.reason));
+      socket.on('call-terminated-by-admin', (data: { roomId: string; message: string }) => {
+        setAdminTerminationMessage(data.message);
+        setTimeout(() => hangUp('admin_termination'), 5000);
+      });
+
+      // Poll for call status changes (e.g., admin termination)
+      statusPollRef.current = setInterval(async () => {
+        if (cancelled || endedRef.current) return;
+        try {
+          const token = typeof globalThis !== 'undefined' ? (globalThis as any).localStorage?.getItem('token') : null;
+          const response = await fetch(`/api/video/call-status/${callId}`, {
+            headers: {
+              'Authorization': token ? `Bearer ${token}` : '',
+            },
+          });
+          if (response.ok) {
+            const result = await response.json() as any;
+            const callStatus = result.data?.status;
+            if (callStatus === 'terminated_by_admin' && !endedRef.current) {
+              setAdminTerminationMessage('This call has been terminated by an administrator.');
+              setTimeout(() => hangUp('admin_termination'), 5000);
+            }
+          }
+        } catch (err) {
+          // Poll errors are non-fatal
+        }
+      }, 3000);
     }
 
     init();
@@ -361,6 +393,7 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
 
       if (endTimerRef.current) clearTimeout(endTimerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
+      if (statusPollRef.current) clearInterval(statusPollRef.current);
       stopStatsCollection();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -556,5 +589,6 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
     connectionState, localStream, remoteStream, isMuted, isCameraOff, timeRemaining,
     toggleMute, toggleCamera, hangUp, replaceVideoTrack,
     rawStream: rawStreamRef.current,
+    adminTerminationMessage,
   };
 }

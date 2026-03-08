@@ -265,6 +265,48 @@ videoRouter.post('/terminate-call/:callId', requireAuth, requireRole('facility_a
   }
 });
 
+// GET /api/video/call-status/:callId — check current call status (for polling)
+videoRouter.get('/call-status/:callId', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { callId } = req.params;
+    const userId = req.user!.id;
+
+    const call = await prisma.videoCall.findUnique({
+      where: { id: callId },
+      select: {
+        id: true,
+        status: true,
+        endedBy: true,
+        terminatedByAdminId: true,
+      },
+    });
+
+    if (!call) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Call not found' }));
+      return;
+    }
+
+    // Verify user is a participant
+    const fullCall = await prisma.videoCall.findUnique({
+      where: { id: callId },
+      select: { incarceratedPersonId: true, familyMemberId: true },
+    });
+
+    if (fullCall && fullCall.incarceratedPersonId !== userId && fullCall.familyMemberId !== userId) {
+      res.status(403).json(createErrorResponse({ code: 'FORBIDDEN', message: 'Not a participant in this call' }));
+      return;
+    }
+
+    res.json(createSuccessResponse(call));
+  } catch (error) {
+    console.error('Error fetching call status:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch call status',
+    }));
+  }
+});
+
 // ─── GET /api/video/my-scheduled ──────────────────────────────────────────
 videoRouter.get('/my-scheduled', requireAuth, async (req: Request, res: Response) => {
   try {

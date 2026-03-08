@@ -62,6 +62,7 @@ export function VideoCallRoom({
     hangUp,
     replaceVideoTrack,
     rawStream,
+    adminTerminationMessage,
   } = useVideoCall({
     callId,
     userId,
@@ -232,6 +233,32 @@ export function VideoCallRoom({
             zIndex: 10,
           }}>
             Poor connection. Trying to reconnect...
+          </div>
+        )}
+
+        {/* Admin termination message */}
+        {adminTerminationMessage && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(15,23,42,0.95)',
+            padding: '16px',
+            zIndex: 20,
+          }}>
+            <div style={{
+              textAlign: 'center',
+              color: '#f87171',
+            }}>
+              <p style={{ fontSize: 'clamp(16px, 4vw, 20px)', fontWeight: 700, marginBottom: '8px' }}>
+                {adminTerminationMessage}
+              </p>
+              <p style={{ fontSize: 'clamp(12px, 3vw, 14px)', color: '#cbd5e1' }}>
+                Call ending...
+              </p>
+            </div>
           </div>
         )}
       </div>
