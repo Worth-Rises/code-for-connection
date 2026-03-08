@@ -76,9 +76,14 @@ describe('useVideoCall — state machine', () => {
 
   it('transitions to JOINING after socket connects and emits join-room', async () => {
     const { result } = renderHook(() => useVideoCall(createHookProps()));
+    // getUserMedia returns a resolved promise, but connectSocket() is called
+    // after it resolves. Flush the microtask queue so connectSocket runs and
+    // registers socket.on('connect') before we fire the event.
     await act(async () => {
-      mockSocket._trigger('connect');
+      vi.runAllTicks();
+      await Promise.resolve();
     });
+    await act(async () => { mockSocket._trigger('connect'); });
     expect(result.current.connectionState).toBe('WAITING_FOR_PEER');
     const joinEmit = mockSocket._emitted.find(([e]) => e === 'join-room');
     expect(joinEmit).toBeDefined();
@@ -126,6 +131,11 @@ describe('useVideoCall — state machine', () => {
 
   it('disconnects socket on unmount', async () => {
     const { unmount } = renderHook(() => useVideoCall(createHookProps()));
+    // Flush getUserMedia microtask so socketRef.current is populated
+    await act(async () => {
+      vi.runAllTicks();
+      await Promise.resolve();
+    });
     unmount();
     expect(mockSocket.disconnect).toHaveBeenCalled();
   });
@@ -201,5 +211,99 @@ describe('useVideoCall — media controls', () => {
     const camEmit = mockSocket._emitted.find(([e]) => e === 'mute-toggle');
     expect(camEmit).toBeDefined();
     expect(camEmit![1]).toMatchObject({ type: 'video', muted: true });
+  });
+});
+
+// ─── Quality metrics tests ─────────────────────────────────────────────────────
+describe('useVideoCall — quality metrics', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
+
+  it('does not collect stats before peer connects', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { result } = renderHook(() => useVideoCall(createHookProps()));
+    await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    
+    const qualityLogs = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    );
+    expect(qualityLogs).toHaveLength(0);
+    consoleSpy.mockRestore();
+  });
+
+  it('stops stats collection when hangUp is called', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { result } = renderHook(() => useVideoCall(createHookProps()));
+    await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => { mockSocket._trigger('user-joined', { socketId: 'peer', userId: 'user-2', userRole: 'family' }); });
+    
+    await act(async () => { vi.runAllTimers(); });
+    await act(async () => { vi.runAllTicks(); });
+    
+    const logsBeforeHangup = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    ).length;
+    
+    await act(async () => { result.current.hangUp('user'); });
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    
+    const logsAfterHangup = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    ).length;
+    
+    expect(logsAfterHangup).toBe(logsBeforeHangup);
+    consoleSpy.mockRestore();
+  });
+
+  it('stops stats collection when call-ended event received', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { result } = renderHook(() => useVideoCall(createHookProps()));
+    await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => { mockSocket._trigger('user-joined', { socketId: 'peer', userId: 'user-2', userRole: 'family' }); });
+    
+    await act(async () => { vi.runAllTimers(); });
+    await act(async () => { vi.runAllTicks(); });
+    
+    const logsBeforeEnd = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    ).length;
+    
+    await act(async () => { mockSocket._trigger('call-ended', { reason: 'user' }); });
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    
+    const logsAfterEnd = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    ).length;
+    
+    expect(logsAfterEnd).toBe(logsBeforeEnd);
+    consoleSpy.mockRestore();
+  });
+
+  it('clears stats interval on unmount', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { result, unmount } = renderHook(() => useVideoCall(createHookProps()));
+    await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => { mockSocket._trigger('user-joined', { socketId: 'peer', userId: 'user-2', userRole: 'family' }); });
+    
+    await act(async () => { vi.runAllTimers(); });
+    await act(async () => { vi.runAllTicks(); });
+    
+    mockSocket._trigger('peer-connected');
+    await act(async () => { vi.advanceTimersByTime(3000); });
+    
+    const logsBeforeUnmount = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    ).length;
+    
+    unmount();
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    
+    const logsAfterUnmount = consoleSpy.mock.calls.filter((call) => 
+      call[0]?.toString().includes('[Quality]')
+    ).length;
+    
+    expect(logsAfterUnmount).toBe(logsBeforeUnmount);
+    consoleSpy.mockRestore();
   });
 });

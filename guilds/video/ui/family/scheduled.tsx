@@ -1,17 +1,38 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Card } from '@openconnect/ui';
+import { VideoCallRoom } from '../shared/VideoCallRoom.js';
 import { familyMessages } from '../messages';
+
+const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'http://localhost:3001';
+const JOIN_GRACE_MS = 900_000;
 
 interface VideoCall {
   id: string;
   scheduledStart: string;
   scheduledEnd: string;
   status: string;
+  approvedBy?: string | null;
   incarceratedPerson: {
     firstName: string;
     lastName: string;
   };
+}
+
+interface ActiveCall {
+  callId: string;
+  scheduledEnd: string;
+}
+
+function getUserIdFromToken(): string {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return '';
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.userId ?? '';
+  } catch {
+    return '';
+  }
 }
 
 export default function ScheduledCalls() {
@@ -22,6 +43,9 @@ export default function ScheduledCalls() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cancelingCallId, setCancelingCallId] = useState<string | null>(null);
+  const [joiningCallId, setJoiningCallId] = useState<string | null>(null);
+  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const userId = getUserIdFromToken();
 
   useEffect(() => {
     let mounted = true;
@@ -68,6 +92,7 @@ export default function ScheduledCalls() {
       requested: 'bg-yellow-100 text-yellow-800',
       approved: 'bg-blue-100 text-blue-800',
       scheduled: 'bg-green-100 text-green-800',
+      in_progress: 'bg-emerald-100 text-emerald-800',
       denied: 'bg-red-100 text-red-800',
     };
     return (
@@ -77,8 +102,55 @@ export default function ScheduledCalls() {
     );
   };
 
-  const canCancelCall = (status: string) => ['requested', 'scheduled'].includes(status);
-  const canRescheduleCall = (status: string) => ['requested', 'scheduled'].includes(status);
+  const hasCallStarted = (call: VideoCall) => Date.now() >= new Date(call.scheduledStart).getTime();
+
+  const canJoinCall = (call: VideoCall) => {
+    if (!['scheduled', 'in_progress'].includes(call.status)) return false;
+    if (!call.approvedBy) return false;
+    const now = Date.now();
+    const start = new Date(call.scheduledStart).getTime();
+    const end = new Date(call.scheduledEnd).getTime();
+    return now >= start && now <= end + JOIN_GRACE_MS;
+  };
+
+  const canCancelCall = (call: VideoCall) => {
+    if (call.status === 'requested') return true;
+    if (call.status === 'scheduled') return !hasCallStarted(call);
+    return false;
+  };
+
+  const canRescheduleCall = (call: VideoCall) => {
+    if (call.status === 'requested') return true;
+    if (call.status === 'scheduled') return !hasCallStarted(call);
+    return false;
+  };
+
+  const handleJoinCall = async (call: VideoCall) => {
+    setError(null);
+    setJoiningCallId(call.id);
+    try {
+      // @ts-ignore
+      const token: string | null = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+      const res = await fetch(`/api/video/join/${call.id}`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' },
+      });
+
+      const json: any = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error?.message || `HTTP ${res.status}`);
+      }
+
+      setActiveCall({
+        callId: call.id,
+        scheduledEnd: json?.data?.scheduledEnd || call.scheduledEnd,
+      });
+    } catch (err: any) {
+      setError(err.message || familyMessages.scheduled.joinErrorFallback);
+    } finally {
+      setJoiningCallId(null);
+    }
+  };
 
   const handleCancelCall = async (callId: string) => {
     setError(null);
@@ -103,6 +175,19 @@ export default function ScheduledCalls() {
       setCancelingCallId(null);
     }
   };
+
+  if (activeCall) {
+    return (
+      <VideoCallRoom
+        callId={activeCall.callId}
+        userId={userId}
+        userRole="family"
+        scheduledEnd={activeCall.scheduledEnd}
+        signalingUrl={SIGNALING_URL}
+        onExit={() => setActiveCall(null)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -138,10 +223,22 @@ export default function ScheduledCalls() {
                 <div className="text-xs text-gray-500">
                   {familyMessages.scheduled.durationLabel}
                 </div>
-                {canCancelCall(call.status) && (
+                {(canJoinCall(call) || canRescheduleCall(call) || canCancelCall(call)) && (
                   <div className="mt-3">
                     <div className="flex gap-2">
-                      {canRescheduleCall(call.status) && (
+                      {canJoinCall(call) && (
+                        <button
+                          type="button"
+                          onClick={() => handleJoinCall(call)}
+                          disabled={joiningCallId === call.id}
+                          className="inline-flex items-center justify-center px-3 py-1.5 text-sm border border-green-300 text-green-700 rounded hover:bg-green-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {joiningCallId === call.id
+                            ? familyMessages.scheduled.joiningCallButton
+                            : familyMessages.scheduled.joinCallButton}
+                        </button>
+                      )}
+                      {canRescheduleCall(call) && (
                         <Link
                           to={`${schedulePath}?rescheduleCallId=${call.id}`}
                           className="inline-flex items-center justify-center px-3 py-1.5 text-sm border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
@@ -149,16 +246,18 @@ export default function ScheduledCalls() {
                           {familyMessages.scheduled.rescheduleCallButton}
                         </Link>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => handleCancelCall(call.id)}
-                        disabled={cancelingCallId === call.id}
-                        className="inline-flex items-center justify-center px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded hover:bg-red-50 disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        {cancelingCallId === call.id
-                          ? familyMessages.scheduled.cancelingCallButton
-                          : familyMessages.scheduled.cancelCallButton}
-                      </button>
+                      {canCancelCall(call) && (
+                        <button
+                          type="button"
+                          onClick={() => handleCancelCall(call.id)}
+                          disabled={cancelingCallId === call.id}
+                          className="inline-flex items-center justify-center px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded hover:bg-red-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {cancelingCallId === call.id
+                            ? familyMessages.scheduled.cancelingCallButton
+                            : familyMessages.scheduled.cancelCallButton}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
