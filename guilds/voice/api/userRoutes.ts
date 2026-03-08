@@ -406,8 +406,17 @@ voiceUserRouter.post('/end-call/:callId', requireAuth, async (req: Request, res:
       if (call.conferenceSid) {
         // Use stored SID to terminate directly
         console.log(`[voice] Ending conference by SID ${call.conferenceSid}`);
-        await client.conferences(call.conferenceSid).update({ status: 'completed' });
-        console.log(`[voice] Conference ${call.conferenceSid} terminated`);
+        try {
+          await client.conferences(call.conferenceSid).update({ status: 'completed' });
+          console.log(`[voice] Conference ${call.conferenceSid} terminated`);
+        } catch (confError: any) {
+          if (confError?.status === 404) {
+            // Conference already ended (e.g. receiver hung up with endConferenceOnExit)
+            console.log(`[voice] Conference ${call.conferenceSid} already ended (404)`);
+          } else {
+            throw confError;
+          }
+        }
       } else {
         // Fallback: look up by friendly name for calls created before conferenceSid was stored
         const conferenceName = `call-${callId}`;

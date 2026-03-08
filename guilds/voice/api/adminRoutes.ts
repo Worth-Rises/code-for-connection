@@ -157,7 +157,16 @@ voiceAdminRouter.post('/terminate-calls', requireAuth, requireRole('facility_adm
         throw new Error(`No conferenceSid stored for call ${call.id}`);
       }
       console.log(`[voice] Admin terminate: conference ${call.conferenceSid} terminating`);
-      await client.conferences(call.conferenceSid).update({ status: 'completed' });
+      try {
+        await client.conferences(call.conferenceSid).update({ status: 'completed' });
+      } catch (confError: any) {
+        if (confError?.status === 404) {
+          // Conference already ended (e.g. receiver hung up)
+          console.log(`[voice] Conference ${call.conferenceSid} already ended (404)`);
+        } else {
+          throw confError;
+        }
+      }
       return call.id;
     });
 
