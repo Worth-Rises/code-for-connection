@@ -347,6 +347,8 @@ function ConversationThread() {
   const [noteContent, setNoteContent] = useState("")
   const [noteSaved, setNoteSaved] = useState(true)
   const noteSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ msgId: string; body: string; x: number; y: number } | null>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -364,6 +366,17 @@ function ConversationThread() {
     document.addEventListener("mousedown", handler)
     return () => document.removeEventListener("mousedown", handler)
   }, [showEmojiPicker])
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const handler = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [contextMenu])
 
   useEffect(() => {
     if (!conversationId) return
@@ -455,7 +468,7 @@ function ConversationThread() {
         })
         if (newTotalPages > totalPages) setTotalPages(newTotalPages)
         prevTotalRef.current = newTotal
-        if (hasNew) apiFetch(`/messaging/conversations/${conversationId}/read`, { method: 'PATCH' })
+        apiFetch(`/messaging/conversations/${conversationId}/read`, { method: 'PATCH' })
       }
     }
     const interval = setInterval(poll, 3000)
@@ -539,8 +552,8 @@ function ConversationThread() {
   }
 
   return (
-    <div className="space-y-2">
-      <div className="space-y-2">
+    <div className="flex flex-col h-full">
+      <div className="flex-shrink-0 space-y-2">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
@@ -594,9 +607,38 @@ function ConversationThread() {
         </div>
       </div>
 
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 bg-white rounded-xl shadow-xl border border-gray-200 py-1 min-w-[180px]"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button
+            className="w-full text-left px-4 py-3 text-sm text-gray-800 hover:bg-gray-50 active:bg-gray-100"
+            onClick={() => {
+              const newContent = noteContent ? `${noteContent}\n\n${contextMenu.body}` : contextMenu.body
+              handleNoteChange(newContent)
+              setContextMenu(null)
+            }}
+          >
+            Copy to notepad
+          </button>
+          <button
+            className="w-full text-left px-4 py-3 text-sm text-gray-800 hover:bg-gray-50 active:bg-gray-100"
+            onClick={() => {
+              navigator.clipboard.writeText(contextMenu.body)
+              setContextMenu(null)
+            }}
+          >
+            Copy text
+          </button>
+        </div>
+      )}
+
+      <div className="flex-1 min-h-0 pt-2">
       {activeTab === "chat" && (
-        <Card padding="none">
-            <div className="flex flex-col" style={{ height: 'calc(100vh - 220px)' }}>
+        <Card padding="none" className="h-full">
+            <div className="flex flex-col h-full">
           <div
             ref={containerRef}
             onScroll={handleScroll}
@@ -665,6 +707,10 @@ function ConversationThread() {
                         ? "bg-blue-600 text-white"
                         : "bg-gray-100 text-gray-800"
                     }`}
+                    onContextMenu={msg.body && !isBlocked ? (e) => {
+                      e.preventDefault()
+                      setContextMenu({ msgId: msg.id, body: msg.body, x: e.clientX, y: e.clientY })
+                    } : undefined}
                   >
                     {!shouldHideContent &&
                       msg.attachments &&
@@ -697,8 +743,8 @@ function ConversationThread() {
                         })}
                       </div>
                     )}
-                    {msg.status === 'blocked'
-                      ? <p className="italic opacity-50">Message not approved</p>
+                    {shouldHideContent
+                      ? <p className="italic opacity-50">{isBlocked ? 'Message not approved' : 'Pending review'}</p>
                       : msg.body && <p>{msg.body}</p>
                     }
                     <div className="flex items-center justify-between text-xs mt-1">
@@ -803,8 +849,8 @@ function ConversationThread() {
       )}
 
       {activeTab === "notepad" && (
-        <Card padding="md">
-          <div className="flex items-center justify-between mb-2">
+        <Card padding="md" className="h-full flex flex-col">
+          <div className="flex items-center justify-between mb-2 flex-shrink-0">
             <p className="text-sm font-medium text-gray-700">Shared notepad</p>
             <div className="flex items-center gap-3">
               <span className="text-xs text-gray-400">{noteSaved ? "Saved" : "Saving…"}</span>
@@ -818,8 +864,7 @@ function ConversationThread() {
             </div>
           </div>
           <textarea
-            className="w-full border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-            rows={16}
+            className="flex-1 w-full border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="Paste or type notes here… both sides can see and edit this."
             value={noteContent}
             onChange={(e) => handleNoteChange(e.target.value)}
@@ -828,8 +873,8 @@ function ConversationThread() {
       )}
 
       {activeTab === "gallery" && (
-        <Card padding="none">
-          <div className="h-[500px] overflow-y-auto p-4" style={{ height: 'calc(100vh - 220px)' }}>
+        <Card padding="none" className="h-full">
+          <div className="h-full overflow-y-auto p-4">
             <GalleryView
               photos={galleryPhotos}
               participantLabel={
@@ -841,6 +886,7 @@ function ConversationThread() {
           </div>
         </Card>
       )}
+      </div>
     </div>
   )
 }

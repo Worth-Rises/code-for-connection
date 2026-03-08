@@ -459,7 +459,7 @@ function ConversationThread() {
         });
         if (newTotalPages > totalPages) setTotalPages(newTotalPages);
         prevTotalRef.current = newTotal;
-        if (hasNew) apiFetch(`/messaging/conversations/${conversationId}/read`, { method: 'PATCH' });
+        apiFetch(`/messaging/conversations/${conversationId}/read`, { method: 'PATCH' });
       }
     };
     const interval = setInterval(poll, 3000);
@@ -683,8 +683,8 @@ function ConversationThread() {
                       })}
                     </div>
                   )}
-                  {msg.status === 'blocked'
-                    ? <p className="italic opacity-50">Message not approved</p>
+                  {shouldHideContent
+                    ? <p className="italic opacity-50">{isBlocked ? 'Message not approved' : 'Pending review'}</p>
                     : msg.body && <p>{msg.body}</p>
                   }
                   <p className={`text-xs mt-1 ${msg.senderType === 'family' ? 'text-blue-200' : 'text-gray-400'}`}>
