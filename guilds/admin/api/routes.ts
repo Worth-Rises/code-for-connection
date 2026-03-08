@@ -114,7 +114,7 @@ adminRouter.get('/facility/:facilityId', requireAuth, async (req: Request, res: 
   }
 });
 
-adminRouter.get('/facilities', async (_req: Request, res: Response) => {
+adminRouter.get('/facilities', requireAuth, async (_req: Request, res: Response) => {
   try {
     const facilities = await prisma.facility.findMany({
       select: {
