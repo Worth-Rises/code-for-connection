@@ -270,7 +270,7 @@ videoRouter.post('/join/:callId', requireAuth, async (req: Request, res: Respons
     const { callId } = req.params;
     const userId = req.user!.id;
     const now = new Date();
-    const TOLERANCE_MS = 60_000; // 60-second clock-drift tolerance
+    const TOLERANCE_MS = 900_000; // 15-minute clock-drift/early-join tolerance
 
     const call = await prisma.videoCall.findUnique({
       where: { id: callId },
@@ -418,6 +418,119 @@ videoRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency_adm
     res.status(500).json(createErrorResponse({
       code: 'INTERNAL_ERROR',
       message: 'Failed to fetch stats',
+    }));
+  }
+});
+
+// GET /api/video/time-slots — available time slots for a facility, filtered by availability
+videoRouter.get('/time-slots', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { facilityId, date } = req.query;
+
+    if (!facilityId) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'facilityId is required',
+      }));
+      return;
+    }
+
+    const slots = await prisma.videoCallTimeSlot.findMany({
+      where: { facilityId: String(facilityId) },
+      include: { housingUnitType: true },
+      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    });
+
+    if (!date) {
+      res.json(createSuccessResponse(slots));
+      return;
+    }
+
+    // When a specific date is provided, check concurrency for each slot
+    const targetDate = new Date(String(date));
+    const dayOfWeek = targetDate.getDay(); // 0 = Sunday
+
+    const slotsForDay = slots.filter((s: { dayOfWeek: number; }) => s.dayOfWeek === dayOfWeek);
+
+    const slotsWithAvailability = await Promise.all(
+      slotsForDay.map(async (slot: any) => {
+        // Build the absolute DateTime for the slot's start/end on the target date
+        const [startHour, startMin] = slot.startTime.split(':').map(Number);
+        const [endHour, endMin] = slot.endTime.split(':').map(Number);
+
+        const slotStart = new Date(targetDate);
+        slotStart.setHours(startHour, startMin, 0, 0);
+        const slotEnd = new Date(targetDate);
+        slotEnd.setHours(endHour, endMin, 0, 0);
+
+        const concurrentBookings = await prisma.videoCall.count({
+          where: {
+            facilityId: String(facilityId),
+            status: { in: ['requested', 'scheduled', 'in_progress'] },
+            scheduledStart: { lt: slotEnd },
+            scheduledEnd: { gt: slotStart },
+          },
+        });
+
+        return {
+          ...slot,
+          available: concurrentBookings < slot.maxConcurrent,
+          remaining: Math.max(0, slot.maxConcurrent - concurrentBookings),
+        };
+      }),
+    );
+
+    res.json(createSuccessResponse(slotsWithAvailability));
+  } catch (error) {
+    console.error('Error fetching time slots:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch time slots',
+    }));
+  }
+});
+
+// GET /api/video/my-calls — upcoming scheduled/approved/requested calls for the authenticated user
+// Works for incarcerated users too, includes in-progress calls, and uses scheduledEnd as the cutoff so active calls aren't dropped from the list.
+videoRouter.get('/my-calls', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const role = req.user!.role;
+
+    const where: Record<string, unknown> = {
+      status: { in: ['requested', 'scheduled', 'approved', 'in_progress'] },
+      scheduledEnd: { gte: new Date() },
+    };
+
+    if (role === 'family') {
+      where.familyMemberId = userId;
+    } else if (role === 'incarcerated') {
+      where.incarceratedPersonId = userId;
+    } else {
+      // Admins can optionally filter by facilityId
+      const { facilityId } = (req as Request).query;
+      if (facilityId) where.facilityId = String(facilityId);
+    }
+
+    const calls = await prisma.videoCall.findMany({
+      where,
+      include: {
+        incarceratedPerson: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+        familyMember: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
+      orderBy: { scheduledStart: 'asc' },
+    });
+
+    res.json(createSuccessResponse(calls));
+  } catch (error) {
+    console.error('Error fetching upcoming calls:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch upcoming calls',
     }));
   }
 });
@@ -707,6 +820,66 @@ videoRouter.post('/cancel-call/:callId', requireAuth, requireRole('family'), asy
     res.status(500).json(createErrorResponse({
       code: 'INTERNAL_ERROR',
       message: 'Failed to cancel video call',
+    }));
+  }
+});
+
+// GET /api/video/past-calls — completed/missed/terminated calls for the authenticated user
+videoRouter.get('/past-calls', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const role = req.user!.role;
+    const { page = '1', pageSize = '20' } = req.query;
+
+    const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize));
+    const take = parseInt(String(pageSize));
+
+    const where: Record<string, unknown> = {
+      status: { in: ['completed', 'missed', 'terminated_by_admin'] },
+    };
+
+    if (role === 'family') {
+      where.familyMemberId = userId;
+    } else if (role === 'incarcerated') {
+      where.incarceratedPersonId = userId;
+    } else {
+      const { facilityId } = req.query;
+      if (facilityId) where.facilityId = String(facilityId);
+    }
+
+    const [calls, total] = await Promise.all([
+      prisma.videoCall.findMany({
+        where,
+        include: {
+          incarceratedPerson: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          familyMember: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+        },
+        orderBy: { scheduledStart: 'desc' },
+        skip,
+        take,
+      }),
+      prisma.videoCall.count({ where }),
+    ]);
+
+    res.json({
+      success: true,
+      data: calls,
+      pagination: {
+        page: parseInt(String(page)),
+        pageSize: take,
+        total,
+        totalPages: Math.ceil(total / take),
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching past calls:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch past calls',
     }));
   }
 });

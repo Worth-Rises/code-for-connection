@@ -31,7 +31,7 @@ export function ScheduledCallsList({ onJoinCall }: ScheduledCallsListProps) {
   if (error)   return <p style={{ color: '#f87171', textAlign: 'center' }}>{error}</p>;
 
   const now = Date.now();
-  const TOLERANCE_MS = 60_000;
+  const TOLERANCE_MS = 900_000;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
