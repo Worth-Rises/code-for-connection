@@ -18,7 +18,7 @@ export default function IncarceratedLayout() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className="h-screen bg-gray-100 flex flex-col overflow-hidden">
       <header className="bg-blue-900 text-white px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
@@ -57,7 +57,7 @@ export default function IncarceratedLayout() {
         </div>
       </nav>
 
-      <main className="flex-1 p-6">
+      <main className="flex-1 p-6 overflow-y-auto">
         <Outlet />
       </main>
     </div>

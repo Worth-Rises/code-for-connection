@@ -111,6 +111,14 @@ function GalleryView({ photos, participantLabel }: GalleryViewProps) {
           <div className="grid grid-cols-3 gap-2">
             {photos.map((photo, index) => {
               const isPending = photo.status === "pending_review"
+              const isRemoved = photo.status === "rejected" || photo.status === "blocked"
+              if (isRemoved) {
+                return (
+                  <div key={photo.id} className="aspect-square rounded-lg bg-black flex items-center justify-center">
+                    <span className="text-xs font-medium text-white/60">Media removed</span>
+                  </div>
+                )
+              }
               return (
                 <button
                   key={photo.id}
@@ -481,7 +489,7 @@ function ConversationThread() {
       thumbnail: att.fileUrl,
       date: new Date(msg.createdAt).toLocaleDateString(),
       sender: senderLabel,
-      status: msg.status,
+      status: msg.status === 'blocked' ? 'blocked' : att.status,
     }))
   })
 
