@@ -206,7 +206,7 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
       },
       include: {
         familyMember: true,
-        incarceratedPerson: true,
+        incarceratedPerson: { include: { facility: true } },
       },
     });
 
@@ -256,6 +256,43 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
         process.env.TWILIO_ACCOUNT_SID,
         process.env.TWILIO_AUTH_TOKEN,
       );
+
+      // Step 0: Conditionally send SMS heads-up based on system configuration
+      const smsSetting = await prisma.systemConfiguration.findUnique({
+        where: { key: 'sms_send_setting' },
+      });
+      const smsMode = smsSetting?.value ?? 'NO_SMS';
+
+      if (smsMode !== 'NO_SMS') {
+        const inmate = contact.incarceratedPerson;
+        const facilityName = inmate.facility.name;
+
+        let smsBody: string;
+        if (smsMode === 'SEND_SMS_WITH_NAME') {
+          smsBody = `You are about to receive a call from ${inmate.firstName} ${inmate.lastName} at ${facilityName} from this number.`;
+        } else {
+          // SEND_SMS — generic message without the inmate's name
+          smsBody = `You are about to receive a call from an inmate at ${facilityName} from this number.`;
+        }
+
+        console.log(`[voice] Step 0: Sending SMS to ${contact.familyMember.phone} (mode=${smsMode})`);
+        try {
+          await client.messages.create({
+            from: twilioFrom,
+            to: contact.familyMember.phone,
+            body: smsBody,
+          });
+          console.log(`[voice] Step 0 done: SMS sent successfully`);
+        } catch (smsError) {
+          // Log but don't block the call if SMS fails
+          console.error('[voice] SMS sending failed (proceeding with call):', smsError);
+        }
+
+        // Wait 10 seconds so the recipient can read the SMS before the phone rings
+        await new Promise(resolve => setTimeout(resolve, 10_000));
+      } else {
+        console.log(`[voice] SMS disabled (sms_send_setting=NO_SMS), skipping`);
+      }
 
       // Step 1: Add the tablet user (browser Device) to the conference
       console.log(`[voice] Step 1: Adding client:${userId} to conference ${conferenceName}`);

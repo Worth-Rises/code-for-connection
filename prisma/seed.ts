@@ -15,6 +15,7 @@ async function main() {
   console.log('🌱 Starting seed...');
 
   // Clear existing data
+  await prisma.systemConfiguration.deleteMany();
   await prisma.messageAttachment.deleteMany();
   await prisma.message.deleteMany();
   await prisma.conversation.deleteMany();
@@ -755,6 +756,17 @@ async function main() {
       agencyId: agency.id,
       reason: 'Spam caller',
       blockedBy: agencyAdmin.id,
+    },
+  });
+
+  console.log('⚙️  Creating system configuration...');
+
+  // Create default system configuration
+  await prisma.systemConfiguration.create({
+    data: {
+      key: 'sms_send_setting',
+      value: 'SEND_SMS_WITH_NAME',
+      description: 'Controls SMS before voice calls: NO_SMS, SEND_SMS (no inmate name), SEND_SMS_WITH_NAME (includes inmate name and facility)',
     },
   });
 
