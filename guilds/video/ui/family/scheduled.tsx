@@ -82,9 +82,11 @@ export default function ScheduledCalls() {
     return () => { mounted = false; };
   }, [contactId]);
 
-  const formatDateTime = (isoString: string) => {
-    const date = new Date(isoString);
-    return date.toLocaleString(familyMessages.locale.dateTime, {
+  const formatDateTimeRange = (startIso: string, endIso: string) => {
+    const start = new Date(startIso);
+    const end = new Date(endIso);
+
+    const startDisplay = start.toLocaleString(familyMessages.locale.dateTime, {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -93,6 +95,14 @@ export default function ScheduledCalls() {
       minute: '2-digit',
       hour12: true,
     });
+
+    const endDisplay = end.toLocaleTimeString(familyMessages.locale.dateTime, {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    return `${startDisplay} - ${endDisplay}`;
   };
 
   const getStatusBadge = (status: string) => {
@@ -239,7 +249,7 @@ export default function ScheduledCalls() {
                       {call.incarceratedPerson.firstName} {call.incarceratedPerson.lastName}
                     </div>
                     <div className="text-sm text-gray-600 truncate">
-                      {formatDateTime(call.scheduledStart)}
+                      {formatDateTimeRange(call.scheduledStart, call.scheduledEnd)}
                     </div>
                   </div>
                   <div className="flex-shrink-0">
