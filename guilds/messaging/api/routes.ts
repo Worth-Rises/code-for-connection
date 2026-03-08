@@ -715,6 +715,11 @@ messagingRouter.post(
         data: { status: "blocked", reviewedBy: req.user!.id },
       })
 
+      await prisma.messageAttachment.updateMany({
+        where: { messageId },
+        data: { status: "rejected" },
+      })
+
       res.json(createSuccessResponse({ success: true, message }))
     } catch (error) {
       console.error("Error rejecting message:", error)

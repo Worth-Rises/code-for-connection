@@ -610,6 +610,14 @@ function ConversationThread() {
                       <div className="mb-1 space-y-1">
                         {msg.attachments.map((att, i) => {
                           const isPending = att.status === 'pending_review';
+                          const isRejected = att.status === 'rejected';
+                          if (isRejected) {
+                            return (
+                              <div key={i} className="w-full h-24 rounded-lg bg-black flex items-center justify-center">
+                                <span className="text-xs font-medium text-white/60">Media removed</span>
+                              </div>
+                            );
+                          }
                           return (
                             <div key={i} className="relative">
                               <img
@@ -627,16 +635,19 @@ function ConversationThread() {
                         })}
                       </div>
                     )}
-                    {!isBlocked && msg.body && <p>{msg.body}</p>}
+                    {msg.status === 'blocked'
+                      ? <p className="italic opacity-50">Message not approved</p>
+                      : msg.body && <p>{msg.body}</p>
+                    }
                     <div className="flex items-center justify-between text-xs mt-1">
                       <p
                         className={`${msg.senderType === "incarcerated" ? "text-blue-200" : "text-gray-400"}`}
                       >
-                        {msg.status === "blocked"
-                          ? "This message was blocked"
-                          : msg.status === "pending_review"
-                            ? "pending"
-                            : msg.status}
+                        {msg.status === "pending_review" ? "🕐 Pending review"
+                          : msg.status === "blocked" ? "✕ Not approved"
+                          : msg.status === "sent" ? "✓ Sent"
+                          : msg.status === "read" ? "✓✓ Read"
+                          : msg.status}
                       </p>
                       <p
                         className={`ml-2 ${msg.senderType === "incarcerated" ? "text-blue-200" : "text-gray-400"}`}
