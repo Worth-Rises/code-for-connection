@@ -5,6 +5,7 @@ import {
   createSuccessResponse,
   createErrorResponse,
   prisma,
+  hashPin,
 } from '@openconnect/shared';
 import { keywordAlertsRouter } from './keyword-alerts.routes.js';
 import { flaggedContentRouter } from './flagged-content.routes.js';
@@ -287,6 +288,54 @@ adminRouter.get('/residents/:id', requireAuth, async (req: Request, res: Respons
     res.status(500).json(createErrorResponse({
       code: 'INTERNAL_ERROR',
       message: 'Failed to fetch resident',
+    }));
+  }
+});
+
+adminRouter.post('/residents/:id/reset-pin', async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json(createErrorResponse({
+        code: 'UNAUTHORIZED',
+        message: 'Not authenticated',
+      }));
+      return;
+    }
+
+    const resident = await prisma.incarceratedPerson.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!resident) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Resident not found',
+      }));
+      return;
+    }
+
+    if (req.user.role === 'facility_admin' && req.user.facilityId !== resident.facilityId) {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'No access to this resident',
+      }));
+      return;
+    }
+
+    const newPin = String(Math.floor(1000 + Math.random() * 9000));
+    const hashedPin = await hashPin(newPin);
+
+    await prisma.incarceratedPerson.update({
+      where: { id: resident.id },
+      data: { pin: hashedPin },
+    });
+
+    res.json(createSuccessResponse({ newPin }));
+  } catch (error) {
+    console.error('Error resetting PIN:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to reset PIN',
     }));
   }
 });
