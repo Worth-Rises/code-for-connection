@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { ScheduledCallsList } from './ScheduledCallsList.js';
+import { PastCallsList } from './PastCallsList.js';
 import { VideoCallRoom } from '../shared/VideoCallRoom.js';
 
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'http://localhost:3001';
@@ -45,35 +46,59 @@ function IncarceratedVideoHome() {
       fontFamily: 'Inter, sans-serif',
       padding: '24px',
     }}>
-      <h1 style={{
-        color: '#e2e8f0',
-        fontSize: '22px',
-        fontWeight: 700,
-        marginBottom: '24px',
+      <div style={{
++        display: 'grid',
++        gridTemplateColumns: '1fr 1fr',
++        gap: '24px',
++        alignItems: 'start',
       }}>
-        Scheduled Video Calls
-      </h1>
-      <ScheduledCallsList
-        onJoinCall={(callId, scheduledEnd) => {
-          // First POST to join the call to mark it in_progress, then open the room
-          fetch(`/api/video/join/${callId}`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem('token') ?? ''}`,
-              'Content-Type': 'application/json',
-            },
-          })
-            .then((r) => r.json())
-            .then((body) => {
-              if (body.success) {
-                setActiveCall({ callId, scheduledEnd: body.data.scheduledEnd });
-              } else {
-                alert(`Cannot join: ${body.error?.message ?? 'Unknown error'}`);
-              }
-            })
-            .catch(() => alert('Failed to join call. Please try again.'));
-        }}
-      />
+        {/* Left column — upcoming scheduled calls */}
+        <div>
+          <h2 style={{
+            color: '#e2e8f0',
+            fontSize: '18px',
+            fontWeight: 700,
+            marginBottom: '16px',
+            marginTop: 0,
+          }}>
+            Scheduled Calls
+          </h2>
+          <ScheduledCallsList
+            onJoinCall={(callId, scheduledEnd) => {
+              fetch(`/api/video/join/${callId}`, {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${localStorage.getItem('token') ?? ''}`,
+                  'Content-Type': 'application/json',
+                },
+              })
+                .then((r) => r.json())
+                .then((body) => {
+                  if (body.success) {
+                    setActiveCall({ callId, scheduledEnd: body.data.scheduledEnd });
+                  } else {
+                    alert(`Cannot join: ${body.error?.message ?? 'Unknown error'}`);
+                  }
+                })
+                .catch(() => alert('Failed to join call. Please try again.'));
+            }}
+          />
+        </div>
+
+        {/* Right column — past calls */}
+        <div>
+          <h2 style={{
+            color: '#e2e8f0',
+            fontSize: '18px',
+            fontWeight: 700,
+            marginBottom: '16px',
+            marginTop: 0,
+          }}>
+            Past Calls
+          </h2>
+          <PastCallsList />
+        </div>
+      </div>
     </div>
   );
 }
