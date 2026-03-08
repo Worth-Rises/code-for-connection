@@ -439,6 +439,33 @@ videoRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency_adm
   }
 });
 
+// ─── GET /api/video/bandwidth-test ────────────────────────────────────────
+videoRouter.get('/bandwidth-test', (req: Request, res: Response) => {
+  // Generate a 1MB payload of predictable data (e.g., zeros) for a download speed test
+  // This does not require auth so that clients can test their connection before logging in
+  // or before joining a room, minimizing pre-flight latency.
+  try {
+    const sizeInBytes = 1024 * 1024; // 1MB
+    const buffer = Buffer.alloc(sizeInBytes, '0');
+
+    res.set({
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': sizeInBytes.toString(),
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    });
+
+    res.status(200).send(buffer);
+  } catch (error) {
+    console.error('Error generating bandwidth test payload:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to run bandwidth test',
+    }));
+  }
+});
+
 // GET /api/video/time-slots — available time slots for a facility, filtered by availability
 videoRouter.get('/time-slots', requireAuth, async (req: Request, res: Response) => {
   try {

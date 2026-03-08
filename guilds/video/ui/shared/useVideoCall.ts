@@ -47,9 +47,10 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState<number>(() =>
-    Math.max(0, Math.round((new Date(scheduledEnd).getTime() - Date.now()) / 1000)),
-  );
+  const [timeRemaining, setTimeRemaining] = useState<number>(() => {
+    const endWithTolerance = new Date(scheduledEnd).getTime() + 900_000; // 15-minute tolerance
+    return Math.max(0, Math.round((endWithTolerance - Date.now()) / 1000));
+  });
 
   const socketRef = useRef<Socket | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -117,12 +118,13 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
       const socket = io(signalingUrl, { transports: ['websocket'] });
       socketRef.current = socket;
 
-      // Scheduled-end client-side enforcement
-      const msRemaining = new Date(scheduledEnd).getTime() - Date.now();
+      // Scheduled-end client-side enforcement (with 15 min tolerance)
+      const endWithTolerance = new Date(scheduledEnd).getTime() + 900_000;
+      const msRemaining = endWithTolerance - Date.now();
       if (msRemaining > 0) {
         endTimerRef.current = setTimeout(() => hangUp('time_limit'), msRemaining);
         countdownRef.current = setInterval(() => {
-          const remaining = Math.max(0, Math.round((new Date(scheduledEnd).getTime() - Date.now()) / 1000));
+          const remaining = Math.max(0, Math.round((endWithTolerance - Date.now()) / 1000));
           setTimeRemaining(remaining);
           if (remaining <= 60 && !warningFiredRef.current) {
             warningFiredRef.current = true;
