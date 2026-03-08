@@ -24,6 +24,7 @@ export default function AdminLayout() {
       title: 'Management',
       items: [
         { path: '/admin/residents', label: 'Residents', icon: '👤' },
+        { path: '/admin/search', label: 'Search', icon: '🔍', roles: ['agency_admin'] },
       ],
     },
     {

@@ -16,22 +16,45 @@ messagingRouter.get('/logs', requireAuth, async (req: Request, res: Response) =>
     const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize));
     const take = parseInt(String(pageSize));
 
-    const messages = await prisma.message.findMany({
-      where: {},
-      include: {
-        conversation: {
-          include: {
-            incarceratedPerson: true,
-            familyMember: true,
+    const where: Record<string, unknown> = {};
+    if (userId) {
+      where.conversation = {
+        OR: [
+          { incarceratedPersonId: String(userId) },
+          { familyMemberId: String(userId) },
+        ],
+      };
+    }
+    if (facilityId) {
+      where.conversation = {
+        ...((where.conversation as Record<string, unknown>) || {}),
+        incarceratedPerson: { facilityId: String(facilityId) },
+      };
+    }
+    if (startDate || endDate) {
+      where.createdAt = {
+        ...(startDate ? { gte: new Date(String(startDate)) } : {}),
+        ...(endDate ? { lte: new Date(String(endDate)) } : {}),
+      };
+    }
+
+    const [messages, total] = await Promise.all([
+      prisma.message.findMany({
+        where,
+        include: {
+          conversation: {
+            include: {
+              incarceratedPerson: true,
+              familyMember: true,
+            },
           },
         },
-      },
-      skip,
-      take,
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const total = await prisma.message.count();
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.message.count({ where }),
+    ]);
 
     res.json({
       success: true,
