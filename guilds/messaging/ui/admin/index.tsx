@@ -217,6 +217,11 @@ function PendingMessages({ onReviewed }: { onReviewed?: () => void }) {
     fetchMessages();
   }, [fetchMessages]);
 
+  useEffect(() => {
+    const interval = setInterval(fetchMessages, 5000);
+    return () => clearInterval(interval);
+  }, [fetchMessages]);
+
   async function handleDecision(
     messageId: string,
     action: "approve" | "reject",
