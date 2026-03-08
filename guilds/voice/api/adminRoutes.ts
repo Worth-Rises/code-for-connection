@@ -42,19 +42,39 @@ voiceAdminRouter.get('/active-calls', requireAuth, requireRole('facility_admin',
 
 voiceAdminRouter.get('/call-logs', requireAuth, async (req: Request, res: Response) => {
   try {
-    const { facilityId, startDate, endDate, userId, page = '1', pageSize = '20' } = req.query;
-    
+    const { facilityId, startDate, endDate, userId, search, phoneNumber, isLegal, status, page = '1', pageSize = '20' } = req.query;
+
     const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize));
     const take = parseInt(String(pageSize));
 
     const where: Record<string, unknown> = {};
     if (facilityId) where.facilityId = String(facilityId);
+    if (status) where.status = String(status);
+    if (isLegal !== undefined) where.isLegal = String(isLegal) === 'true';
+
     if (userId) {
       where.OR = [
         { incarceratedPersonId: String(userId) },
         { familyMemberId: String(userId) },
       ];
     }
+
+    // Search by name — matches incarcerated person or family member first/last name
+    if (search) {
+      const searchStr = String(search);
+      where.OR = [
+        { incarceratedPerson: { firstName: { contains: searchStr, mode: 'insensitive' } } },
+        { incarceratedPerson: { lastName: { contains: searchStr, mode: 'insensitive' } } },
+        { familyMember: { firstName: { contains: searchStr, mode: 'insensitive' } } },
+        { familyMember: { lastName: { contains: searchStr, mode: 'insensitive' } } },
+      ];
+    }
+
+    // Search by phone number
+    if (phoneNumber) {
+      where.familyMember = { phone: { contains: String(phoneNumber) } };
+    }
+
     if (startDate || endDate) {
       where.startedAt = {
         ...(startDate ? { gte: new Date(String(startDate)) } : {}),
@@ -92,6 +112,40 @@ voiceAdminRouter.get('/call-logs', requireAuth, async (req: Request, res: Respon
       code: 'INTERNAL_ERROR',
       message: 'Failed to fetch call logs',
     }));
+  }
+});
+
+/**
+ * PATCH /calls/:id/legal — Toggle isLegal flag on a call
+ * Body: { isLegal: boolean }
+ */
+voiceAdminRouter.patch('/calls/:id/legal', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { isLegal } = req.body;
+
+    if (typeof isLegal !== 'boolean') {
+      return res.status(400).json(createErrorResponse({ code: 'VALIDATION_ERROR', message: 'isLegal (boolean) is required' }));
+    }
+
+    const call = await prisma.voiceCall.findUnique({ where: { id } });
+    if (!call) {
+      return res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Call not found' }));
+    }
+
+    const updated = await prisma.voiceCall.update({
+      where: { id },
+      data: { isLegal },
+      include: {
+        incarceratedPerson: { select: { firstName: true, lastName: true } },
+        familyMember: { select: { firstName: true, lastName: true, phone: true } },
+      },
+    });
+
+    res.json(createSuccessResponse(updated));
+  } catch (error) {
+    console.error('Error updating legal status:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to update legal status' }));
   }
 });
 
@@ -221,7 +275,12 @@ voiceAdminRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agenc
     const where: Record<string, unknown> = {};
     if (facilityId) where.facilityId = String(facilityId);
 
-    const [activeCalls, todayTotal] = await Promise.all([
+    const todayWhere = {
+      ...where,
+      startedAt: { gte: startOfDay, lte: endOfDay },
+    };
+
+    const [activeCalls, todayTotal, terminatedToday, avgDuration] = await Promise.all([
       prisma.voiceCall.count({
         where: {
           ...where,
@@ -229,20 +288,219 @@ voiceAdminRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agenc
         },
       }),
       prisma.voiceCall.count({
+        where: todayWhere,
+      }),
+      prisma.voiceCall.count({
         where: {
-          ...where,
-          startedAt: { gte: startOfDay, lte: endOfDay },
+          ...todayWhere,
+          status: 'terminated_by_admin',
         },
+      }),
+      prisma.voiceCall.aggregate({
+        where: {
+          ...todayWhere,
+          durationSeconds: { not: null },
+        },
+        _avg: { durationSeconds: true },
       }),
     ]);
 
-    res.json(createSuccessResponse({ activeCalls, todayTotal }));
+    res.json(createSuccessResponse({
+      activeCalls,
+      todayTotal,
+      terminatedToday,
+      avgDurationSeconds: Math.round(avgDuration._avg.durationSeconds ?? 0),
+    }));
   } catch (error) {
     console.error('Error fetching stats:', error);
     res.status(500).json(createErrorResponse({
       code: 'INTERNAL_ERROR',
       message: 'Failed to fetch stats',
     }));
+  }
+});
+
+// ==========================================
+// CONTACT MANAGEMENT ENDPOINTS
+// ==========================================
+
+voiceAdminRouter.get('/contacts/pending', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { facilityId } = req.query;
+
+    const pendingContacts = await prisma.approvedContact.findMany({
+      where: {
+        status: 'pending',
+        ...(facilityId ? {
+          incarceratedPerson: { facilityId: String(facilityId) },
+        } : {}),
+      },
+      include: {
+        incarceratedPerson: {
+          select: { id: true, firstName: true, lastName: true, externalId: true, facilityId: true },
+        },
+        familyMember: {
+          select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+        },
+      },
+      orderBy: { requestedAt: 'asc' },
+    });
+
+    res.json(createSuccessResponse(pendingContacts));
+  } catch (error) {
+    console.error('Error fetching pending contacts:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch pending contacts',
+    }));
+  }
+});
+
+voiceAdminRouter.post('/contacts/:id/approve', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const contact = await prisma.approvedContact.findUnique({ where: { id } });
+    if (!contact) {
+      return res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Contact not found' }));
+    }
+    if (contact.status !== 'pending') {
+      return res.status(400).json(createErrorResponse({ code: 'INVALID_STATE', message: `Contact is already ${contact.status}` }));
+    }
+
+    const updated = await prisma.approvedContact.update({
+      where: { id },
+      data: {
+        status: 'approved',
+        reviewedAt: new Date(),
+        reviewedBy: req.user!.id,
+      },
+      include: {
+        incarceratedPerson: { select: { firstName: true, lastName: true } },
+        familyMember: { select: { firstName: true, lastName: true, phone: true } },
+      },
+    });
+
+    res.json(createSuccessResponse(updated));
+  } catch (error) {
+    console.error('Error approving contact:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to approve contact' }));
+  }
+});
+
+voiceAdminRouter.post('/contacts/:id/deny', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const contact = await prisma.approvedContact.findUnique({ where: { id } });
+    if (!contact) {
+      return res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Contact not found' }));
+    }
+    if (contact.status !== 'pending') {
+      return res.status(400).json(createErrorResponse({ code: 'INVALID_STATE', message: `Contact is already ${contact.status}` }));
+    }
+
+    const updated = await prisma.approvedContact.update({
+      where: { id },
+      data: {
+        status: 'denied',
+        reviewedAt: new Date(),
+        reviewedBy: req.user!.id,
+      },
+      include: {
+        incarceratedPerson: { select: { firstName: true, lastName: true } },
+        familyMember: { select: { firstName: true, lastName: true, phone: true } },
+      },
+    });
+
+    res.json(createSuccessResponse(updated));
+  } catch (error) {
+    console.error('Error denying contact:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to deny contact' }));
+  }
+});
+
+// ==========================================
+// BLOCKED NUMBERS ENDPOINTS
+// ==========================================
+
+voiceAdminRouter.get('/blocked-numbers', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { facilityId } = req.query;
+
+    const blockedNumbers = await prisma.blockedNumber.findMany({
+      where: facilityId ? { facilityId: String(facilityId) } : {},
+      include: {
+        admin: { select: { firstName: true, lastName: true } },
+        facility: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(createSuccessResponse(blockedNumbers));
+  } catch (error) {
+    console.error('Error fetching blocked numbers:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to fetch blocked numbers' }));
+  }
+});
+
+voiceAdminRouter.post('/blocked-numbers', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { phoneNumber, reason } = req.body;
+
+    if (!phoneNumber) {
+      return res.status(400).json(createErrorResponse({ code: 'VALIDATION_ERROR', message: 'phoneNumber is required' }));
+    }
+
+    const admin = await prisma.adminUser.findUnique({ where: { id: req.user!.id } });
+    if (!admin) {
+      return res.status(403).json(createErrorResponse({ code: 'FORBIDDEN', message: 'Admin user not found' }));
+    }
+
+    const existing = await prisma.blockedNumber.findFirst({
+      where: {
+        phoneNumber,
+        scope: 'facility',
+        facilityId: admin.facilityId,
+      },
+    });
+    if (existing) {
+      return res.status(409).json(createErrorResponse({ code: 'ALREADY_BLOCKED', message: 'This number is already blocked at this facility' }));
+    }
+
+    const blocked = await prisma.blockedNumber.create({
+      data: {
+        phoneNumber,
+        scope: 'facility',
+        facilityId: admin.facilityId,
+        agencyId: admin.agencyId,
+        reason: reason || null,
+        blockedBy: req.user!.id,
+      },
+    });
+
+    res.status(201).json(createSuccessResponse(blocked));
+  } catch (error) {
+    console.error('Error blocking number:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to block number' }));
+  }
+});
+
+voiceAdminRouter.delete('/blocked-numbers/:id', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const blocked = await prisma.blockedNumber.findUnique({ where: { id } });
+    if (!blocked) {
+      return res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Blocked number not found' }));
+    }
+
+    await prisma.blockedNumber.delete({ where: { id } });
+
+    res.json(createSuccessResponse({ message: 'Number unblocked' }));
+  } catch (error) {
+    console.error('Error unblocking number:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to unblock number' }));
   }
 });
 
