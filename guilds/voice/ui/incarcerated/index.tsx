@@ -4,7 +4,7 @@ import { Card, Button, Modal, LoadingSpinner } from '@openconnect/ui';
 import { Device, Call } from '@twilio/voice-sdk';
 
 const API_BASE = '/api';
-const MAX_CALL_DURATION_SECONDS = 70 ; // 30 minutes
+const MAX_CALL_DURATION_SECONDS = 70; // 30 minutes
 
 interface FamilyMemberInfo {
   id: string;
