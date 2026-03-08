@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import { Button, Card } from '@openconnect/ui';
+import Picker from '@emoji-mart/react';
+import data from '@emoji-mart/data';
 
 interface Conversation {
   id: string;
@@ -346,7 +348,20 @@ function ConversationThread() {
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [view, setView] = useState<'messages' | 'gallery'>('messages');
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showEmojiPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showEmojiPicker]);
   const [oldestPage, setOldestPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const navigate = useNavigate();
@@ -658,7 +673,20 @@ function ConversationThread() {
               ))}
             </div>
           )}
-          <div className="p-3 flex gap-2 items-end">
+          <div className="relative p-3 flex gap-2 items-end">
+            {showEmojiPicker && (
+              <div ref={emojiPickerRef} className="absolute bottom-16 left-3 z-50">
+                <Picker
+                  data={data}
+                  onEmojiSelect={(emoji: { native: string }) => {
+                    setText(prev => prev + emoji.native);
+                    setShowEmojiPicker(false);
+                  }}
+                  theme="light"
+                  previewPosition="none"
+                />
+              </div>
+            )}
             <input
               ref={fileInputRef}
               type="file"
@@ -682,6 +710,14 @@ function ConversationThread() {
               <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
               </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowEmojiPicker(v => !v)}
+              className="text-gray-400 hover:text-gray-600 p-1 shrink-0 flex items-center justify-center"
+              style={{ width: 44, height: 44, fontSize: 28 }}
+            >
+              😊
             </button>
             <textarea
               className="flex-1 border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"

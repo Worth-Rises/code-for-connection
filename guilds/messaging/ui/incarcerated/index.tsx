@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react"
 import { Routes, Route, useNavigate, useParams } from "react-router-dom"
 import { Button, Card } from "@openconnect/ui"
 import { PhotoUploadButton } from "./components/PhotoUploadButton"
+import Picker from "@emoji-mart/react"
+import data from "@emoji-mart/data"
 
 interface Conversation {
   id: string
@@ -333,11 +335,24 @@ function ConversationThread() {
   const [totalPages, setTotalPages] = useState(1)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [activeTab, setActiveTab] = useState<"chat" | "gallery">("chat")
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const navigate = useNavigate()
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const prevTotalRef = useRef(0)
   const shouldScrollRef = useRef(true)
+  const emojiPickerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showEmojiPicker) return
+    const handler = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setShowEmojiPicker(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [showEmojiPicker])
 
   useEffect(() => {
     if (!conversationId) return
@@ -672,7 +687,20 @@ function ConversationThread() {
             <div ref={bottomRef} />
           </div>
           {/* Input bar — fixed at bottom, never pushed off */}
-          <div className="border-t p-3 flex flex-col gap-2 flex-shrink-0">
+          <div className="relative border-t p-3 flex flex-col gap-2 flex-shrink-0">
+            {showEmojiPicker && (
+              <div ref={emojiPickerRef} className="absolute bottom-20 left-3 z-50">
+                <Picker
+                  data={data}
+                  onEmojiSelect={(emoji: { native: string }) => {
+                    setText((prev) => prev + emoji.native)
+                    setShowEmojiPicker(false)
+                  }}
+                  theme="light"
+                  previewPosition="none"
+                />
+              </div>
+            )}
             {selectedFiles.length > 0 && (
               <div className="pt-1 flex flex-wrap gap-2 max-h-24 overflow-y-auto">
                 {selectedFiles.map((file, i) => (
@@ -699,6 +727,13 @@ function ConversationThread() {
               <PhotoUploadButton
                 onFileSelect={(files) => setSelectedFiles(files)}
               />
+              <button
+                type="button"
+                onClick={() => setShowEmojiPicker((v) => !v)}
+                className="text-gray-400 hover:text-gray-600 p-1 shrink-0 text-2xl leading-none"
+              >
+                😊
+              </button>
               <textarea
                 className="flex-1 border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                 rows={2}
