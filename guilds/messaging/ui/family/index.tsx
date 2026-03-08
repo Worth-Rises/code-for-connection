@@ -39,6 +39,20 @@ interface Attachment {
   status: string;
 }
 
+interface GalleryItem {
+  id: string;
+  fileUrl: string;
+  status: string;
+  createdAt: string;
+  message: {
+    id: string;
+    status: string;
+    senderType: 'incarcerated' | 'family';
+    conversationId: string;
+    createdAt: string;
+  };
+}
+
 interface Message {
   id: string;
   senderType: 'incarcerated' | 'family';
@@ -330,6 +344,8 @@ function ConversationThread() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [view, setView] = useState<'messages' | 'gallery'>('messages');
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [oldestPage, setOldestPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -338,6 +354,14 @@ function ConversationThread() {
   const containerRef = useRef<HTMLDivElement>(null);
   const prevTotalRef = useRef(0);
   const shouldScrollRef = useRef(true);
+
+  useEffect(() => {
+    if (view === 'gallery' && conversationId) {
+      apiFetch(`/messaging/gallery?conversationId=${conversationId}`).then(data => {
+        if (data.success) setGalleryItems(data.data);
+      });
+    }
+  }, [view, conversationId]);
 
   // Mark messages as read when conversation opens
   useEffect(() => {
@@ -480,7 +504,50 @@ function ConversationThread() {
         )}
       </div>
 
-      <Card padding="none">
+      <div className="flex gap-6 border-b">
+        <button
+          onClick={() => setView('messages')}
+          className={`text-sm pb-2 ${view === 'messages' ? 'font-semibold text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-900'}`}
+        >
+          Messages
+        </button>
+        <button
+          onClick={() => setView('gallery')}
+          className={`text-sm pb-2 ${view === 'gallery' ? 'font-semibold text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-900'}`}
+        >
+          Gallery
+        </button>
+      </div>
+
+      {view === 'gallery' && (
+        galleryItems.length === 0 ? (
+          <Card padding="lg">
+            <p className="text-center text-gray-500 py-8">No media in this conversation yet.</p>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {galleryItems.map(item => {
+              const isPending = item.status === 'pending_review';
+              return (
+                <div key={item.id} className="relative aspect-square overflow-hidden rounded-lg bg-gray-100">
+                  <img
+                    src={item.fileUrl}
+                    alt="media"
+                    className={`w-full h-full object-cover transition-all duration-300 ${isPending ? 'blur-md scale-110' : ''}`}
+                  />
+                  {isPending && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-xs font-medium text-white bg-black/50 px-2 py-1 rounded-full">Pending review</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )
+      )}
+
+      {view === 'messages' && <Card padding="none">
         <div
           ref={containerRef}
           onScroll={handleScroll}
@@ -594,7 +661,7 @@ function ConversationThread() {
             </Button>
           </div>
         </div>
-      </Card>
+      </Card>}
     </div>
   );
 }

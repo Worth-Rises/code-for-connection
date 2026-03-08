@@ -471,6 +471,11 @@ messagingRouter.post(
         },
       })
 
+      await prisma.messageAttachment.updateMany({
+        where: { messageId },
+        data: { status: "approved" },
+      })
+
       res.json(createSuccessResponse({ success: true, message }))
     } catch (error) {
       console.error("Error approving message:", error)
@@ -869,6 +874,51 @@ messagingRouter.get(
 // ==========================================
 // CONVERSATION & SEND/RECEIVE ROUTES
 // ==========================================
+
+// Get all media attachments for the logged-in family member's conversations
+messagingRouter.get(
+  "/gallery",
+  requireAuth,
+  requireRole("family"),
+  async (req: Request, res: Response) => {
+    try {
+      const { conversationId } = req.query
+
+      const attachments = await prisma.messageAttachment.findMany({
+        where: {
+          message: {
+            conversation: {
+              familyMemberId: req.user!.id,
+              ...(conversationId ? { id: String(conversationId) } : {}),
+            },
+          },
+        },
+        include: {
+          message: {
+            select: {
+              id: true,
+              status: true,
+              senderType: true,
+              conversationId: true,
+              createdAt: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      })
+
+      res.json(createSuccessResponse(attachments))
+    } catch (error) {
+      console.error("Error fetching gallery:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch gallery",
+        }),
+      )
+    }
+  },
+)
 
 // Get approved contacts for the logged-in family member
 messagingRouter.get(
