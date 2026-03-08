@@ -272,7 +272,7 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
           smsBody = `You are about to receive a call from ${inmate.firstName} ${inmate.lastName} at ${facilityName} from this number.`;
         } else {
           // SEND_SMS — generic message without the inmate's name
-          smsBody = `You are about to receive a call from ${facilityName} from this number.`;
+          smsBody = `You are about to receive a call from an inmate at ${facilityName} from this number.`;
         }
 
         console.log(`[voice] Step 0: Sending SMS to ${contact.familyMember.phone} (mode=${smsMode})`);
