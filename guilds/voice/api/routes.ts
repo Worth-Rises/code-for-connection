@@ -35,7 +35,7 @@ voiceRouter.get('/active-calls', requireAuth, requireRole('facility_admin', 'age
   }
 });
 
-voiceRouter.get('/call-logs', requireAuth, async (req: Request, res: Response) => {
+voiceRouter.get('/call-logs', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const { facilityId, startDate, endDate, userId, page = '1', pageSize = '20' } = req.query;
     
@@ -266,7 +266,7 @@ voiceRouter.get('/check-limit/:incarceratedPersonId', requireAuth, async (req: R
 });
 
 // Increment daily usage after a call starts
-voiceRouter.post('/record-usage/:incarceratedPersonId', requireAuth, async (req: Request, res: Response) => {
+voiceRouter.post('/record-usage/:incarceratedPersonId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const { incarceratedPersonId } = req.params;
     const today = new Date();

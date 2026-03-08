@@ -9,7 +9,7 @@ import {
 
 export const messagingRouter = Router();
 
-messagingRouter.get('/logs', requireAuth, async (req: Request, res: Response) => {
+messagingRouter.get('/logs', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const { facilityId, startDate, endDate, userId, page = '1', pageSize = '20' } = req.query;
     
@@ -180,14 +180,21 @@ messagingRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
 
+    const facilityFilter = facilityId ? {
+      conversation: {
+        incarceratedPerson: { facilityId: String(facilityId) },
+      },
+    } : {};
+
     const [todayTotal, pendingReview] = await Promise.all([
       prisma.message.count({
         where: {
           createdAt: { gte: startOfDay, lte: endOfDay },
+          ...facilityFilter,
         },
       }),
       prisma.message.count({
-        where: { status: 'pending_review' },
+        where: { status: 'pending_review', ...facilityFilter },
       }),
     ]);
 
@@ -278,7 +285,7 @@ messagingRouter.get('/check-limit/:incarceratedPersonId', requireAuth, async (re
 });
 
 // Increment daily message usage
-messagingRouter.post('/record-usage/:incarceratedPersonId', requireAuth, async (req: Request, res: Response) => {
+messagingRouter.post('/record-usage/:incarceratedPersonId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const { incarceratedPersonId } = req.params;
     const today = new Date();

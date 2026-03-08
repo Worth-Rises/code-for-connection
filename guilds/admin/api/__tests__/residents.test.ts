@@ -9,6 +9,7 @@ vi.mock('@openconnect/shared', async () => {
     // Pass through to next() so injected req.user is used; the no-user
     // test simply doesn't inject one, so the handler sees req.user undefined.
     requireAuth: (_req: any, _res: any, next: any) => next(),
+    requireRole: (..._roles: string[]) => (_req: any, _res: any, next: any) => next(),
     prisma: {
       incarceratedPerson: {
         findMany: vi.fn(),

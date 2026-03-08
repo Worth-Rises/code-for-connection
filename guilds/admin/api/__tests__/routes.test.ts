@@ -72,16 +72,18 @@ describe('admin routes auth coverage', () => {
     expect(getMiddlewareNames(layer!)).toContain('requireAuth');
   });
 
-  it('GET /residents requires auth', () => {
+  it('GET /residents requires auth and admin role', () => {
     const layer = findRouteLayer('/residents', 'get');
     expect(layer).toBeDefined();
     expect(getMiddlewareNames(layer!)).toContain('requireAuth');
+    expect(getMiddlewareNames(layer!)).toContain('requireRole');
   });
 
-  it('GET /residents/:id requires auth', () => {
+  it('GET /residents/:id requires auth and admin role', () => {
     const layer = findRouteLayer('/residents/:id', 'get');
     expect(layer).toBeDefined();
     expect(getMiddlewareNames(layer!)).toContain('requireAuth');
+    expect(getMiddlewareNames(layer!)).toContain('requireRole');
   });
 
   it('POST /residents/:id/reset-pin requires auth', () => {

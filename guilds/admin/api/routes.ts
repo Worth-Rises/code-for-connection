@@ -182,7 +182,8 @@ adminRouter.get('/user/:userId', requireAuth, async (req: Request, res: Response
     });
 
     if (incarceratedPerson) {
-      res.json(createSuccessResponse({ type: 'incarcerated', user: incarceratedPerson }));
+      const { pin, ...safeUser } = incarceratedPerson;
+      res.json(createSuccessResponse({ type: 'incarcerated', user: safeUser }));
       return;
     }
 
@@ -209,7 +210,7 @@ adminRouter.get('/user/:userId', requireAuth, async (req: Request, res: Response
   }
 });
 
-adminRouter.get('/residents', requireAuth, async (req: Request, res: Response) => {
+adminRouter.get('/residents', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const user = req.user!;
     const where: any = {};
@@ -259,7 +260,7 @@ adminRouter.get('/residents', requireAuth, async (req: Request, res: Response) =
   }
 });
 
-adminRouter.get('/residents/:id', requireAuth, async (req: Request, res: Response) => {
+adminRouter.get('/residents/:id', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const resident = await prisma.incarceratedPerson.findUnique({
       where: { id: req.params.id },
