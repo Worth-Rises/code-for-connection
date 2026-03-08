@@ -31,7 +31,7 @@ interface Message {
   body: string
   status: string
   createdAt: Date
-  attachments?: { fileUrl: string }[]
+  attachments?: { fileUrl: string; status: string }[]
 }
 
 interface GalleryPhoto {
@@ -562,6 +562,9 @@ function ConversationThread() {
             const prevMsg = messages[index - 1]
             const prevDate = prevMsg ? new Date(prevMsg.createdAt) : null
             const isBlocked = msg.status === "blocked"
+            const isPending = msg.status === "pending_review"
+            const isSender = msg.senderType === "incarcerated"
+            const shouldHideContent = isBlocked || (isPending && !isSender)
 
             const isNewDay =
               !prevDate || msgDate.toDateString() !== prevDate.toDateString()
@@ -594,7 +597,7 @@ function ConversationThread() {
                   </div>
                 )}
                 <div
-                  className={`flex ${msg.senderType === "incarcerated" ? "justify-end" : "justify-start"}`}
+                  className={`flex ${isSender ? "justify-end" : "justify-start"}`}
                 >
                   <div
                     className={`max-w-sm px-3 py-2 rounded-2xl text-sm ${
@@ -603,7 +606,9 @@ function ConversationThread() {
                         : "bg-gray-100 text-gray-800"
                     }`}
                   >
-                    {!isBlocked && msg.attachments && msg.attachments.length > 0 && (
+                    {!shouldHideContent &&
+                      msg.attachments &&
+                      msg.attachments.length > 0 && (
                       <div className="mb-1 space-y-1">
                         {msg.attachments.map((att, i) => {
                           const isPending = att.status === 'pending_review';
@@ -624,7 +629,7 @@ function ConversationThread() {
                         })}
                       </div>
                     )}
-                    {!isBlocked && msg.body && <p>{msg.body}</p>}
+                    {!shouldHideContent && msg.body && <p>{msg.body}</p>}
                     <div className="flex items-center justify-between text-xs mt-1">
                       <p
                         className={`${msg.senderType === "incarcerated" ? "text-blue-200" : "text-gray-400"}`}
@@ -632,7 +637,7 @@ function ConversationThread() {
                         {msg.status === "blocked"
                           ? "This message was blocked"
                           : msg.status === "pending_review"
-                            ? "pending"
+                            ? "Pending review"
                             : msg.status}
                       </p>
                       <p
