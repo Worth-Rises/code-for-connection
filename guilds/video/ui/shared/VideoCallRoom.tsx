@@ -1,5 +1,6 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useVideoCall, type ConnectionState } from '../shared/useVideoCall.js';
+import { useBlurBackground } from '../shared/useBlurBackground.js';
 
 interface VideoCallRoomProps {
   callId: string;
@@ -47,6 +48,8 @@ export function VideoCallRoom({
     toggleMute,
     toggleCamera,
     hangUp,
+    replaceVideoTrack,
+    rawStream,
   } = useVideoCall({
     callId,
     userId,
@@ -55,6 +58,49 @@ export function VideoCallRoom({
     signalingUrl,
     onCallEnded: (_reason) => { setTimeout(onExit, 1500); },
   });
+
+  const { start: startBlur, stop: stopBlur } = useBlurBackground();
+  const [isBlurOn, setIsBlurOn] = useState(false);
+  const [blurLoading, setBlurLoading] = useState(false);
+
+  const toggleBlur = useCallback(async () => {
+    if (blurLoading) return;
+
+    if (!isBlurOn) {
+      // Turn blur ON
+      const raw = rawStream;
+      if (!raw) return;
+      setBlurLoading(true);
+      try {
+        const processed = await startBlur(raw);
+        const videoTrack = processed.getVideoTracks()[0];
+        if (videoTrack) replaceVideoTrack(videoTrack);
+        setIsBlurOn(true);
+      } catch (err) {
+        console.error('Failed to start blur:', err);
+      } finally {
+        setBlurLoading(false);
+      }
+    } else {
+      // Turn blur OFF — swap back to raw camera track
+      stopBlur();
+      const raw = rawStream;
+      if (raw) {
+        const videoTrack = raw.getVideoTracks()[0];
+        if (videoTrack) replaceVideoTrack(videoTrack);
+      }
+      setIsBlurOn(false);
+    }
+  }, [isBlurOn, blurLoading, rawStream, startBlur, stopBlur, replaceVideoTrack]);
+
+  // Auto-enable blur for incarcerated users
+  const blurAutoStarted = useRef(false);
+  useEffect(() => {
+    if (userRole === 'incarcerated' && rawStream && !blurAutoStarted.current && !isBlurOn && !blurLoading) {
+      blurAutoStarted.current = true;
+      toggleBlur();
+    }
+  }, [userRole, rawStream, isBlurOn, blurLoading, toggleBlur]);
 
   // Wire streams to video elements
   useEffect(() => {
@@ -200,6 +246,16 @@ export function VideoCallRoom({
           style={controlBtnStyle(isCameraOff)}
         >
           {isCameraOff ? '📵' : '📹'}
+        </button>
+
+        <button
+          id="btn-blur"
+          onClick={toggleBlur}
+          title={isBlurOn ? 'Disable background blur' : 'Enable background blur'}
+          disabled={blurLoading}
+          style={{ ...controlBtnStyle(isBlurOn), fontSize: '11px', fontWeight: 700, color: '#e2e8f0' }}
+        >
+          {blurLoading ? '...' : 'BG'}
         </button>
 
         <button

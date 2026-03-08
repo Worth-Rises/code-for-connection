@@ -116,11 +116,45 @@ describe('GET /api/video/my-scheduled', () => {
     );
   });
 
+  it('requires admin approval for incarcerated my-scheduled calls', async () => {
+    (prisma.videoCall.findMany as any).mockResolvedValue([]);
+    await request(app).get('/api/video/my-scheduled');
+    const whereClause = (prisma.videoCall.findMany as any).mock.calls[0][0].where;
+    expect(whereClause.approvedBy).toEqual({ not: null });
+  });
+
   it('orders results by scheduledStart ascending', async () => {
     (prisma.videoCall.findMany as any).mockResolvedValue([]);
     await request(app).get('/api/video/my-scheduled');
     const orderBy = (prisma.videoCall.findMany as any).mock.calls[0][0].orderBy;
     expect(orderBy).toEqual({ scheduledStart: 'asc' });
+  });
+});
+
+// ─── GET /api/video/scheduled-calls ───────────────────────────────────────
+describe('GET /api/video/scheduled-calls', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('queries requested/scheduled/in_progress calls by scheduledEnd cutoff', async () => {
+    (prisma.videoCall.findMany as any).mockResolvedValue([mockCall()]);
+
+    const res = await request(app)
+      .get('/api/video/scheduled-calls')
+      .query({ contactId: 'inc-user-1' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    const findManyArgs = (prisma.videoCall.findMany as any).mock.calls[0][0];
+    expect(findManyArgs.where.familyMemberId).toBe('inc-user-1');
+    expect(findManyArgs.where.incarceratedPersonId).toBe('inc-user-1');
+    expect(findManyArgs.where.status).toEqual(
+      expect.objectContaining({
+        in: expect.arrayContaining(['requested', 'approved', 'scheduled', 'in_progress']),
+      }),
+    );
+    expect(findManyArgs.where.scheduledEnd.gte).toBeInstanceOf(Date);
+    expect(findManyArgs.where.scheduledStart).toBeUndefined();
   });
 });
 
@@ -153,6 +187,16 @@ describe('POST /api/video/join/:callId', () => {
     expect(res.body.error.code).toBe('CALL_NOT_READY');
   });
 
+  it('returns 400 when call has not been admin approved', async () => {
+    (prisma.videoCall.findUnique as any).mockResolvedValue(
+      mockCall({ status: 'scheduled', approvedBy: null }),
+    );
+    const res = await request(app).post('/api/video/join/call-1');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('CALL_NOT_APPROVED');
+    expect(prisma.videoCall.update).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when now < scheduledStart (too early)', async () => {
     const futureStart = new Date(Date.now() + 60 * 60 * 1000); // 1hr from now
     (prisma.videoCall.findUnique as any).mockResolvedValue(
@@ -164,8 +208,7 @@ describe('POST /api/video/join/:callId', () => {
   });
 
   it('returns 400 when now > scheduledEnd (too late)', async () => {
-    // Route has a 15-min tolerance; use 20 min ago to be firmly outside the window
-    const pastEnd = new Date(Date.now() - 20 * 60 * 1000);
+    const pastEnd = new Date(Date.now() - 16 * 60 * 1000); // ended 16 min ago (outside 15 min grace)
     (prisma.videoCall.findUnique as any).mockResolvedValue(
       mockCall({ status: 'scheduled', scheduledStart: new Date(pastEnd.getTime() - THIRTY_MIN), scheduledEnd: pastEnd }),
     );

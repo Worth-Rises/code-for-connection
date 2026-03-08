@@ -32,6 +32,10 @@ export interface UseVideoCallReturn {
   toggleMute: () => void;
   toggleCamera: () => void;
   hangUp: (reason?: string) => void;
+  /** Replace the video track sent to the remote peer (for blur toggle). */
+  replaceVideoTrack: (newTrack: MediaStreamTrack) => void;
+  /** The raw camera stream (before any processing). */
+  rawStream: MediaStream | null;
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
@@ -50,6 +54,7 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
   const socketRef = useRef<Socket | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const rawStreamRef = useRef<MediaStream | null>(null);
   const endTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const warningFiredRef = useRef(false);
@@ -90,6 +95,7 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
         }
         setLocalStream(stream);
         localStreamRef.current = stream;
+        rawStreamRef.current = stream;
 
         connectSocket(stream);
       } catch (err) {
@@ -269,5 +275,25 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
     });
   }, [callId]);
 
-  return { connectionState, localStream, remoteStream, isMuted, isCameraOff, timeRemaining, toggleMute, toggleCamera, hangUp };
+  /** Swap the video track on the peer connection (e.g. raw camera ↔ blur-processed). */
+  const replaceVideoTrack = useCallback((newTrack: MediaStreamTrack) => {
+    const pc = peerRef.current;
+    if (pc) {
+      const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
+      if (sender) sender.replaceTrack(newTrack);
+    }
+    // Update the local stream shown in PIP
+    const newStream = new MediaStream();
+    newStream.addTrack(newTrack);
+    // Carry over audio tracks
+    localStreamRef.current?.getAudioTracks().forEach((t) => newStream.addTrack(t));
+    localStreamRef.current = newStream;
+    setLocalStream(newStream);
+  }, []);
+
+  return {
+    connectionState, localStream, remoteStream, isMuted, isCameraOff, timeRemaining,
+    toggleMute, toggleCamera, hangUp, replaceVideoTrack,
+    rawStream: rawStreamRef.current,
+  };
 }

@@ -241,15 +241,23 @@ videoRouter.post('/terminate-call/:callId', requireAuth, requireRole('facility_a
 videoRouter.get('/my-scheduled', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+    const role = req.user!.role;
+
+    const where: Record<string, unknown> = {
+      OR: [
+        { incarceratedPersonId: userId },
+        { familyMemberId: userId },
+      ],
+      status: { in: ['scheduled', 'in_progress'] },
+    };
+
+    // Incarcerated users should only see calls once staff has approved them.
+    if (role === 'incarcerated') {
+      where.approvedBy = { not: null };
+    }
 
     const calls = await prisma.videoCall.findMany({
-      where: {
-        OR: [
-          { incarceratedPersonId: userId },
-          { familyMemberId: userId },
-        ],
-        status: { in: ['scheduled', 'in_progress'] },
-      },
+      where,
       include: {
         incarceratedPerson: true,
         familyMember: true,
@@ -291,6 +299,15 @@ videoRouter.post('/join/:callId', requireAuth, async (req: Request, res: Respons
     // Status check — must be scheduled or in_progress (reconnect)
     if (!['scheduled', 'in_progress'].includes(call.status)) {
       res.status(400).json(createErrorResponse({ code: 'CALL_NOT_READY', message: `Call cannot be joined in status: ${call.status}` }));
+      return;
+    }
+
+    // Admin approval check — calls are not joinable until approved by staff.
+    if (!call.approvedBy) {
+      res.status(400).json(createErrorResponse({
+        code: 'CALL_NOT_APPROVED',
+        message: 'This call has not been approved by staff yet',
+      }));
       return;
     }
 
@@ -655,9 +672,10 @@ videoRouter.get('/scheduled-calls', requireAuth, async (req: Request, res: Respo
     const where: any = {
       familyMemberId,
       status: {
-        in: ['requested', 'approved', 'scheduled'],
+        in: ['requested', 'approved', 'scheduled', 'in_progress'],
       },
-      scheduledStart: {
+      // Keep calls visible through their end time so active calls do not disappear at start.
+      scheduledEnd: {
         gte: new Date(),
       },
     };
@@ -820,6 +838,66 @@ videoRouter.post('/cancel-call/:callId', requireAuth, requireRole('family'), asy
     res.status(500).json(createErrorResponse({
       code: 'INTERNAL_ERROR',
       message: 'Failed to cancel video call',
+    }));
+  }
+});
+
+// GET /api/video/past-calls — completed/missed/terminated calls for the authenticated user
+videoRouter.get('/past-calls', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const role = req.user!.role;
+    const { page = '1', pageSize = '20' } = req.query;
+
+    const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize));
+    const take = parseInt(String(pageSize));
+
+    const where: Record<string, unknown> = {
+      status: { in: ['completed', 'missed', 'terminated_by_admin'] },
+    };
+
+    if (role === 'family') {
+      where.familyMemberId = userId;
+    } else if (role === 'incarcerated') {
+      where.incarceratedPersonId = userId;
+    } else {
+      const { facilityId } = req.query;
+      if (facilityId) where.facilityId = String(facilityId);
+    }
+
+    const [calls, total] = await Promise.all([
+      prisma.videoCall.findMany({
+        where,
+        include: {
+          incarceratedPerson: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          familyMember: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+        },
+        orderBy: { scheduledStart: 'desc' },
+        skip,
+        take,
+      }),
+      prisma.videoCall.count({ where }),
+    ]);
+
+    res.json({
+      success: true,
+      data: calls,
+      pagination: {
+        page: parseInt(String(page)),
+        pageSize: take,
+        total,
+        totalPages: Math.ceil(total / take),
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching past calls:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch past calls',
     }));
   }
 });

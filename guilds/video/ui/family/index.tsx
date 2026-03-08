@@ -5,6 +5,7 @@ import { VideoCallRoom } from '../shared/VideoCallRoom.js';
 import ManageContact from './manage_contact';
 import ScheduleCall from './schedule';
 import ScheduledCalls from './scheduled';
+import PastCalls from './past';
 import { familyMessages } from '../messages';
 
 /**
@@ -273,6 +274,7 @@ export default function FamilyVideoUI() {
       <Route path="manage_contact/:contactId" element={<ManageContact />} />
       <Route path="manage_contact/:contactId/schedule" element={<ScheduleCall />} />
       <Route path="manage_contact/:contactId/scheduled" element={<ScheduledCalls />} />
+      <Route path="manage_contact/:contactId/past" element={<PastCalls />} />
     </Routes>
   );
 }
