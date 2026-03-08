@@ -398,3 +398,16 @@ model MessageAttachment {
 
   @@map("message_attachments")
 }
+
+// ==========================================
+// SYSTEM CONFIGURATION (Key-Value Settings)
+// ==========================================
+
+model SystemConfiguration {
+  key         String   @id
+  value       String
+  description String?
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("system_configuration")
+}
