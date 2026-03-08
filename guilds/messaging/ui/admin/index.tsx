@@ -537,7 +537,16 @@ function KeywordManager({ facilityId }: { facilityId?: string }) {
       const params = facilityId ? `?facilityId=${facilityId}` : "";
       const res = await apiFetch(`${apiBase}/keywords${params}`);
       const data = (await res.json()) as ApiResponse<FlaggedKeyword[]>;
-      if (data.success) setKeywords(data.data);
+      if (data.success) {
+        const seen = new Set<string>();
+        const unique = data.data.filter((k) => {
+          const key = k.phrase.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setKeywords(unique);
+      }
     } catch {
       setError("Failed to load keywords");
     } finally {
