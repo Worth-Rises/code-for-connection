@@ -138,6 +138,27 @@ videoRouter.post('/approve-request/:callId', requireAuth, requireRole('facility_
   }
 });
 
+videoRouter.post('/deny-request/:callId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { callId } = req.params;
+
+    const call = await prisma.videoCall.update({
+      where: { id: callId },
+      data: {
+        status: 'denied',
+      },
+    });
+
+    res.json(createSuccessResponse({ success: true, call }));
+  } catch (error) {
+    console.error('Error denying video call:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to deny video call',
+    }));
+  }
+});
+
 videoRouter.post('/terminate-call/:callId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const { callId } = req.params;
