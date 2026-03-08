@@ -89,4 +89,22 @@ describe('admin routes auth coverage', () => {
     expect(layer).toBeDefined();
     expect(getMiddlewareNames(layer!)).toContain('requireAuth');
   });
+
+  it('GET /contact-requests requires auth', () => {
+    const layer = findRouteLayer('/contact-requests', 'get');
+    expect(layer).toBeDefined();
+    expect(getMiddlewareNames(layer!)).toContain('requireAuth');
+  });
+
+  it('POST /contact-requests/:id/approve requires auth', () => {
+    const layer = findRouteLayer('/contact-requests/:id/approve', 'post');
+    expect(layer).toBeDefined();
+    expect(getMiddlewareNames(layer!)).toContain('requireAuth');
+  });
+
+  it('POST /contact-requests/:id/deny requires auth', () => {
+    const layer = findRouteLayer('/contact-requests/:id/deny', 'post');
+    expect(layer).toBeDefined();
+    expect(getMiddlewareNames(layer!)).toContain('requireAuth');
+  });
 });

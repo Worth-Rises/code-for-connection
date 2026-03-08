@@ -300,6 +300,199 @@ adminRouter.get('/residents/:id', requireAuth, async (req: Request, res: Respons
   }
 });
 
+adminRouter.get('/contact-requests', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = req.user!;
+
+    if (user.role !== 'facility_admin' && user.role !== 'agency_admin') {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'Insufficient permissions',
+      }));
+      return;
+    }
+
+    const where: any = {};
+
+    const status = req.query.status as string | undefined;
+    if (status) {
+      where.status = status;
+    } else {
+      where.status = 'pending';
+    }
+
+    // Scope by facility: join through incarceratedPerson
+    if (user.role === 'facility_admin') {
+      where.incarceratedPerson = { facilityId: user.facilityId };
+    } else if (user.role === 'agency_admin') {
+      where.incarceratedPerson = { agencyId: user.agencyId };
+    }
+
+    const contacts = await prisma.approvedContact.findMany({
+      where,
+      include: {
+        incarceratedPerson: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            externalId: true,
+            facilityId: true,
+            facility: { select: { id: true, name: true } },
+          },
+        },
+        familyMember: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { requestedAt: 'desc' },
+    });
+
+    res.json(createSuccessResponse(contacts));
+  } catch (error) {
+    console.error('Error fetching contact requests:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch contact requests',
+    }));
+  }
+});
+
+adminRouter.post('/contact-requests/:id/approve', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = req.user!;
+
+    if (user.role !== 'facility_admin' && user.role !== 'agency_admin') {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'Insufficient permissions',
+      }));
+      return;
+    }
+
+    const contact = await prisma.approvedContact.findUnique({
+      where: { id: req.params.id },
+      include: { incarceratedPerson: { select: { facilityId: true } } },
+    });
+
+    if (!contact) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Contact request not found',
+      }));
+      return;
+    }
+
+    if (user.role === 'facility_admin' && user.facilityId !== contact.incarceratedPerson.facilityId) {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'No access to this contact request',
+      }));
+      return;
+    }
+
+    if (contact.status !== 'pending') {
+      res.status(400).json(createErrorResponse({
+        code: 'INVALID_STATUS',
+        message: `Contact request is already ${contact.status}`,
+      }));
+      return;
+    }
+
+    const updated = await prisma.approvedContact.update({
+      where: { id: contact.id },
+      data: {
+        status: 'approved',
+        reviewedAt: new Date(),
+        reviewedBy: user.id,
+      },
+    });
+
+    res.json(createSuccessResponse(updated));
+  } catch (error) {
+    console.error('Error approving contact:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to approve contact',
+    }));
+  }
+});
+
+adminRouter.post('/contact-requests/:id/deny', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = req.user!;
+
+    if (user.role !== 'facility_admin' && user.role !== 'agency_admin') {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'Insufficient permissions',
+      }));
+      return;
+    }
+
+    const { reason } = req.body;
+    if (!reason || typeof reason !== 'string' || !reason.trim()) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'Reason is required',
+      }));
+      return;
+    }
+
+    const contact = await prisma.approvedContact.findUnique({
+      where: { id: req.params.id },
+      include: { incarceratedPerson: { select: { facilityId: true } } },
+    });
+
+    if (!contact) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Contact request not found',
+      }));
+      return;
+    }
+
+    if (user.role === 'facility_admin' && user.facilityId !== contact.incarceratedPerson.facilityId) {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'No access to this contact request',
+      }));
+      return;
+    }
+
+    if (contact.status !== 'pending') {
+      res.status(400).json(createErrorResponse({
+        code: 'INVALID_STATUS',
+        message: `Contact request is already ${contact.status}`,
+      }));
+      return;
+    }
+
+    const updated = await prisma.approvedContact.update({
+      where: { id: contact.id },
+      data: {
+        status: 'denied',
+        reviewedAt: new Date(),
+        reviewedBy: user.id,
+      },
+    });
+
+    res.json(createSuccessResponse(updated));
+  } catch (error) {
+    console.error('Error denying contact:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to deny contact',
+    }));
+  }
+});
+
 adminRouter.post('/residents/:id/reset-pin', requireAuth, async (req: Request, res: Response) => {
   try {
     if (!req.user) {
