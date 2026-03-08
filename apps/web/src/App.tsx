@@ -11,7 +11,7 @@ import RegisterPage from './pages/RegisterPage';
 
 const VoiceIncarcerated = lazy(() => import('../../../guilds/voice/ui/incarcerated'));
 const VoiceFamily = lazy(() => import('../../../guilds/voice/ui/family'));
-const VoiceAdmin = lazy(() => import('../../../guilds/voice/ui/admin'));
+const VoiceAdmin = lazy(() => import('../../../guilds/admin/ui/voice'));
 
 const VideoIncarcerated = lazy(() => import('../../../guilds/video/ui/incarcerated'));
 const VideoFamily = lazy(() => import('../../../guilds/video/ui/family'));
