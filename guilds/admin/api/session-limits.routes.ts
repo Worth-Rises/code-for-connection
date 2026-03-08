@@ -399,6 +399,48 @@ sessionLimitsRouter.get('/usage/:incarceratedPersonId/check', requireAuth, requi
   }
 });
 
+// Emergency lockdown — disable or re-enable all comms for every unit type in the agency
+sessionLimitsRouter.post('/emergency-lockdown', requireAuth, requireRole('agency_admin'), async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.agencyId) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'Authenticated admin must have an agency',
+      }));
+      return;
+    }
+
+    const { enable } = req.body;
+    if (typeof enable !== 'boolean') {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'Request body must include { enable: boolean }',
+      }));
+      return;
+    }
+
+    const result = await prisma.housingUnitType.updateMany({
+      where: { agencyId: req.user.agencyId },
+      data: {
+        voiceCallsEnabled: enable,
+        videoCallsEnabled: enable,
+        messagingEnabled: enable,
+      },
+    });
+
+    res.json(createSuccessResponse({
+      action: enable ? 'restored' : 'locked_down',
+      unitTypesUpdated: result.count,
+    }));
+  } catch (error) {
+    console.error('Error executing emergency lockdown:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to execute emergency lockdown',
+    }));
+  }
+});
+
 // Video time slot CRUD
 
 sessionLimitsRouter.get('/unit-types/:unitTypeId/time-slots', requireAuth, requireRole('agency_admin'), async (req: Request, res: Response) => {

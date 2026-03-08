@@ -92,6 +92,68 @@ function ConfigRow({ label, value }: { label: string; value: React.ReactNode }) 
   );
 }
 
+function LockdownBanner({ unitTypes, token, onComplete }: { unitTypes: UnitType[]; token: string; onComplete: () => void }) {
+  const [acting, setActing] = useState(false);
+
+  const allDisabled = unitTypes.length > 0 && unitTypes.every(
+    (ut) => !ut.voiceCallsEnabled && !ut.videoCallsEnabled && !ut.messagingEnabled
+  );
+
+  async function handleLockdown(enable: boolean) {
+    const msg = enable
+      ? 'This will RE-ENABLE voice, video, and messaging for ALL housing unit types. Continue?'
+      : 'This will DISABLE all voice, video, and messaging for EVERY housing unit type. Continue?';
+    if (!confirm(msg)) return;
+
+    try {
+      setActing(true);
+      await apiFetch('/emergency-lockdown', token, {
+        method: 'POST',
+        body: JSON.stringify({ enable }),
+      });
+      onComplete();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Lockdown action failed');
+    } finally {
+      setActing(false);
+    }
+  }
+
+  if (allDisabled) {
+    return (
+      <div className="rounded-lg border-2 border-red-300 bg-red-50 px-6 py-4 flex items-center justify-between">
+        <div>
+          <p className="text-lg font-bold text-red-800">COMMUNICATIONS DISABLED</p>
+          <p className="text-sm text-red-600">All voice, video, and messaging are off for every housing unit type.</p>
+        </div>
+        <button
+          onClick={() => handleLockdown(true)}
+          disabled={acting}
+          className="px-5 py-2.5 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+        >
+          {acting ? 'Restoring...' : 'Restore Communications'}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 px-6 py-4 flex items-center justify-between">
+      <div>
+        <p className="text-sm font-medium text-gray-700">All Communications Active</p>
+        <p className="text-xs text-gray-500">Use this to immediately shut down all voice, video, and messaging.</p>
+      </div>
+      <button
+        onClick={() => handleLockdown(false)}
+        disabled={acting}
+        className="px-5 py-2.5 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+      >
+        {acting ? 'Locking down...' : 'Emergency Lockdown'}
+      </button>
+    </div>
+  );
+}
+
 export default function HousingConfigPage() {
   const { token } = useAuth();
   const [unitTypes, setUnitTypes] = useState<UnitType[]>([]);
@@ -240,6 +302,10 @@ export default function HousingConfigPage() {
         <h1 className="text-2xl font-bold text-gray-900">Housing Configuration</h1>
         <p className="text-gray-600">Configure calling hours, session limits, and video time slots by housing unit type</p>
       </div>
+
+      {unitTypes.length > 0 && (
+        <LockdownBanner unitTypes={unitTypes} token={token!} onComplete={fetchUnitTypes} />
+      )}
 
       {unitTypes.length === 0 ? (
         <Card padding="lg">
