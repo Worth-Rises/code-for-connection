@@ -1,8 +1,12 @@
-import React, { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Button, Card } from '@openconnect/ui';
 import { useAuth } from '../context/AuthContext';
+import { TwilioCompliantRecorder } from '../utils/twilioCompliantRecorder';
 
 const API_BASE = '/api';
+
+/** Twilio Play supports WAV/MP3 etc.; we record WAV (mono 16-bit) to comply and stay under 2MB. */
+const MAX_RECORDING_SEC = 15;
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -21,25 +25,35 @@ export default function RecordNamePage() {
   const { token, clearNeedsNameRecording } = useAuth();
   const [step, setStep] = useState<'idle' | 'recording' | 'uploading' | 'done' | 'error'>('idle');
   const [error, setError] = useState('');
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const [recordingSec, setRecordingSec] = useState(0);
+  const recorderRef = useRef<TwilioCompliantRecorder | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => {
+    recorderRef.current?.cancel();
+    stopTimer();
+  }, [stopTimer]);
 
   const startRecording = useCallback(async () => {
     setError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      mediaRecorderRef.current = recorder;
-      chunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-      };
-
-      recorder.start(100);
+      const recorder = new TwilioCompliantRecorder({ maxDurationMs: MAX_RECORDING_SEC * 1000 });
+      recorderRef.current = recorder;
+      await recorder.start(() => {
+        // Auto-stop when max duration reached
+        stopAndUpload();
+      });
+      setRecordingSec(0);
+      timerRef.current = setInterval(() => {
+        setRecordingSec((s) => Math.min(s + 1, MAX_RECORDING_SEC));
+      }, 1000);
       setStep('recording');
     } catch (err) {
       setError('Microphone access is needed to record your name. Please allow access and try again.');
@@ -48,26 +62,27 @@ export default function RecordNamePage() {
   }, []);
 
   const stopAndUpload = useCallback(async () => {
-    const recorder = mediaRecorderRef.current;
-    if (!recorder || step !== 'recording') return;
+    const recorder = recorderRef.current;
+    if (!recorder) return;
 
-    recorder.stop();
-    mediaRecorderRef.current = null;
+    stopTimer();
+    recorderRef.current = null;
+    const result = recorder.stop();
     setStep('uploading');
     setError('');
 
-    const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-    chunksRef.current = [];
-
     try {
-      const base64 = await blobToBase64(blob);
+      const base64 = await blobToBase64(result.blob);
       const response = await fetch(`${API_BASE}/voice/users/name-audio`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ audioBase64: base64, contentType: 'audio/webm' }),
+        body: JSON.stringify({
+          audioBase64: base64,
+          contentType: result.contentType, // audio/wav — Twilio Play supported
+        }),
       });
       const data = await response.json();
 
@@ -82,14 +97,14 @@ export default function RecordNamePage() {
       setError('Network error. Please try again.');
       setStep('error');
     }
-  }, [token, clearNeedsNameRecording, step]);
+  }, [token, stopTimer]);
 
   if (step === 'done') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-blue-900 p-8">
         <Card padding="lg" className="max-w-md w-full text-center">
           <span className="text-5xl block mb-4">✓</span>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">You’re all set</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">You're all set</h2>
           <p className="text-gray-600 mb-6">
             Your name recording has been saved. You can now use voice and video calls.
           </p>
@@ -119,7 +134,8 @@ export default function RecordNamePage() {
           {step === 'idle' && (
             <>
               <p className="text-gray-600 mb-6">
-                Tap the button below, then say your full name clearly. You can re-record if needed.
+                Tap the button below, then say your full name clearly. Recording stops automatically
+                after {MAX_RECORDING_SEC} seconds. You can re-record if needed.
               </p>
               <Button fullWidth size="lg" onClick={startRecording}>
                 Record your name
@@ -131,7 +147,9 @@ export default function RecordNamePage() {
             <>
               <div className="flex items-center justify-center gap-2 mb-4">
                 <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-gray-700 font-medium">Recording… Say your name clearly</span>
+                <span className="text-gray-700 font-medium">
+                  Recording… Say your name clearly ({recordingSec}s / {MAX_RECORDING_SEC}s max)
+                </span>
               </div>
               <Button fullWidth size="lg" onClick={stopAndUpload}>
                 Stop and save
@@ -148,7 +166,14 @@ export default function RecordNamePage() {
           {step === 'error' && (
             <>
               <p className="text-gray-600 mb-6">{error}</p>
-              <Button fullWidth size="lg" onClick={() => { setStep('idle'); setError(''); }}>
+              <Button
+                fullWidth
+                size="lg"
+                onClick={() => {
+                  setStep('idle');
+                  setError('');
+                }}
+              >
                 Try again
               </Button>
             </>
