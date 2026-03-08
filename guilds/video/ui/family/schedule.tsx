@@ -13,6 +13,7 @@ interface TimeSlot {
 }
 
 export default function ScheduleCall() {
+  const IS_TEST_MODE = import.meta.env.VITE_TEST_MODE === 'true';
   const { contactId } = useParams<{ contactId: string }>();
   const [searchParams] = useSearchParams();
   const rescheduleCallId = searchParams.get('rescheduleCallId');
@@ -140,28 +141,30 @@ export default function ScheduleCall() {
     setLoading(true);
 
     try {
-      // Validate date/time is in the future
+      // In test mode, allow scheduling any timestamp (including past times).
       const selectedDateTime = new Date(`${date}T${time}`);
       const now = new Date();
       
-      if (selectedDateTime <= now) {
+      if (!IS_TEST_MODE && selectedDateTime <= now) {
         throw new Error(familyMessages.schedule.inPastError);
       }
 
-      // Validate selected date/time is in an allowed slot
-      const slotsForSelectedDate = getSlotsForDate(date);
-      const [selectedHour, selectedMin] = time.split(':').map(Number);
-      const isValidSlot = slotsForSelectedDate.some((slot) => {
-        const [startHour, startMin] = slot.startTime.split(':').map(Number);
-        const [endHour, endMin] = slot.endTime.split(':').map(Number);
-        const slotStart = startHour * 60 + startMin;
-        const slotEnd = endHour * 60 + endMin;
-        const selectedTime = selectedHour * 60 + selectedMin;
-        return selectedTime >= slotStart && selectedTime < slotEnd;
-      });
+      // In test mode, bypass slot-window validation so manual time entry works.
+      if (!IS_TEST_MODE) {
+        const slotsForSelectedDate = getSlotsForDate(date);
+        const [selectedHour, selectedMin] = time.split(':').map(Number);
+        const isValidSlot = slotsForSelectedDate.some((slot) => {
+          const [startHour, startMin] = slot.startTime.split(':').map(Number);
+          const [endHour, endMin] = slot.endTime.split(':').map(Number);
+          const slotStart = startHour * 60 + startMin;
+          const slotEnd = endHour * 60 + endMin;
+          const selectedTime = selectedHour * 60 + selectedMin;
+          return selectedTime >= slotStart && selectedTime < slotEnd;
+        });
 
-      if (!isValidSlot) {
-        throw new Error('Please select a time within an available slot');
+        if (!isValidSlot) {
+          throw new Error('Please select a time within an available slot');
+        }
       }
 
       // Calculate end time (30 minutes later)
@@ -248,7 +251,7 @@ export default function ScheduleCall() {
                 type="date"
                 value={date}
                 onChange={(e: any) => setDate(e.target.value)}
-                min={today}
+                min={IS_TEST_MODE ? undefined : today}
                 required
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -258,19 +261,29 @@ export default function ScheduleCall() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 {familyMessages.schedule.timeLabel}
               </label>
-              <select
-                value={time}
-                onChange={(e: any) => setTime(e.target.value)}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">{familyMessages.schedule.timePlaceholder}</option>
-                {timeOptions.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+              {IS_TEST_MODE ? (
+                <input
+                  type="time"
+                  value={time}
+                  onChange={(e: any) => setTime(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              ) : (
+                <select
+                  value={time}
+                  onChange={(e: any) => setTime(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">{familyMessages.schedule.timePlaceholder}</option>
+                  {timeOptions.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {error && (
