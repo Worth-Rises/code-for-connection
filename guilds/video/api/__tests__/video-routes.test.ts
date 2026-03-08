@@ -116,11 +116,11 @@ describe('GET /api/video/my-scheduled', () => {
     );
   });
 
-  it('requires admin approval for incarcerated my-scheduled calls', async () => {
+  it('does not require approvedBy in my-scheduled query', async () => {
     (prisma.videoCall.findMany as any).mockResolvedValue([]);
     await request(app).get('/api/video/my-scheduled');
     const whereClause = (prisma.videoCall.findMany as any).mock.calls[0][0].where;
-    expect(whereClause.approvedBy).toEqual({ not: null });
+    expect(whereClause.approvedBy).toBeUndefined();
   });
 
   it('orders results by scheduledStart descending', async () => {
@@ -187,14 +187,16 @@ describe('POST /api/video/join/:callId', () => {
     expect(res.body.error.code).toBe('CALL_NOT_READY');
   });
 
-  it('returns 400 when call has not been admin approved', async () => {
+  it('allows join when call is scheduled even if approvedBy is null (auto-approved)', async () => {
     (prisma.videoCall.findUnique as any).mockResolvedValue(
       mockCall({ status: 'scheduled', approvedBy: null }),
     );
+    (prisma.videoCall.update as any).mockResolvedValue(
+      mockCall({ status: 'in_progress', approvedBy: null, actualStart: new Date() }),
+    );
     const res = await request(app).post('/api/video/join/call-1');
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('CALL_NOT_APPROVED');
-    expect(prisma.videoCall.update).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(prisma.videoCall.update).toHaveBeenCalled();
   });
 
   it('returns 400 when now < scheduledStart (too early)', async () => {

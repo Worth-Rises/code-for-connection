@@ -32,7 +32,7 @@ export function ScheduledCallsList({ onJoinCall }: ScheduledCallsListProps) {
   if (error)   return <p style={{ color: '#f87171', textAlign: 'center' }}>{error}</p>;
 
   const visibleCalls = calls
-    .filter((call) => Boolean(call.approvedBy))
+    .filter((call) => ['scheduled', 'in_progress'].includes(call.status))
     .sort((a, b) => new Date(b.scheduledStart).getTime() - new Date(a.scheduledStart).getTime());
   const now = Date.now();
   const TOLERANCE_MS = 900_000;
@@ -45,8 +45,7 @@ export function ScheduledCallsList({ onJoinCall }: ScheduledCallsListProps) {
       {visibleCalls.map((call) => {
         const start = new Date(call.scheduledStart).getTime();
         const end   = new Date(call.scheduledEnd).getTime();
-        const canJoin = Boolean(call.approvedBy)
-          && now >= start - TOLERANCE_MS
+        const canJoin = now >= start - TOLERANCE_MS
           && now <= end + TOLERANCE_MS;
         const startStr = new Date(call.scheduledStart).toLocaleString();
 

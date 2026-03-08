@@ -106,7 +106,6 @@ export default function ScheduledCalls() {
 
   const canJoinCall = (call: VideoCall) => {
     if (!['scheduled', 'in_progress'].includes(call.status)) return false;
-    if (!call.approvedBy) return false;
     const now = Date.now();
     const start = new Date(call.scheduledStart).getTime();
     const end = new Date(call.scheduledEnd).getTime();
