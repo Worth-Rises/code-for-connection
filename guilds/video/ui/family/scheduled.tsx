@@ -8,6 +8,8 @@ import { familyMessages } from '../messages';
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'http://localhost:3001';
 const JOIN_GRACE_MS = 900_000;
 
+type JoinPhase = 'waiting' | 'active';
+
 interface VideoCall {
   id: string;
   scheduledStart: string;
@@ -22,7 +24,9 @@ interface VideoCall {
 
 interface ActiveCall {
   callId: string;
+  scheduledStart?: string;
   scheduledEnd: string;
+  initialPhase?: JoinPhase;
 }
 
 function getUserIdFromToken(): string {
@@ -111,7 +115,7 @@ export default function ScheduledCalls() {
     const now = Date.now();
     const start = new Date(call.scheduledStart).getTime();
     const end = new Date(call.scheduledEnd).getTime();
-    return now >= start && now <= end + JOIN_GRACE_MS;
+    return now >= start - JOIN_GRACE_MS && now <= end + JOIN_GRACE_MS;
   };
 
   const canCancelCall = (call: VideoCall) => {
@@ -144,7 +148,9 @@ export default function ScheduledCalls() {
 
       setActiveCall({
         callId: call.id,
+        scheduledStart: json?.data?.scheduledStart || call.scheduledStart,
         scheduledEnd: json?.data?.scheduledEnd || call.scheduledEnd,
+        initialPhase: json?.data?.phase,
       });
     } catch (err: any) {
       setError(err.message || familyMessages.scheduled.joinErrorFallback);
@@ -183,7 +189,9 @@ export default function ScheduledCalls() {
         callId={activeCall.callId}
         userId={userId}
         userRole="family"
+        scheduledStart={activeCall.scheduledStart}
         scheduledEnd={activeCall.scheduledEnd}
+        initialPhase={activeCall.initialPhase}
         signalingUrl={SIGNALING_URL}
         onExit={() => setActiveCall(null)}
       />

@@ -94,20 +94,17 @@ videoRouter.get('/call-logs', requireAuth, async (req: Request, res: Response) =
     const now = new Date();
 
     // Auto-complete any in_progress or scheduled calls that have passed their scheduled end time
-    if (facilityId) {
-      await prisma.videoCall.updateMany({
-        where: {
-          facilityId: String(facilityId),
-          status: { in: ['in_progress', 'scheduled'] },
-          scheduledEnd: { lt: now },
-        },
-        data: {
-          status: 'completed',
-          actualEnd: now,
-          endedBy: 'time_limit',
-        },
-      });
-    }
+    await prisma.videoCall.updateMany({
+      where: {
+        status: { in: ['in_progress', 'scheduled'] },
+        scheduledEnd: { lt: now },
+      },
+      data: {
+        status: 'completed',
+        actualEnd: now,
+        endedBy: 'time_limit',
+      },
+    });
     
     const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize));
     const take = parseInt(String(pageSize));
@@ -331,6 +328,17 @@ videoRouter.post('/join/:callId', requireAuth, async (req: Request, res: Respons
       return;
     }
 
+    // Admin approval check — only enforced when facility policy requires it.
+    // When ADMIN_APPROVAL_REQUIRED=false, auto-approved scheduled calls may have
+    // approvedBy=null and should still be joinable.
+    if (ADMIN_APPROVAL_REQUIRED && !call.approvedBy) {
+      res.status(400).json(createErrorResponse({
+        code: 'CALL_NOT_APPROVED',
+        message: 'This call has not been approved by staff yet',
+      }));
+      return;
+    }
+
     // Timing window check
     const windowStart = new Date(call.scheduledStart.getTime() - TOLERANCE_MS);
     const windowEnd = new Date(call.scheduledEnd.getTime() + TOLERANCE_MS);
@@ -472,33 +480,6 @@ videoRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency_adm
     res.status(500).json(createErrorResponse({
       code: 'INTERNAL_ERROR',
       message: 'Failed to fetch stats',
-    }));
-  }
-});
-
-// ─── GET /api/video/bandwidth-test ────────────────────────────────────────
-videoRouter.get('/bandwidth-test', (req: Request, res: Response) => {
-  // Generate a 1MB payload of predictable data (e.g., zeros) for a download speed test
-  // This does not require auth so that clients can test their connection before logging in
-  // or before joining a room, minimizing pre-flight latency.
-  try {
-    const sizeInBytes = 1024 * 1024; // 1MB
-    const buffer = Buffer.alloc(sizeInBytes, '0');
-
-    res.set({
-      'Content-Type': 'application/octet-stream',
-      'Content-Length': sizeInBytes.toString(),
-      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0',
-    });
-
-    res.status(200).send(buffer);
-  } catch (error) {
-    console.error('Error generating bandwidth test payload:', error);
-    res.status(500).json(createErrorResponse({
-      code: 'INTERNAL_ERROR',
-      message: 'Failed to run bandwidth test',
     }));
   }
 });
@@ -734,11 +715,11 @@ videoRouter.get('/scheduled-calls', requireAuth, async (req: Request, res: Respo
     const familyMemberId = req.user!.id;
     const now = new Date();
 
-    // Auto-complete any in_progress or scheduled calls that have passed their scheduled end time
+    // Auto-complete any in_progress calls that have passed their scheduled end time
     await prisma.videoCall.updateMany({
       where: {
         familyMemberId,
-        status: { in: ['in_progress', 'scheduled'] },
+        status: 'in_progress',
         scheduledEnd: { lt: now },
       },
       data: {
@@ -853,8 +834,9 @@ videoRouter.post('/reschedule-call/:callId', requireAuth, requireRole('family'),
       data: {
         scheduledStart: start,
         scheduledEnd: end,
-        // scheduled calls must be re-approved after reschedule ONLY if admin approval is required.
-        status: ADMIN_APPROVAL_REQUIRED ? 'requested' : 'scheduled',
+        // scheduled calls must be re-approved after reschedule.
+        // requested calls stay requested.
+        status: 'requested',
         approvedBy: null,
       },
       include: {
