@@ -609,6 +609,28 @@ voiceUserRouter.post('/status-callback/:callId', async (req: Request, res: Respo
           },
         });
         console.log(`[voice] Call ${callId} marked as ended by receiver (${CallStatus})`);
+
+        // Terminate the conference so the web/tablet user is disconnected
+        try {
+          const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+          if (call.conferenceSid) {
+            await client.conferences(call.conferenceSid).update({ status: 'completed' });
+          } else {
+            const conferences = await client.conferences.list({
+              friendlyName: `call-${callId}`,
+              status: 'in-progress',
+            });
+            for (const conf of conferences) {
+              await conf.update({ status: 'completed' });
+            }
+          }
+          console.log(`[voice] Conference terminated for call ${callId}`);
+        } catch (confErr) {
+          console.error(`[voice] Error terminating conference for call ${callId}:`, confErr);
+        }
+
+        // Clean up in-memory metadata
+        callMetadata.delete(callId);
       }
     }
   } catch (err) {
