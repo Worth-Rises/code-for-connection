@@ -15,6 +15,15 @@ import { familyMessages } from '../messages';
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'http://localhost:3001';
 const IS_TEST_MODE = import.meta.env.VITE_TEST_MODE === 'true';
 
+type JoinPhase = 'waiting' | 'active';
+
+interface ActiveCall {
+  callId: string;
+  scheduledStart?: string;
+  scheduledEnd: string;
+  initialPhase?: JoinPhase;
+}
+
 function getUserIdFromToken(): string {
   try {
     const token = localStorage.getItem('token');
@@ -28,7 +37,7 @@ function getUserIdFromToken(): string {
 
 function FamilyVideoHomeDevStub() {
   const [callId, setCallId] = useState('');
-  const [activeCall, setActiveCall] = useState<{ callId: string; scheduledEnd: string } | null>(null);
+  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [isPrechecking, setIsPrechecking] = useState(false);
   const [deviceConfig, setDeviceConfig] = useState<{video: string, audio: string} | null>(null);
   const userId = getUserIdFromToken();
@@ -39,7 +48,9 @@ function FamilyVideoHomeDevStub() {
         callId={activeCall.callId}
         userId={userId}
         userRole="family"
+        scheduledStart={activeCall.scheduledStart}
         scheduledEnd={activeCall.scheduledEnd}
+        initialPhase={activeCall.initialPhase}
         signalingUrl={SIGNALING_URL}
         onExit={() => {
           setActiveCall(null);
@@ -102,7 +113,12 @@ function FamilyVideoHomeDevStub() {
               .then((r) => r.json())
               .then((body) => {
                 if (body.success) {
-                  setActiveCall({ callId: callId.trim(), scheduledEnd: body.data.scheduledEnd });
+                  setActiveCall({
+                    callId: callId.trim(),
+                    scheduledStart: body.data?.scheduledStart,
+                    scheduledEnd: body.data?.scheduledEnd,
+                    initialPhase: body.data?.phase,
+                  });
                   setIsPrechecking(true);
                 } else {
                   alert(`Cannot join: ${body.error?.message ?? 'Unknown error'}`);
@@ -139,7 +155,7 @@ function VideoHome() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [testCallLoading, setTestCallLoading] = useState(false);
-  const [activeTestCall, setActiveTestCall] = useState<{ callId: string; scheduledEnd: string } | null>(null);
+  const [activeTestCall, setActiveTestCall] = useState<ActiveCall | null>(null);
   const [isPrechecking, setIsPrechecking] = useState(false);
   const userId = getUserIdFromToken();
 
@@ -187,7 +203,12 @@ function VideoHome() {
       const joinJson = await joinRes.json();
       if (!joinJson.success) throw new Error(joinJson.error?.message ?? 'Failed to join call');
 
-      setActiveTestCall({ callId: json.data.id, scheduledEnd: joinJson.data.scheduledEnd });
+      setActiveTestCall({
+        callId: json.data.id,
+        scheduledStart: joinJson.data?.scheduledStart,
+        scheduledEnd: joinJson.data?.scheduledEnd,
+        initialPhase: joinJson.data?.phase,
+      });
       setIsPrechecking(true);
     } catch (err: any) {
       alert(err.message);
@@ -202,7 +223,9 @@ function VideoHome() {
         callId={activeTestCall.callId}
         userId={userId}
         userRole="family"
+        scheduledStart={activeTestCall.scheduledStart}
         scheduledEnd={activeTestCall.scheduledEnd}
+        initialPhase={activeTestCall.initialPhase}
         signalingUrl={SIGNALING_URL}
         onExit={() => setActiveTestCall(null)}
       />

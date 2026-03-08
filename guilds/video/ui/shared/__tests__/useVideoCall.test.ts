@@ -95,6 +95,69 @@ describe('useVideoCall — state machine', () => {
     });
   });
 
+  it('enters waiting-room state when room-joined phase is waiting', async () => {
+    const { result } = renderHook(() => useVideoCall(createHookProps()));
+    await act(async () => {
+      vi.runAllTicks();
+      await Promise.resolve();
+    });
+    await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => {
+      mockSocket._trigger('room-joined', { roomId: 'call-test-1', phase: 'waiting', participants: [] });
+    });
+
+    expect(result.current.connectionState).toBe('WAITING_FOR_START');
+  });
+
+  it('does not negotiate while in waiting room before call-started', async () => {
+    const { result } = renderHook(() => useVideoCall(createHookProps()));
+    await act(async () => {
+      vi.runAllTicks();
+      await Promise.resolve();
+    });
+    await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => {
+      mockSocket._trigger('room-joined', { roomId: 'call-test-1', phase: 'waiting', participants: [] });
+    });
+    await act(async () => {
+      mockSocket._trigger('user-joined', { socketId: 'peer-socket', userId: 'user-2', userRole: 'family' });
+    });
+
+    expect(result.current.connectionState).toBe('WAITING_FOR_START');
+    const offerEmit = mockSocket._emitted.find(([e]) => e === 'offer');
+    expect(offerEmit).toBeUndefined();
+  });
+
+  it('transitions from waiting room to active negotiation after call-started', async () => {
+    const { result } = renderHook(() => useVideoCall(createHookProps()));
+    await act(async () => {
+      vi.runAllTicks();
+      await Promise.resolve();
+    });
+    await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => {
+      mockSocket._trigger('room-joined', { roomId: 'call-test-1', phase: 'waiting', participants: [] });
+    });
+
+    expect(result.current.connectionState).toBe('WAITING_FOR_START');
+
+    await act(async () => {
+      mockSocket._trigger('call-started', {
+        roomId: 'call-test-1',
+        phase: 'active',
+        participants: [{ socketId: 'peer-socket', userId: 'user-2', userRole: 'family' }],
+      });
+    });
+    expect(result.current.connectionState).toBe('CONNECTING');
+
+    await act(async () => {
+      mockSocket._trigger('user-joined', { socketId: 'peer-socket', userId: 'user-2', userRole: 'family' });
+    });
+
+    const offerEmit = mockSocket._emitted.find(([e]) => e === 'offer');
+    expect(offerEmit).toBeDefined();
+  });
+
   it('transitions to CONNECTING when user-joined received and offer is sent', async () => {
     const { result } = renderHook(() => useVideoCall(createHookProps()));
     await act(async () => { mockSocket._trigger('connect'); });

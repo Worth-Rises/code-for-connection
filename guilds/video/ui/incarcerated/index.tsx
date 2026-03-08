@@ -6,9 +6,13 @@ import { VideoCallRoom } from '../shared/VideoCallRoom.js';
 
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'http://localhost:3001';
 
+type JoinPhase = 'waiting' | 'active';
+
 interface ActiveCall {
   callId: string;
+  scheduledStart?: string;
   scheduledEnd: string;
+  initialPhase?: JoinPhase;
 }
 
 function getUserIdFromToken(): string {
@@ -32,7 +36,9 @@ function IncarceratedVideoHome() {
         callId={activeCall.callId}
         userId={userId}
         userRole="incarcerated"
+        scheduledStart={activeCall.scheduledStart}
         scheduledEnd={activeCall.scheduledEnd}
+        initialPhase={activeCall.initialPhase}
         signalingUrl={SIGNALING_URL}
         onExit={() => setActiveCall(null)}
       />
@@ -48,8 +54,8 @@ function IncarceratedVideoHome() {
             Scheduled Calls
           </h2>
           <ScheduledCallsList
-            onJoinCall={(callId, scheduledEnd) => {
-              // First POST to join the call to mark it in_progress, then open the room
+            onJoinCall={(callId, scheduledStart, scheduledEnd) => {
+              // First POST to join the call to determine waiting/active phase, then open the room
               fetch(`/api/video/join/${callId}`, {
                 method: 'POST',
                 headers: {
@@ -60,7 +66,12 @@ function IncarceratedVideoHome() {
                 .then((r) => r.json())
                 .then((body) => {
                   if (body.success) {
-                    setActiveCall({ callId, scheduledEnd: body.data.scheduledEnd });
+                    setActiveCall({
+                      callId,
+                      scheduledStart: body.data?.scheduledStart ?? scheduledStart,
+                      scheduledEnd: body.data?.scheduledEnd ?? scheduledEnd,
+                      initialPhase: body.data?.phase,
+                    });
                   } else {
                     alert(`Cannot join: ${body.error?.message ?? 'Unknown error'}`);
                   }

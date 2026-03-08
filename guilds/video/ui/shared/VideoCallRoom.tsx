@@ -1,18 +1,21 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { useVideoCall, type ConnectionState } from '../shared/useVideoCall.js';
+import { useVideoCall, type ConnectionState, type CallPhase } from '../shared/useVideoCall.js';
 import { useBlurBackground } from '../shared/useBlurBackground.js';
 
 interface VideoCallRoomProps {
   callId: string;
   userId: string;
   userRole: 'incarcerated' | 'family';
+  scheduledStart?: string;
   scheduledEnd: string;
+  initialPhase?: CallPhase;
   signalingUrl: string;
   onExit: () => void;
 }
 
 const STATE_LABELS: Record<ConnectionState, string> = {
   IDLE: 'Initialising…',
+  WAITING_FOR_START: 'In waiting room. Call will start at scheduled time…',
   WAITING_FOR_PEER: 'Waiting for the other person to join…',
   CONNECTING: 'Connecting…',
   CONNECTED: 'Connected',
@@ -31,7 +34,9 @@ export function VideoCallRoom({
   callId,
   userId,
   userRole,
+  scheduledStart,
   scheduledEnd,
+  initialPhase,
   signalingUrl,
   onExit,
 }: VideoCallRoomProps) {
@@ -54,7 +59,9 @@ export function VideoCallRoom({
     callId,
     userId,
     userRole,
+    scheduledStart,
     scheduledEnd,
+    initialPhase,
     signalingUrl,
     onCallEnded: (_reason) => { setTimeout(onExit, 1500); },
   });
