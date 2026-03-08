@@ -969,128 +969,54 @@ messagingRouter.get(
   },
 )
 
-// Get approved contacts for the logged-in incarcerated person
+// Get approved contacts for the logged-in user (family or incarcerated)
 messagingRouter.get(
   "/my-contacts",
   requireAuth,
-  requireRole("incarcerated"),
+  requireRole("family", "incarcerated"),
   async (req: Request, res: Response) => {
     try {
-      const contacts = await prisma.approvedContact.findMany({
-        where: { incarceratedPersonId: req.user!.id, status: "approved" },
-        include: {
-          familyMember: {
-            select: { id: true, firstName: true, lastName: true },
-          },
-        },
-      });
+      const user = req.user!
+      const contacts = user.role === "family"
+        ? await prisma.approvedContact.findMany({
+            where: { familyMemberId: user.id, status: "approved" },
+            include: { incarceratedPerson: { select: { id: true, firstName: true, lastName: true } } },
+          })
+        : await prisma.approvedContact.findMany({
+            where: { incarceratedPersonId: user.id, status: "approved" },
+            include: { familyMember: { select: { id: true, firstName: true, lastName: true } } },
+          })
 
       res.json(createSuccessResponse(contacts));
     } catch (error) {
       console.error("Error fetching contacts:", error);
-      res.status(500).json(
-        createErrorResponse({
-          code: "INTERNAL_ERROR",
-          message: "Failed to fetch contacts",
-        }),
-      );
+      res.status(500).json(createErrorResponse({ code: "INTERNAL_ERROR", message: "Failed to fetch contacts" }));
     }
   },
 );
 
-// Get pending contact requests for the logged-in incarcerated person
+// Get pending contact requests for the logged-in user (family or incarcerated)
 messagingRouter.get(
   "/pending-contacts",
   requireAuth,
-  requireRole("incarcerated"),
+  requireRole("family", "incarcerated"),
   async (req: Request, res: Response) => {
     try {
-      const contacts = await prisma.approvedContact.findMany({
-        where: { incarceratedPersonId: req.user!.id, status: "pending" },
-        include: {
-          familyMember: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-        },
-      });
+      const user = req.user!
+      const contacts = user.role === "family"
+        ? await prisma.approvedContact.findMany({
+            where: { familyMemberId: user.id, status: "pending" },
+            include: { incarceratedPerson: { select: { id: true, firstName: true, lastName: true, externalId: true } } },
+          })
+        : await prisma.approvedContact.findMany({
+            where: { incarceratedPersonId: user.id, status: "pending" },
+            include: { familyMember: { select: { id: true, firstName: true, lastName: true } } },
+          })
 
       res.json(createSuccessResponse(contacts));
     } catch (error) {
       console.error("Error fetching pending contacts:", error);
-      res.status(500).json(
-        createErrorResponse({
-          code: "INTERNAL_ERROR",
-          message: "Failed to fetch pending contacts",
-        }),
-      );
-    }
-  },
-);
-
-
-// Get approved contacts for the logged-in family member
-messagingRouter.get(
-  "/my-contacts",
-  requireAuth,
-  requireRole("family"),
-  async (req: Request, res: Response) => {
-    try {
-      const contacts = await prisma.approvedContact.findMany({
-        where: { familyMemberId: req.user!.id, status: "approved" },
-        include: {
-          incarceratedPerson: {
-            select: { id: true, firstName: true, lastName: true },
-          },
-        },
-      });
-
-      res.json(createSuccessResponse(contacts));
-    } catch (error) {
-      console.error("Error fetching contacts:", error);
-      res.status(500).json(
-        createErrorResponse({
-          code: "INTERNAL_ERROR",
-          message: "Failed to fetch contacts",
-        }),
-      );
-    }
-  },
-);
-
-// Get pending contact requests for the logged-in family member
-messagingRouter.get(
-  "/pending-contacts",
-  requireAuth,
-  requireRole("family"),
-  async (req: Request, res: Response) => {
-    try {
-      const contacts = await prisma.approvedContact.findMany({
-        where: { familyMemberId: req.user!.id, status: "pending" },
-        include: {
-          incarceratedPerson: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              externalId: true,
-            },
-          },
-        },
-      });
-
-      res.json(createSuccessResponse(contacts));
-    } catch (error) {
-      console.error("Error fetching pending contacts:", error);
-      res.status(500).json(
-        createErrorResponse({
-          code: "INTERNAL_ERROR",
-          message: "Failed to fetch pending contacts",
-        }),
-      );
+      res.status(500).json(createErrorResponse({ code: "INTERNAL_ERROR", message: "Failed to fetch pending contacts" }));
     }
   },
 );
