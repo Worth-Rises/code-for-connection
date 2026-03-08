@@ -294,6 +294,15 @@ videoRouter.post('/join/:callId', requireAuth, async (req: Request, res: Respons
       return;
     }
 
+    // Admin approval check — calls are not joinable until approved by staff.
+    if (!call.approvedBy) {
+      res.status(400).json(createErrorResponse({
+        code: 'CALL_NOT_APPROVED',
+        message: 'This call has not been approved by staff yet',
+      }));
+      return;
+    }
+
     // Timing window check
     const windowStart = new Date(call.scheduledStart.getTime() - TOLERANCE_MS);
     const windowEnd = new Date(call.scheduledEnd.getTime() + TOLERANCE_MS);
@@ -655,9 +664,10 @@ videoRouter.get('/scheduled-calls', requireAuth, async (req: Request, res: Respo
     const where: any = {
       familyMemberId,
       status: {
-        in: ['requested', 'approved', 'scheduled'],
+        in: ['requested', 'approved', 'scheduled', 'in_progress'],
       },
-      scheduledStart: {
+      // Keep calls visible through their end time so active calls do not disappear at start.
+      scheduledEnd: {
         gte: new Date(),
       },
     };

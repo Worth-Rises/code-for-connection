@@ -6,6 +6,7 @@ interface VideoCall {
   status: string;
   scheduledStart: string;
   scheduledEnd: string;
+  approvedBy?: string | null;
   familyMember?: { firstName: string; lastName: string };
 }
 
@@ -41,7 +42,9 @@ export function ScheduledCallsList({ onJoinCall }: ScheduledCallsListProps) {
       {calls.map((call) => {
         const start = new Date(call.scheduledStart).getTime();
         const end   = new Date(call.scheduledEnd).getTime();
-        const canJoin = now >= start - TOLERANCE_MS && now <= end + TOLERANCE_MS;
+        const canJoin = Boolean(call.approvedBy)
+          && now >= start - TOLERANCE_MS
+          && now <= end + TOLERANCE_MS;
         const startStr = new Date(call.scheduledStart).toLocaleString();
 
         return (
