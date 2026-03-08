@@ -173,6 +173,7 @@ enum ContactStatus {
   approved
   denied
   removed
+  blocked_by_receiver
 }
 
 model ApprovedContact {
@@ -225,6 +226,8 @@ enum VoiceCallStatus {
   connected
   completed
   missed
+  rejected
+  blocked_by_receiver
   terminated_by_admin
 }
 
@@ -233,6 +236,7 @@ enum CallEndedBy {
   receiver
   time_limit
   admin
+  blocked
 }
 
 model VoiceCall {
