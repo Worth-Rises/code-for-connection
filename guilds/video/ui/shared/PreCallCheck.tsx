@@ -37,6 +37,9 @@ export function PreCallCheck({ onJoin, onCancel }: PreCallCheckProps) {
         // so that enumerateDevices() returns the labels (device names)
         initialStream.getTracks().forEach(track => track.stop());
         
+        // Give the browser a moment to fully release resources before enumerating
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         queryDevices();
       } catch (err) {
         console.error("Error accessing media devices.", err);
@@ -73,27 +76,37 @@ export function PreCallCheck({ onJoin, onCancel }: PreCallCheckProps) {
   };
 
   const startMedia = async () => {
-    stopMedia();
     try {
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: selectedVideoConfig ? { deviceId: { exact: selectedVideoConfig } } : true,
+      stopMedia();
+      // Add a small delay to ensure previous stream is fully released
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const constraints = {
+        video: selectedVideoConfig ? { deviceId: { exact: selectedVideoConfig } } : { width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: selectedAudioConfig ? { deviceId: { exact: selectedAudioConfig } } : true,
-      });
+      };
+      
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
       setStream(newStream);
+      
       if (videoRef.current) {
         videoRef.current.srcObject = newStream;
       }
+      
       setupAudioVisualizer(newStream);
     } catch (err) {
       console.error("Failed to start media with selected devices:", err);
+      setPermissionsError(`Could not access media devices: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
   const stopMedia = () => {
     if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach(track => {
+        track.stop();
+      });
+      setStream(null);
     }
-    setStream(null);
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
@@ -101,10 +114,10 @@ export function PreCallCheck({ onJoin, onCancel }: PreCallCheckProps) {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
-    if (audioContextRef.current) {
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close().catch(console.error);
-      audioContextRef.current = null;
     }
+    audioContextRef.current = null;
   };
 
   const setupAudioVisualizer = (currentStream: MediaStream) => {
