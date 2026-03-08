@@ -87,9 +87,7 @@ function VideoDashboard() {
       if (callLogsRes.ok) {
         const callLogsData = await callLogsRes.json() as any;
         // Filter for today's calls - show scheduled and completed (same logic as stats endpoint)
-        const todaysCalls = (callLogsData.data as any[])?.filter((call: any) => {
-          return ['scheduled', 'completed', 'in_progress', 'denied'].includes(call.status);
-        }) || [];
+        const todaysCalls = (callLogsData.data as any[]);
 
         setScheduledToday(todaysCalls);
       }
