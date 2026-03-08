@@ -63,22 +63,8 @@ function FamilyVideoHomeDevStub() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: '#0f172a',
-      fontFamily: 'Inter, sans-serif',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-    }}>
-      <div style={{
-        background: 'rgba(255,255,255,0.05)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: '16px',
-        padding: '40px',
-        width: '360px',
-        textAlign: 'center',
-      }}>
+    <div className="video-guild-page items-center justify-center">
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-6 sm:p-10 w-full max-w-sm text-center">
         <h2 style={{ color: '#e2e8f0', marginBottom: '24px', fontSize: '20px' }}>
           Join a Video Call
         </h2>
@@ -234,7 +220,7 @@ function VideoHome() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900">{familyMessages.index.title}</h1>
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{familyMessages.index.title}</h1>
 
       {/* TEST MODE: instant call buttons */}
       {IS_TEST_MODE && contacts && contacts.length > 0 && (

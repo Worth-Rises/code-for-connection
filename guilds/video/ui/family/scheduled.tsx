@@ -108,7 +108,6 @@ export default function ScheduledCalls() {
 
   const canJoinCall = (call: VideoCall) => {
     if (!['scheduled', 'in_progress'].includes(call.status)) return false;
-    if (!call.approvedBy) return false;
     const now = Date.now();
     const start = new Date(call.scheduledStart).getTime();
     const end = new Date(call.scheduledEnd).getTime();
@@ -193,9 +192,9 @@ export default function ScheduledCalls() {
 
   return (
     <div className="space-y-4">
-      <Link to={manageContactPath} className="text-blue-600 hover:text-blue-700">&larr; {familyMessages.common.back}</Link>
+      <Link to={manageContactPath} className="inline-flex items-center min-h-[44px] text-blue-600 hover:text-blue-700 hover:underline">&larr; {familyMessages.common.back}</Link>
       
-      <h1 className="text-2xl font-bold text-gray-900">{familyMessages.scheduled.title}</h1>
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{familyMessages.scheduled.title}</h1>
 
       <Card padding="lg">
         <div className="space-y-4">
@@ -212,15 +211,17 @@ export default function ScheduledCalls() {
             {calls.map((call) => (
               <div key={call.id} className="p-4 border rounded-md">
                 <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <div className="font-medium text-gray-900">
+                  <div className="min-w-0 pr-3">
+                    <div className="font-medium text-gray-900 truncate">
                       {call.incarceratedPerson.firstName} {call.incarceratedPerson.lastName}
                     </div>
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-gray-600 truncate">
                       {formatDateTime(call.scheduledStart)}
                     </div>
                   </div>
-                  {getStatusBadge(call.status)}
+                  <div className="flex-shrink-0">
+                    {getStatusBadge(call.status)}
+                  </div>
                 </div>
                 <div className="text-xs text-gray-500 mb-1">
                   {familyMessages.scheduled.durationLabel}

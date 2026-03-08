@@ -5,12 +5,12 @@ import { Card } from '@openconnect/ui';
 function MessagingHome() {
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Messages</h1>
       <Card padding="lg">
-        <div className="text-center py-8">
-          <span className="text-6xl mb-4 block">💬</span>
-          <h2 className="text-xl font-semibold mb-2">Messaging</h2>
-          <p className="text-gray-600 mb-6">
+        <div className="text-center py-4 sm:py-8">
+          <span className="text-5xl sm:text-6xl mb-4 block">💬</span>
+          <h2 className="text-lg sm:text-xl font-semibold mb-2">Messaging</h2>
+          <p className="text-gray-600 mb-4 sm:mb-6">
             This is where the Messaging Guild will build the messaging interface.
           </p>
           <p className="text-sm text-gray-500">Features to implement:</p>

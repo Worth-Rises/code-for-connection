@@ -91,6 +91,23 @@ videoRouter.get('/active-calls', requireAuth, requireRole('facility_admin', 'age
 videoRouter.get('/call-logs', requireAuth, async (req: Request, res: Response) => {
   try {
     const { facilityId, startDate, endDate, userId, page = '1', pageSize = '20' } = req.query;
+    const now = new Date();
+
+    // Auto-complete any in_progress or scheduled calls that have passed their scheduled end time
+    if (facilityId) {
+      await prisma.videoCall.updateMany({
+        where: {
+          facilityId: String(facilityId),
+          status: { in: ['in_progress', 'scheduled'] },
+          scheduledEnd: { lt: now },
+        },
+        data: {
+          status: 'completed',
+          actualEnd: now,
+          endedBy: 'time_limit',
+        },
+      });
+    }
     
     const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize));
     const take = parseInt(String(pageSize));
@@ -241,7 +258,24 @@ videoRouter.post('/terminate-call/:callId', requireAuth, requireRole('facility_a
 videoRouter.get('/my-scheduled', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const role = req.user!.role;
+    const now = new Date();
+
+    // Auto-complete any in_progress or scheduled calls that have passed their scheduled end time
+    await prisma.videoCall.updateMany({
+      where: {
+        OR: [
+          { incarceratedPersonId: userId },
+          { familyMemberId: userId },
+        ],
+        status: { in: ['in_progress', 'scheduled'] },
+        scheduledEnd: { lt: now },
+      },
+      data: {
+        status: 'completed',
+        actualEnd: now,
+        endedBy: 'time_limit',
+      },
+    });
 
     const where: Record<string, unknown> = {
       OR: [
@@ -250,11 +284,6 @@ videoRouter.get('/my-scheduled', requireAuth, async (req: Request, res: Response
       ],
       status: { in: ['scheduled', 'in_progress'] },
     };
-
-    // Incarcerated users should only see calls once staff has approved them.
-    if (role === 'incarcerated') {
-      where.approvedBy = { not: null };
-    }
 
     const calls = await prisma.videoCall.findMany({
       where,
@@ -302,15 +331,6 @@ videoRouter.post('/join/:callId', requireAuth, async (req: Request, res: Respons
       return;
     }
 
-    // Admin approval check — calls are not joinable until approved by staff.
-    if (!call.approvedBy) {
-      res.status(400).json(createErrorResponse({
-        code: 'CALL_NOT_APPROVED',
-        message: 'This call has not been approved by staff yet',
-      }));
-      return;
-    }
-
     // Timing window check
     const windowStart = new Date(call.scheduledStart.getTime() - TOLERANCE_MS);
     const windowEnd = new Date(call.scheduledEnd.getTime() + TOLERANCE_MS);
@@ -325,19 +345,36 @@ videoRouter.post('/join/:callId', requireAuth, async (req: Request, res: Respons
       return;
     }
 
-    // First join: set in_progress + actualStart. Reconnect: skip actualStart.
-    const isFirstJoin = call.status === 'scheduled';
-    const updated = await prisma.videoCall.update({
-      where: { id: callId },
-      data: {
-        status: 'in_progress',
-        ...(isFirstJoin ? { actualStart: now } : {}),
-      },
-    });
+    // Waiting-room semantics:
+    // - Before scheduledStart (within tolerance): allow join, stay scheduled, phase=waiting
+    // - At/after scheduledStart: transition scheduled -> in_progress and set actualStart
+    // - Reconnect when already in_progress: phase=active
+    let effectiveCall = call;
+    let phase: 'waiting' | 'active' = 'active';
+
+    if (call.status === 'scheduled') {
+      if (now < call.scheduledStart) {
+        phase = 'waiting';
+      } else {
+        effectiveCall = await prisma.videoCall.update({
+          where: { id: callId },
+          data: {
+            status: 'in_progress',
+            actualStart: call.actualStart ?? now,
+          },
+          include: { incarceratedPerson: true, familyMember: true },
+        });
+        phase = 'active';
+      }
+    } else {
+      phase = 'active';
+    }
 
     res.json(createSuccessResponse({
-      roomId: updated.id,
-      scheduledEnd: updated.scheduledEnd,
+      roomId: effectiveCall.id,
+      scheduledStart: effectiveCall.scheduledStart,
+      scheduledEnd: effectiveCall.scheduledEnd,
+      phase,
     }));
   } catch (error) {
     console.error('Error joining video call:', error);
@@ -663,7 +700,7 @@ videoRouter.post('/request', requireAuth, async (req: Request, res: Response) =>
     // Auto-approve if contact is approved and admin approval is not required
     const isAutoApproved = contact.status === 'approved' && !ADMIN_APPROVAL_REQUIRED;
 
-    // Create video call — 'scheduled' if auto-approved, 'requested' if needs admin review
+    // Auto-approved calls use scheduled + approvedBy=null as the marker.
     const call = await prisma.videoCall.create({
       data: {
         incarceratedPersonId,
@@ -695,6 +732,21 @@ videoRouter.get('/scheduled-calls', requireAuth, async (req: Request, res: Respo
   try {
     const { contactId } = req.query;
     const familyMemberId = req.user!.id;
+    const now = new Date();
+
+    // Auto-complete any in_progress or scheduled calls that have passed their scheduled end time
+    await prisma.videoCall.updateMany({
+      where: {
+        familyMemberId,
+        status: { in: ['in_progress', 'scheduled'] },
+        scheduledEnd: { lt: now },
+      },
+      data: {
+        status: 'completed',
+        actualEnd: now,
+        endedBy: 'time_limit',
+      },
+    });
 
     const where: any = {
       familyMemberId,

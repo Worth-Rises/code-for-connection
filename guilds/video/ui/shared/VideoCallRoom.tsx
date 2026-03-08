@@ -131,14 +131,14 @@ export function VideoCallRoom({
     >
       {/* Status bar */}
       <div style={{
-        padding: '12px 20px',
+        padding: 'clamp(8px, 2vw, 12px) clamp(12px, 3vw, 20px)',
         background: 'rgba(255,255,255,0.04)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         borderBottom: '1px solid rgba(255,255,255,0.08)',
       }}>
-        <span style={{ color: '#94a3b8', fontSize: '14px' }}>
+        <span style={{ color: '#94a3b8', fontSize: 'clamp(12px, 3vw, 14px)' }}>
           {STATE_LABELS[connectionState]}
         </span>
         <span
@@ -146,7 +146,7 @@ export function VideoCallRoom({
           style={{
             color: isWarning ? '#f87171' : '#6366f1',
             fontWeight: 700,
-            fontSize: '16px',
+            fontSize: 'clamp(14px, 3.5vw, 16px)',
             transition: 'color 0.3s',
           }}
         >
@@ -173,11 +173,11 @@ export function VideoCallRoom({
           muted
           style={{
             position: 'absolute',
-            bottom: '16px',
-            right: '16px',
-            width: '160px',
-            height: '120px',
-            borderRadius: '10px',
+            bottom: 'clamp(12px, 3vw, 16px)',
+            right: 'clamp(12px, 3vw, 16px)',
+            width: 'clamp(100px, 25vw, 160px)',
+            height: 'clamp(75px, 18.75vw, 120px)',
+            borderRadius: 'clamp(6px, 1.5vw, 10px)',
             objectFit: 'cover',
             border: '2px solid rgba(99,102,241,0.6)',
             background: '#0f172a',
@@ -193,8 +193,9 @@ export function VideoCallRoom({
             alignItems: 'center',
             justifyContent: 'center',
             background: 'rgba(15,23,42,0.7)',
+            padding: '16px',
           }}>
-            <p style={{ color: '#94a3b8', fontSize: '18px', textAlign: 'center' }}>
+            <p style={{ color: '#94a3b8', fontSize: 'clamp(14px, 4vw, 18px)', textAlign: 'center' }}>
               {STATE_LABELS[connectionState]}
             </p>
           </div>
@@ -209,10 +210,10 @@ export function VideoCallRoom({
             transform: 'translateX(-50%)',
             background: 'rgba(239, 68, 68, 0.9)',
             color: 'white',
-            padding: '8px 16px',
+            padding: 'clamp(6px, 1.5vw, 8px) clamp(12px, 3vw, 16px)',
             borderRadius: '8px',
             fontWeight: 500,
-            fontSize: '14px',
+            fontSize: 'clamp(12px, 3.5vw, 14px)',
             boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
             zIndex: 10,
           }}>
@@ -223,10 +224,10 @@ export function VideoCallRoom({
 
       {/* Controls */}
       <div style={{
-        padding: '20px',
+        padding: 'clamp(12px, 3vw, 20px)',
         display: 'flex',
         justifyContent: 'center',
-        gap: '20px',
+        gap: 'clamp(12px, 3vw, 20px)',
         background: 'rgba(255,255,255,0.03)',
         borderTop: '1px solid rgba(255,255,255,0.08)',
       }}>
@@ -253,7 +254,7 @@ export function VideoCallRoom({
           onClick={toggleBlur}
           title={isBlurOn ? 'Disable background blur' : 'Enable background blur'}
           disabled={blurLoading}
-          style={{ ...controlBtnStyle(isBlurOn), fontSize: '11px', fontWeight: 700, color: '#e2e8f0' }}
+          style={{ ...controlBtnStyle(isBlurOn), fontSize: 'clamp(10px, 2.5vw, 11px)', fontWeight: 700, color: '#e2e8f0' }}
         >
           {blurLoading ? '...' : 'BG'}
         </button>
@@ -276,12 +277,12 @@ export function VideoCallRoom({
 
 function controlBtnStyle(active: boolean): React.CSSProperties {
   return {
-    width: '56px',
-    height: '56px',
+    width: 'clamp(44px, 12vw, 56px)',
+    height: 'clamp(44px, 12vw, 56px)',
     borderRadius: '50%',
     border: 'none',
     cursor: 'pointer',
-    fontSize: '22px',
+    fontSize: 'clamp(18px, 5vw, 22px)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

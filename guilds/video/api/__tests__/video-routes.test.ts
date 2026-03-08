@@ -116,11 +116,11 @@ describe('GET /api/video/my-scheduled', () => {
     );
   });
 
-  it('requires admin approval for incarcerated my-scheduled calls', async () => {
+  it('does not require approvedBy in my-scheduled query', async () => {
     (prisma.videoCall.findMany as any).mockResolvedValue([]);
     await request(app).get('/api/video/my-scheduled');
     const whereClause = (prisma.videoCall.findMany as any).mock.calls[0][0].where;
-    expect(whereClause.approvedBy).toEqual({ not: null });
+    expect(whereClause.approvedBy).toBeUndefined();
   });
 
   it('orders results by scheduledStart descending', async () => {
@@ -187,14 +187,16 @@ describe('POST /api/video/join/:callId', () => {
     expect(res.body.error.code).toBe('CALL_NOT_READY');
   });
 
-  it('returns 400 when call has not been admin approved', async () => {
+  it('allows join when call is scheduled even if approvedBy is null (auto-approved)', async () => {
     (prisma.videoCall.findUnique as any).mockResolvedValue(
       mockCall({ status: 'scheduled', approvedBy: null }),
     );
+    (prisma.videoCall.update as any).mockResolvedValue(
+      mockCall({ status: 'in_progress', approvedBy: null, actualStart: new Date() }),
+    );
     const res = await request(app).post('/api/video/join/call-1');
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('CALL_NOT_APPROVED');
-    expect(prisma.videoCall.update).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(prisma.videoCall.update).toHaveBeenCalled();
   });
 
   it('returns 400 when now < scheduledStart (too early)', async () => {
@@ -217,7 +219,28 @@ describe('POST /api/video/join/:callId', () => {
     expect(res.body.error.code).toBe('TOO_LATE');
   });
 
-  it('sets status to in_progress and writes actualStart on first join', async () => {
+  it('returns waiting phase and does NOT set in_progress before scheduledStart', async () => {
+    const futureStart = new Date(Date.now() + 5 * 60 * 1000); // within 15-min tolerance
+    const call = mockCall({
+      status: 'scheduled',
+      scheduledStart: futureStart,
+      scheduledEnd: new Date(futureStart.getTime() + THIRTY_MIN),
+    });
+    (prisma.videoCall.findUnique as any).mockResolvedValue(call);
+
+    const res = await request(app).post('/api/video/join/call-1');
+
+    expect(res.status).toBe(200);
+    expect(prisma.videoCall.update).not.toHaveBeenCalled();
+    expect(res.body.data).toMatchObject({
+      roomId: 'call-1',
+      phase: 'waiting',
+      scheduledStart: expect.any(String),
+      scheduledEnd: expect.any(String),
+    });
+  });
+
+  it('sets status to in_progress and writes actualStart when scheduledStart has arrived', async () => {
     const call = mockCall();
     (prisma.videoCall.findUnique as any).mockResolvedValue(call);
     (prisma.videoCall.update as any).mockResolvedValue({ ...call, status: 'in_progress', actualStart: new Date() });
@@ -228,17 +251,16 @@ describe('POST /api/video/join/:callId', () => {
     expect(updateArgs.data.actualStart).toBeDefined();
   });
 
-  it('does NOT overwrite actualStart on reconnect (call already in_progress)', async () => {
+  it('does not update call on reconnect when already in_progress', async () => {
     const call = mockCall({ status: 'in_progress', actualStart: new Date() });
     (prisma.videoCall.findUnique as any).mockResolvedValue(call);
-    (prisma.videoCall.update as any).mockResolvedValue(call);
-    await request(app).post('/api/video/join/call-1');
-    const updateArgs = (prisma.videoCall.update as any).mock.calls[0][0];
-    // actualStart should NOT be in the update payload when already set
-    expect(updateArgs.data.actualStart).toBeUndefined();
+    const res = await request(app).post('/api/video/join/call-1');
+    expect(res.status).toBe(200);
+    expect(prisma.videoCall.update).not.toHaveBeenCalled();
+    expect(res.body.data.phase).toBe('active');
   });
 
-  it('returns roomId and scheduledEnd on success', async () => {
+  it('returns roomId, schedule metadata, and phase on success', async () => {
     const call = mockCall();
     (prisma.videoCall.findUnique as any).mockResolvedValue(call);
     (prisma.videoCall.update as any).mockResolvedValue({ ...call, status: 'in_progress', actualStart: new Date() });
@@ -246,7 +268,9 @@ describe('POST /api/video/join/:callId', () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toMatchObject({
       roomId: 'call-1',
+      scheduledStart: expect.any(String),
       scheduledEnd: expect.any(String),
+      phase: 'active',
     });
   });
 });
