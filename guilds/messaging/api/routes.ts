@@ -1262,5 +1262,46 @@ messagingRouter.get(
   },
 )
 
+// Get the notepad for a conversation
+messagingRouter.get(
+  "/conversations/:conversationId/note",
+  requireAuth,
+  requireRole("incarcerated", "family"),
+  async (req: Request, res: Response) => {
+    try {
+      const { conversationId } = req.params
+      const note = await prisma.conversationNote.findUnique({
+        where: { conversationId },
+      })
+      res.json(createSuccessResponse({ content: note?.content ?? "" }))
+    } catch (error) {
+      console.error("Error fetching note:", error)
+      res.status(500).json(createErrorResponse({ code: "INTERNAL_ERROR", message: "Failed to fetch note" }))
+    }
+  },
+)
+
+// Save (upsert) the notepad for a conversation
+messagingRouter.put(
+  "/conversations/:conversationId/note",
+  requireAuth,
+  requireRole("incarcerated", "family"),
+  async (req: Request, res: Response) => {
+    try {
+      const { conversationId } = req.params
+      const { content } = req.body
+      const note = await prisma.conversationNote.upsert({
+        where: { conversationId },
+        create: { conversationId, content: content ?? "" },
+        update: { content: content ?? "" },
+      })
+      res.json(createSuccessResponse({ content: note.content }))
+    } catch (error) {
+      console.error("Error saving note:", error)
+      res.status(500).json(createErrorResponse({ code: "INTERNAL_ERROR", message: "Failed to save note" }))
+    }
+  },
+)
+
 export default messagingRouter
 //

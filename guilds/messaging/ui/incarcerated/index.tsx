@@ -342,8 +342,11 @@ function ConversationThread() {
   const [oldestPage, setOldestPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
-  const [activeTab, setActiveTab] = useState<"chat" | "gallery">("chat")
+  const [activeTab, setActiveTab] = useState<"chat" | "gallery" | "notepad">("chat")
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [noteContent, setNoteContent] = useState("")
+  const [noteSaved, setNoteSaved] = useState(true)
+  const noteSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const navigate = useNavigate()
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -366,6 +369,26 @@ function ConversationThread() {
     if (!conversationId) return
     apiFetch(`/messaging/conversations/${conversationId}/read`, { method: 'PATCH' })
   }, [conversationId])
+
+  useEffect(() => {
+    if (activeTab === "notepad" && conversationId) {
+      apiFetch(`/messaging/conversations/${conversationId}/note`).then((data) => {
+        if (data.success) { setNoteContent(data.data.content); setNoteSaved(true) }
+      })
+    }
+  }, [activeTab, conversationId])
+
+  const handleNoteChange = (value: string) => {
+    setNoteContent(value)
+    setNoteSaved(false)
+    if (noteSaveTimerRef.current) clearTimeout(noteSaveTimerRef.current)
+    noteSaveTimerRef.current = setTimeout(() => {
+      apiFetch(`/messaging/conversations/${conversationId}/note`, {
+        method: "PUT",
+        body: JSON.stringify({ content: value }),
+      }).then((data) => { if (data.success) setNoteSaved(true) })
+    }, 1500)
+  }
 
   useEffect(() => {
     if (!conversationId) return
@@ -555,6 +578,17 @@ function ConversationThread() {
               }`}
             >
               Gallery
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("notepad")}
+              className={`relative -mb-px pb-3 pt-2 border-b-2 transition-colors ${
+                activeTab === "notepad"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              Notepad
             </button>
           </nav>
         </div>
@@ -765,6 +799,31 @@ function ConversationThread() {
             </div>
           </div>
           </div>
+        </Card>
+      )}
+
+      {activeTab === "notepad" && (
+        <Card padding="md">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-medium text-gray-700">Shared notepad</p>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-400">{noteSaved ? "Saved" : "Saving…"}</span>
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(noteContent)}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Copy all
+              </button>
+            </div>
+          </div>
+          <textarea
+            className="w-full border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+            rows={16}
+            placeholder="Paste or type notes here… both sides can see and edit this."
+            value={noteContent}
+            onChange={(e) => handleNoteChange(e.target.value)}
+          />
         </Card>
       )}
 
