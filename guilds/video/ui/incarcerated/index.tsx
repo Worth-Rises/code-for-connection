@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import { ScheduledCallsList } from './ScheduledCallsList.js';
 import { PastCallsList } from './PastCallsList';
 import { VideoCallRoom } from '../shared/VideoCallRoom.js';
+import { PreCallCheck } from '../shared/PreCallCheck.js';
 
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'http://localhost:3001';
 
@@ -28,9 +29,10 @@ function getUserIdFromToken(): string {
 
 function IncarceratedVideoHome() {
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [isPrechecking, setIsPrechecking] = useState(false);
   const userId = getUserIdFromToken();
 
-  if (activeCall) {
+  if (activeCall && !isPrechecking) {
     return (
       <VideoCallRoom
         callId={activeCall.callId}
@@ -41,6 +43,18 @@ function IncarceratedVideoHome() {
         initialPhase={activeCall.initialPhase}
         signalingUrl={SIGNALING_URL}
         onExit={() => setActiveCall(null)}
+      />
+    );
+  }
+
+  if (isPrechecking) {
+    return (
+      <PreCallCheck 
+        onCancel={() => {
+          setIsPrechecking(false);
+          setActiveCall(null);
+        }}
+        onJoin={() => setIsPrechecking(false)}
       />
     );
   }
@@ -72,6 +86,7 @@ function IncarceratedVideoHome() {
                       scheduledEnd: body.data?.scheduledEnd ?? scheduledEnd,
                       initialPhase: body.data?.phase,
                     });
+                    setIsPrechecking(true);
                   } else {
                     alert(`Cannot join: ${body.error?.message ?? 'Unknown error'}`);
                   }

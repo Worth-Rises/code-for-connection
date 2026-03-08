@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Card } from '@openconnect/ui';
 import { VideoCallRoom } from '../shared/VideoCallRoom.js';
+import { PreCallCheck } from '../shared/PreCallCheck.js';
 import { Copy, Check } from 'lucide-react';
 import { familyMessages } from '../messages';
 
@@ -50,6 +51,7 @@ export default function ScheduledCalls() {
   const [cancelingCallId, setCancelingCallId] = useState<string | null>(null);
   const [joiningCallId, setJoiningCallId] = useState<string | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [isPrechecking, setIsPrechecking] = useState(false);
   const userId = getUserIdFromToken();
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -152,6 +154,7 @@ export default function ScheduledCalls() {
         scheduledEnd: json?.data?.scheduledEnd || call.scheduledEnd,
         initialPhase: json?.data?.phase,
       });
+      setIsPrechecking(true);
     } catch (err: any) {
       setError(err.message || familyMessages.scheduled.joinErrorFallback);
     } finally {
@@ -183,7 +186,7 @@ export default function ScheduledCalls() {
     }
   };
 
-  if (activeCall) {
+  if (activeCall && !isPrechecking) {
     return (
       <VideoCallRoom
         callId={activeCall.callId}
@@ -194,6 +197,18 @@ export default function ScheduledCalls() {
         initialPhase={activeCall.initialPhase}
         signalingUrl={SIGNALING_URL}
         onExit={() => setActiveCall(null)}
+      />
+    );
+  }
+
+  if (isPrechecking) {
+    return (
+      <PreCallCheck 
+        onCancel={() => {
+          setIsPrechecking(false);
+          setActiveCall(null);
+        }}
+        onJoin={() => setIsPrechecking(false)}
       />
     );
   }

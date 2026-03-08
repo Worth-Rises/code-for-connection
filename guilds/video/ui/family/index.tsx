@@ -64,7 +64,10 @@ function FamilyVideoHomeDevStub() {
   if (isPrechecking) {
     return (
       <PreCallCheck 
-        onCancel={() => setIsPrechecking(false)}
+        onCancel={() => {
+          setIsPrechecking(false);
+          setActiveCall(null);
+        }}
         onJoin={(config) => {
           setDeviceConfig(config);
           setIsPrechecking(false);
@@ -235,7 +238,10 @@ function VideoHome() {
   if (isPrechecking) {
     return (
       <PreCallCheck 
-        onCancel={() => setIsPrechecking(false)}
+        onCancel={() => {
+          setIsPrechecking(false);
+          setActiveTestCall(null);
+        }}
         onJoin={() => setIsPrechecking(false)}
       />
     );
