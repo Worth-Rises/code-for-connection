@@ -19,6 +19,7 @@ function getPublicBaseUrl(): string | null {
  */
 twimlRouter.get('/name-audio/:callId', async (req: Request, res: Response) => {
   const { callId } = req.params;
+  console.log(`[twiml] === NAME-AUDIO REQUEST === callId=${callId}`);
   try {
     const call = await prisma.voiceCall.findUnique({
       where: { id: callId },
@@ -37,11 +38,14 @@ twimlRouter.get('/name-audio/:callId', async (req: Request, res: Response) => {
       | { nameAudioBytes?: Buffer | null; nameAudioContentType?: string | null; nameAudioApproved?: boolean }
       | undefined;
 
+    console.log(`[twiml] name-audio lookup: callId=${callId} callFound=${!!call} approved=${person?.nameAudioApproved ?? 'N/A'} contentType=${person?.nameAudioContentType ?? 'N/A'} audioSize=${person?.nameAudioBytes?.length ?? 0} bytes`);
+
     if (
       !person?.nameAudioApproved ||
       person.nameAudioBytes == null ||
       person.nameAudioBytes.length === 0
     ) {
+      console.warn(`[twiml] name-audio NOT AVAILABLE for callId=${callId}: approved=${person?.nameAudioApproved} hasBytes=${person?.nameAudioBytes != null} byteLen=${person?.nameAudioBytes?.length ?? 0}`);
       res.status(404).send('Name audio not available');
       return;
     }
@@ -50,6 +54,7 @@ twimlRouter.get('/name-audio/:callId', async (req: Request, res: Response) => {
     const buffer = Buffer.isBuffer(person.nameAudioBytes)
       ? person.nameAudioBytes
       : Buffer.from(person.nameAudioBytes as ArrayBuffer);
+    console.log(`[twiml] name-audio SENDING: callId=${callId} contentType=${contentType} bufferSize=${buffer.length} bytes`);
     res.set('Cache-Control', 'no-store');
     res.type(contentType).send(buffer);
   } catch (error) {
@@ -71,6 +76,7 @@ twimlRouter.get('/name-audio/:callId', async (req: Request, res: Response) => {
  */
 twimlRouter.post('/greeting/:callId', async (req: Request, res: Response) => {
   const { callId } = req.params;
+  console.log(`[twiml] === GREETING REQUEST === callId=${callId}`);
 
   try {
     const call = await prisma.voiceCall.findUnique({
@@ -81,6 +87,7 @@ twimlRouter.post('/greeting/:callId', async (req: Request, res: Response) => {
     });
 
     if (!call) {
+      console.warn(`[twiml] greeting: call ${callId} not found in DB`);
       const twiml = new VoiceResponse();
       twiml.say('Sorry, this call is no longer available.');
       twiml.hangup();
@@ -108,6 +115,8 @@ twimlRouter.post('/greeting/:callId', async (req: Request, res: Response) => {
       person.nameAudioBytes.length > 0;
     const publicBase = getPublicBaseUrl();
 
+    console.log(`[twiml] greeting decision: callId=${callId} includeName=${includeName} (setting=${nameSetting?.value ?? 'NOT SET'}) nameAudioApproved=${person.nameAudioApproved} audioSize=${person.nameAudioBytes?.length ?? 0} hasApprovedNameAudio=${hasApprovedNameAudio} publicBase=${publicBase ?? 'NULL'}`);
+
     const twiml = new VoiceResponse();
     const gather = twiml.gather({
       numDigits: 1,
@@ -117,7 +126,9 @@ twimlRouter.post('/greeting/:callId', async (req: Request, res: Response) => {
 
     if (hasApprovedNameAudio && publicBase) {
       // Play recorded name audio, then TTS for facility and instructions
-      gather.play({}, `${publicBase}/api/voice/twiml/name-audio/${callId}`);
+      const audioUrl = `${publicBase}/api/voice/twiml/name-audio/${callId}`;
+      console.log(`[twiml] greeting: PLAYING recorded name audio from ${audioUrl}`);
+      gather.play({}, audioUrl);
       gather.say(
         { voice: 'Polly.Joanna' },
         ` at ${facilityName}. Press 1 to accept this call. Press 2 to decline. Press 3 to block future calls from this person.`,
@@ -127,6 +138,7 @@ twimlRouter.post('/greeting/:callId', async (req: Request, res: Response) => {
       const greeting = includeName
         ? `You are receiving a call from ${person.firstName} ${person.lastName} at ${facilityName}.`
         : `You are receiving a call from someone who is incarcerated at ${facilityName}.`;
+      console.log(`[twiml] greeting: USING TTS fallback (includeName=${includeName}, hasApprovedNameAudio=${hasApprovedNameAudio}, publicBase=${publicBase ?? 'NULL'})`);
       gather.say(
         { voice: 'Polly.Joanna' },
         `${greeting} Press 1 to accept this call. Press 2 to decline. Press 3 to block future calls from this person.`,
@@ -136,7 +148,9 @@ twimlRouter.post('/greeting/:callId', async (req: Request, res: Response) => {
     // If no input, replay the greeting
     twiml.redirect(`/api/voice/twiml/greeting/${callId}`);
 
-    res.type('text/xml').send(twiml.toString());
+    const twimlXml = twiml.toString();
+    console.log(`[twiml] greeting TwiML response for callId=${callId}:\n${twimlXml}`);
+    res.type('text/xml').send(twimlXml);
   } catch (error) {
     console.error(`[twiml] Error in greeting for call ${callId}:`, error);
     const twiml = new VoiceResponse();
