@@ -208,11 +208,7 @@ describe('POST /api/video/join/:callId', () => {
   });
 
   it('returns 400 when now > scheduledEnd (too late)', async () => {
-<<<<<<< Updated upstream
-    const pastEnd = new Date(Date.now() - 16 * 60 * 1000); // ended 16 min ago (outside 15 min grace)
-=======
     const pastEnd = new Date(Date.now() - 16 * 60 * 1000); // ended 16 mins ago (past 15-min tolerance)
->>>>>>> Stashed changes
     (prisma.videoCall.findUnique as any).mockResolvedValue(
       mockCall({ status: 'scheduled', scheduledStart: new Date(pastEnd.getTime() - THIRTY_MIN), scheduledEnd: pastEnd }),
     );
