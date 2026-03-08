@@ -35,17 +35,25 @@ export const ApprovalRequest: React.FC<ApprovalRequestProps> = ({
   };
 
   return (
-    <div className="border border-gray-300 rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow">
+    <div className="border border-gray-300 rounded-lg bg-white hover:bg-gray-50 transition-colors">
       {/* Header */}
       <div className="flex items-center justify-between p-4">
         {/* Left: Name, Expand Button, and Subtext */}
         <div className="flex items-center gap-4 flex-1">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center justify-center text-gray-600 hover:text-gray-900 transition-colors"
+            className="flex items-center justify-center w-6 h-6 text-gray-600 hover:text-gray-900 transition-colors flex-shrink-0"
             aria-label="Toggle details"
           >
-            {isExpanded ? '▲' : '▼'}
+            {isExpanded ? (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+              </svg>
+            )}
           </button>
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-gray-900">{name}</h3>
