@@ -30,6 +30,19 @@ const upload = multer({
   },
 })
 
+const DEFAULT_FLAGGED_PHRASES = [
+  "escape",
+  "weapon",
+  "contraband",
+  "drugs",
+  "smuggle",
+  "threat",
+  "kill",
+  "hurt you",
+  "money drop",
+  "coordinates",
+]
+
 async function screenMessage(
   body: string,
   facilityId: string,
@@ -144,6 +157,37 @@ messagingRouter.get(
       const where: Record<string, unknown> = {}
       if (facilityId) {
         where.facilityId = facilityId
+      }
+
+      // Seed default flagged phrases when a facility has no keywords
+      const facilitiesToSeed: string[] = []
+      if (facilityId) {
+        const count = await prisma.flaggedKeyword.count({
+          where: { facilityId },
+        })
+        if (count === 0) facilitiesToSeed.push(facilityId)
+      } else if (req.user!.agencyId) {
+        const facilities = await prisma.facility.findMany({
+          where: { agencyId: req.user!.agencyId },
+          select: { id: true },
+        })
+        for (const f of facilities) {
+          const count = await prisma.flaggedKeyword.count({
+            where: { facilityId: f.id },
+          })
+          if (count === 0) facilitiesToSeed.push(f.id)
+        }
+      }
+
+      for (const fid of facilitiesToSeed) {
+        await prisma.flaggedKeyword.createMany({
+          data: DEFAULT_FLAGGED_PHRASES.map((phrase) => ({
+            facilityId: fid,
+            phrase,
+            createdBy: req.user!.id,
+          })),
+          skipDuplicates: true,
+        })
       }
 
       const keywords = await prisma.flaggedKeyword.findMany({
