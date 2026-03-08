@@ -328,6 +328,17 @@ videoRouter.post('/join/:callId', requireAuth, async (req: Request, res: Respons
       return;
     }
 
+    // Admin approval check — only enforced when facility policy requires it.
+    // When ADMIN_APPROVAL_REQUIRED=false, auto-approved scheduled calls may have
+    // approvedBy=null and should still be joinable.
+    if (ADMIN_APPROVAL_REQUIRED && !call.approvedBy) {
+      res.status(400).json(createErrorResponse({
+        code: 'CALL_NOT_APPROVED',
+        message: 'This call has not been approved by staff yet',
+      }));
+      return;
+    }
+
     // Timing window check
     const windowStart = new Date(call.scheduledStart.getTime() - TOLERANCE_MS);
     const windowEnd = new Date(call.scheduledEnd.getTime() + TOLERANCE_MS);

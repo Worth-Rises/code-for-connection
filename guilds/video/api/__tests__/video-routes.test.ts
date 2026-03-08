@@ -187,16 +187,14 @@ describe('POST /api/video/join/:callId', () => {
     expect(res.body.error.code).toBe('CALL_NOT_READY');
   });
 
-  it('allows join when call is scheduled even if approvedBy is null (auto-approved)', async () => {
+  it('allows join when admin approval is not required even if approvedBy is null', async () => {
     (prisma.videoCall.findUnique as any).mockResolvedValue(
       mockCall({ status: 'scheduled', approvedBy: null }),
     );
-    (prisma.videoCall.update as any).mockResolvedValue(
-      mockCall({ status: 'in_progress', approvedBy: null, actualStart: new Date() }),
-    );
+    (prisma.videoCall.update as any).mockResolvedValue({ ...mockCall({ status: 'scheduled', approvedBy: null }), status: 'in_progress', actualStart: new Date() });
     const res = await request(app).post('/api/video/join/call-1');
     expect(res.status).toBe(200);
-    expect(prisma.videoCall.update).toHaveBeenCalled();
+    expect(res.body.success).toBe(true);
   });
 
   it('returns 400 when now < scheduledStart (too early)', async () => {

@@ -5,6 +5,7 @@ import { io, Socket } from 'socket.io-client';
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ConnectionState =
   | 'IDLE'
+  | 'WAITING_FOR_START'
   | 'WAITING_FOR_PEER'
   | 'CONNECTING'
   | 'CONNECTED'
@@ -12,11 +13,15 @@ export type ConnectionState =
   | 'ENDED'
   | 'ERROR';
 
+export type CallPhase = 'waiting' | 'active';
+
 export interface UseVideoCallOptions {
   callId: string;
   userId: string;
   userRole: 'incarcerated' | 'family';
+  scheduledStart?: string;    // ISO8601
   scheduledEnd: string;       // ISO8601
+  initialPhase?: CallPhase;
   signalingUrl: string;
   onCallEnded?: (reason: string) => void;
   onTimeWarning?: () => void; // fired when ≤60s remain
@@ -40,7 +45,26 @@ export interface UseVideoCallReturn {
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
-  const { callId, userId, userRole, scheduledEnd, signalingUrl, onCallEnded, onTimeWarning } = options;
+  const {
+    callId,
+    userId,
+    userRole,
+    scheduledStart,
+    scheduledEnd,
+    initialPhase,
+    signalingUrl,
+    onCallEnded,
+    onTimeWarning,
+  } = options;
+
+  const initialCallPhase: CallPhase = initialPhase
+    ?? (() => {
+      if (scheduledStart) {
+        const startMs = new Date(scheduledStart).getTime();
+        if (!Number.isNaN(startMs) && Date.now() < startMs) return 'waiting';
+      }
+      return 'active';
+    })();
 
   const [connectionState, setConnectionState] = useState<ConnectionState>('IDLE');
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -60,6 +84,8 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const warningFiredRef = useRef(false);
   const endedRef = useRef(false);
+  const callPhaseRef = useRef<CallPhase>(initialCallPhase);
+  const activatedFromWaitingRef = useRef(false);
   const statsRef = useRef<{
     lastBytesAudio: number;
     lastBytesVideo: number;
@@ -135,18 +161,70 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
 
       socket.on('connect', () => {
         if (cancelled) { socket.disconnect(); return; }
-        socket.emit('join-room', { roomId: callId, userId, userRole, callType: 'video', scheduledEnd });
-        setConnectionState('WAITING_FOR_PEER');
+        socket.emit('join-room', {
+          roomId: callId,
+          userId,
+          userRole,
+          callType: 'video',
+          scheduledStart,
+          scheduledEnd,
+        });
+        setConnectionState(callPhaseRef.current === 'waiting' ? 'WAITING_FOR_START' : 'WAITING_FOR_PEER');
       });
 
-      socket.on('room-joined', (data: { roomId: string; participants: any[] }) => {
-        if (data.participants.length > 0) {
+      socket.on('room-joined', (data: {
+        roomId: string;
+        phase?: CallPhase;
+        participants: Array<{ socketId: string; userId: string; userRole: 'incarcerated' | 'family' }>;
+      }) => {
+        const phase = data.phase ?? 'active';
+        callPhaseRef.current = phase;
+
+        if (phase === 'waiting') {
+          setConnectionState('WAITING_FOR_START');
+          return;
+        }
+
+        if (data.participants.length > 0 || peerRef.current) {
           setConnectionState('CONNECTING');
+        } else {
+          setConnectionState('WAITING_FOR_PEER');
         }
       });
 
-      socket.on('user-joined', async () => {
+      socket.on('waiting-user-joined', () => {
         if (cancelled) return;
+        callPhaseRef.current = 'waiting';
+        setConnectionState('WAITING_FOR_START');
+      });
+
+      socket.on('call-started', (data: {
+        roomId: string;
+        phase?: CallPhase;
+        participants?: Array<{ socketId: string; userId: string; userRole: 'incarcerated' | 'family' }>;
+      }) => {
+        if (cancelled) return;
+        const previousPhase = callPhaseRef.current;
+        callPhaseRef.current = data.phase ?? 'active';
+        activatedFromWaitingRef.current = previousPhase === 'waiting' && callPhaseRef.current === 'active';
+
+        const hasOtherParticipants = !!data.participants?.some((participant) => participant.userId !== userId);
+        setConnectionState((prev) => {
+          if (prev === 'CONNECTED' || prev === 'RECONNECTING') return prev;
+          if (peerRef.current || hasOtherParticipants) return 'CONNECTING';
+          return 'WAITING_FOR_PEER';
+        });
+      });
+
+      socket.on('user-joined', async (data: { userRole?: 'incarcerated' | 'family' }) => {
+        if (cancelled) return;
+        if (callPhaseRef.current !== 'active') return;
+        if (activatedFromWaitingRef.current) {
+          activatedFromWaitingRef.current = false;
+          if (data.userRole === 'family' && userRole === 'incarcerated') {
+            return;
+          }
+        }
         // Guard: only create one peer connection
         if (peerRef.current) return;
         setConnectionState('CONNECTING');
@@ -155,6 +233,7 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
 
       socket.on('offer', async (data: { sdp: RTCSessionDescriptionInit }) => {
         if (cancelled) return;
+        if (callPhaseRef.current !== 'active') return;
         // Guard: only handle one offer
         if (peerRef.current) return;
         setConnectionState('CONNECTING');
@@ -162,17 +241,27 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
       });
 
       socket.on('answer', async (data: { sdp: RTCSessionDescriptionInit }) => {
+        if (callPhaseRef.current !== 'active') return;
         if (!peerRef.current) return;
         await peerRef.current.setRemoteDescription(data.sdp);
         applyRemoteTracks(peerRef.current);
       });
 
       socket.on('ice-candidate', async (data: { candidate: RTCIceCandidateInit }) => {
+        if (callPhaseRef.current !== 'active') return;
         if (!peerRef.current) return;
         try {
           await peerRef.current.addIceCandidate(data.candidate);
         } catch (e) {
           // ICE candidate errors are non-fatal
+        }
+      });
+
+      socket.on('call-not-active', (data: { roomId: string; phase?: CallPhase }) => {
+        if (cancelled) return;
+        if (data.phase === 'waiting') {
+          callPhaseRef.current = 'waiting';
+          setConnectionState('WAITING_FOR_START');
         }
       });
 

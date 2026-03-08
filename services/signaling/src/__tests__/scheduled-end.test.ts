@@ -241,6 +241,20 @@ function connectClient(port: number, userId = 'user-1'): Promise<ClientSocket> {
   });
 }
 
+function waitForNoEvent(socket: ClientSocket, event: string, timeoutMs = 250): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onEvent = () => {
+      clearTimeout(t);
+      reject(new Error(`Did not expect event "${event}"`));
+    };
+    const t = setTimeout(() => {
+      socket.off(event, onEvent);
+      resolve();
+    }, timeoutMs);
+    socket.once(event, onEvent);
+  });
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 describe('Signaling Server — Scheduled End Enforcement', () => {
   let httpServer: ReturnType<typeof createServer>;
@@ -366,5 +380,144 @@ describe('Signaling Server — Scheduled End Enforcement', () => {
     expect(payload.roomId).toBe('no-timer-room');
     // No call-ended event should have been emitted
     await new Promise<void>((resolve) => setTimeout(resolve, 100));
+  });
+
+  it('places participants in waiting phase before scheduledStart and suppresses active user-joined', async () => {
+    vi.useRealTimers();
+    const [c1, c2] = await Promise.all([
+      connectClient(port, 'user-1'),
+      connectClient(port, 'user-2'),
+    ]);
+    clients.push(c1, c2);
+
+    const scheduledStart = new Date(Date.now() + 400).toISOString();
+    const scheduledEnd = new Date(Date.now() + 5000).toISOString();
+
+    const c1Joined = waitFor(c1, 'room-joined');
+    c1.emit('join-room', {
+      roomId: 'waiting-room',
+      userId: 'user-1',
+      userRole: 'incarcerated',
+      callType: 'video',
+      scheduledStart,
+      scheduledEnd,
+    });
+    const c1JoinPayload = await c1Joined as { phase: 'waiting' | 'active' };
+    expect(c1JoinPayload.phase).toBe('waiting');
+
+    const c2Joined = waitFor(c2, 'room-joined');
+    const c1WaitingUserJoined = waitFor(c1, 'waiting-user-joined');
+    const c1NoActiveJoin = waitForNoEvent(c1, 'user-joined', 200);
+
+    c2.emit('join-room', {
+      roomId: 'waiting-room',
+      userId: 'user-2',
+      userRole: 'family',
+      callType: 'video',
+      scheduledStart,
+      scheduledEnd,
+    });
+
+    const c2JoinPayload = await c2Joined as { phase: 'waiting' | 'active' };
+    expect(c2JoinPayload.phase).toBe('waiting');
+
+    const waitingJoinPayload = await c1WaitingUserJoined as { userId: string };
+    expect(waitingJoinPayload.userId).toBe('user-2');
+    await c1NoActiveJoin;
+  });
+
+  it('emits call-started at scheduledStart and then allows active signaling', async () => {
+    vi.useRealTimers();
+    const [c1, c2] = await Promise.all([
+      connectClient(port, 'user-1'),
+      connectClient(port, 'user-2'),
+    ]);
+    clients.push(c1, c2);
+
+    const scheduledStart = new Date(Date.now() + 250).toISOString();
+    const scheduledEnd = new Date(Date.now() + 5000).toISOString();
+
+    const c1Joined = waitFor(c1, 'room-joined');
+    c1.emit('join-room', {
+      roomId: 'start-transition-room',
+      userId: 'user-1',
+      userRole: 'incarcerated',
+      callType: 'video',
+      scheduledStart,
+      scheduledEnd,
+    });
+    await c1Joined;
+
+    const c2Joined = waitFor(c2, 'room-joined');
+    c2.emit('join-room', {
+      roomId: 'start-transition-room',
+      userId: 'user-2',
+      userRole: 'family',
+      callType: 'video',
+      scheduledStart,
+      scheduledEnd,
+    });
+    await c2Joined;
+
+    const c1CallStarted = waitFor(c1, 'call-started', 1000);
+    const c2CallStarted = waitFor(c2, 'call-started', 1000);
+
+    const [s1, s2] = await Promise.all([c1CallStarted, c2CallStarted]) as [
+      { phase: 'waiting' | 'active'; roomId: string },
+      { phase: 'waiting' | 'active'; roomId: string }
+    ];
+    expect(s1.phase).toBe('active');
+    expect(s2.phase).toBe('active');
+    expect(s1.roomId).toBe('start-transition-room');
+
+    const c2Offer = waitFor(c2, 'offer', 1000);
+    c1.emit('offer', { roomId: 'start-transition-room', sdp: { type: 'offer', sdp: 'mock' } });
+    const offerPayload = await c2Offer as { roomId: string; sdp: { type: string } };
+    expect(offerPayload.roomId).toBe('start-transition-room');
+    expect(offerPayload.sdp.type).toBe('offer');
+  });
+
+  it('blocks offer signaling while room is waiting', async () => {
+    vi.useRealTimers();
+    const [c1, c2] = await Promise.all([
+      connectClient(port, 'user-1'),
+      connectClient(port, 'user-2'),
+    ]);
+    clients.push(c1, c2);
+
+    const scheduledStart = new Date(Date.now() + 2000).toISOString();
+    const scheduledEnd = new Date(Date.now() + 6000).toISOString();
+
+    const c1Joined = waitFor(c1, 'room-joined');
+    c1.emit('join-room', {
+      roomId: 'blocked-offer-room',
+      userId: 'user-1',
+      userRole: 'incarcerated',
+      callType: 'video',
+      scheduledStart,
+      scheduledEnd,
+    });
+    await c1Joined;
+
+    const c2Joined = waitFor(c2, 'room-joined');
+    c2.emit('join-room', {
+      roomId: 'blocked-offer-room',
+      userId: 'user-2',
+      userRole: 'family',
+      callType: 'video',
+      scheduledStart,
+      scheduledEnd,
+    });
+    await c2Joined;
+
+    const notActivePromise = waitFor(c1, 'call-not-active', 1000);
+    const noOfferToPeer = waitForNoEvent(c2, 'offer', 300);
+
+    c1.emit('offer', { roomId: 'blocked-offer-room', sdp: { type: 'offer', sdp: 'blocked' } });
+
+    const notActivePayload = await notActivePromise as { roomId: string; phase: 'waiting' | 'active' };
+    expect(notActivePayload.roomId).toBe('blocked-offer-room');
+    expect(notActivePayload.phase).toBe('waiting');
+    await noOfferToPeer;
   });
 });

@@ -11,7 +11,7 @@ interface VideoCall {
 }
 
 interface ScheduledCallsListProps {
-  onJoinCall: (callId: string, scheduledEnd: string) => void;
+  onJoinCall: (callId: string, scheduledStart: string, scheduledEnd: string) => void;
 }
 
 export function ScheduledCallsList({ onJoinCall }: ScheduledCallsListProps) {
@@ -72,7 +72,7 @@ export function ScheduledCallsList({ onJoinCall }: ScheduledCallsListProps) {
                 id={`join-btn-${call.id}`}
                 disabled={!canJoin}
                 variant="primary"
-                onClick={() => onJoinCall(call.id, call.scheduledEnd)}
+                onClick={() => onJoinCall(call.id, call.scheduledStart, call.scheduledEnd)}
                 className="w-full sm:w-auto"
               >
                 {canJoin ? 'Join' : 'Upcoming'}
