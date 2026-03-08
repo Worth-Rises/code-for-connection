@@ -433,8 +433,8 @@ function ConversationThread() {
 
   // Scroll to bottom only when new messages arrive (not when loading older ones)
   useEffect(() => {
-    if (shouldScrollRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (shouldScrollRef.current && messages.length > 0) {
+      bottomRef.current?.scrollIntoView({ behavior: 'instant' as ScrollBehavior });
       shouldScrollRef.current = false;
     }
   }, [messages]);
@@ -534,6 +534,14 @@ function ConversationThread() {
           <div className="grid grid-cols-3 gap-2">
             {galleryItems.map(item => {
               const isPending = item.status === 'pending_review';
+              const isRejected = item.status === 'rejected';
+              if (isRejected) {
+                return (
+                  <div key={item.id} className="aspect-square rounded-lg bg-black flex items-center justify-center">
+                    <span className="text-xs font-medium text-white/60">Media removed</span>
+                  </div>
+                );
+              }
               return (
                 <div key={item.id} className="relative aspect-square overflow-hidden rounded-lg bg-gray-100">
                   <img
@@ -580,38 +588,41 @@ function ConversationThread() {
                     isSender ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'
                   }`}
                 >
-                  {!shouldHideContent &&
-                    msg.attachments &&
-                    msg.attachments.length > 0 && (
-                      <div className="mt-1 space-y-1">
-                        {msg.attachments.map(att => {
-                          const isAttachmentPending = att.status === 'pending_review';
+                  {!isBlocked && msg.attachments && msg.attachments.length > 0 && (
+                    <div className="mt-1 space-y-1">
+                      {msg.attachments.map(att => {
+                        const isPending = att.status === 'pending_review';
+                        const isRejected = att.status === 'rejected';
+                        if (isRejected) {
                           return (
-                            <div key={att.id} className="relative">
-                              <img
-                                src={att.fileUrl}
-                                alt="attachment"
-                                className={`max-w-full rounded-lg ${isAttachmentPending ? 'blur-md' : ''}`}
-                              />
-                              {isAttachmentPending && (
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                  <span className="text-xs font-medium text-white bg-black/50 px-2 py-1 rounded-full">
-                                    Pending review
-                                  </span>
-                                </div>
-                              )}
+                            <div key={att.id} className="w-full h-24 rounded-lg bg-black flex items-center justify-center">
+                              <span className="text-xs font-medium text-white/60">Media removed</span>
                             </div>
                           );
-                        })}
-                      </div>
-                    )}
-                  {!shouldHideContent && msg.body && <p>{msg.body}</p>}
-                  <p
-                    className={`text-xs mt-1 ${
-                      isSender ? 'text-blue-200' : 'text-gray-400'
-                    }`}
-                  >
-                    {msg.status === 'blocked' && 'This message was blocked'}
+                        }
+                        return (
+                          <div key={att.id} className="relative">
+                            <img
+                              src={att.fileUrl}
+                              alt="attachment"
+                              className={`max-w-full rounded-lg ${isPending ? 'blur-md' : ''}`}
+                            />
+                            {isPending && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-xs font-medium text-white bg-black/50 px-2 py-1 rounded-full">Pending review</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {msg.status === 'blocked'
+                    ? <p className="italic opacity-50">Message not approved</p>
+                    : msg.body && <p>{msg.body}</p>
+                  }
+                  <p className={`text-xs mt-1 ${msg.senderType === 'family' ? 'text-blue-200' : 'text-gray-400'}`}>
+                    {msg.status === 'blocked' && '✕ Not approved'}
                     {msg.status === 'pending_review' && '🕐 Pending review'}
                     {msg.status === 'approved' && '✓ Approved'}
                     {msg.status === 'sent' && '✓ Sent'}
