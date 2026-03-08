@@ -34,6 +34,171 @@ interface Message {
   attachments?: { fileUrl: string }[]
 }
 
+interface GalleryPhoto {
+  id: string
+  url: string
+  thumbnail: string
+  date: string
+  sender: string
+  status: string
+}
+
+interface GalleryViewProps {
+  photos: GalleryPhoto[]
+  participantLabel: string
+}
+
+function GalleryView({ photos, participantLabel }: GalleryViewProps) {
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(
+    null,
+  )
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (selectedPhotoIndex === null) return
+      if (e.key === "Escape") {
+        setSelectedPhotoIndex(null)
+      } else if (e.key === "ArrowLeft") {
+        setSelectedPhotoIndex((prev) => {
+          if (prev === null) return prev
+          let next = prev - 1
+          while (next >= 0 && photos[next].status === "pending_review") {
+            next -= 1
+          }
+          return next >= 0 ? next : prev
+        })
+      } else if (e.key === "ArrowRight") {
+        setSelectedPhotoIndex((prev) => {
+          if (prev === null) return prev
+          let next = prev + 1
+          while (
+            next < photos.length &&
+            photos[next].status === "pending_review"
+          ) {
+            next += 1
+          }
+          return next < photos.length ? next : prev
+        })
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [photos.length, selectedPhotoIndex])
+
+  const selectedPhoto =
+    selectedPhotoIndex !== null ? photos[selectedPhotoIndex] : null
+
+  return (
+    <div className="flex flex-col bg-gray-50 rounded-xl">
+      <div className="p-6 max-w-6xl mx-auto w-full">
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold text-gray-900">Shared Photos</h2>
+          <p className="text-gray-500 mt-1">
+            Images shared in your conversation with {participantLabel}
+          </p>
+        </div>
+
+        {photos.length === 0 ? (
+          <p className="text-gray-400 text-sm">
+            No photos have been shared in this conversation yet.
+          </p>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {photos.map((photo, index) => {
+              const isPending = photo.status === "pending_review"
+              return (
+                <button
+                  key={photo.id}
+                  type="button"
+                  onClick={
+                    isPending ? undefined : () => setSelectedPhotoIndex(index)
+                  }
+                  disabled={isPending}
+                  aria-disabled={isPending}
+                  className={`relative aspect-square overflow-hidden rounded-lg bg-gray-100 ${
+                    isPending ? "cursor-default" : "cursor-pointer"
+                  }`}
+                >
+                  <img
+                    src={photo.thumbnail}
+                    alt={`Shared by ${photo.sender}`}
+                    className={`w-full h-full object-cover transition-all duration-300 ${
+                      isPending ? "blur-md scale-110" : ""
+                    }`}
+                    loading="lazy"
+                  />
+                  {isPending && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-xs font-medium text-white bg-black/50 px-2 py-1 rounded-full">
+                        Pending review
+                      </span>
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {selectedPhoto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm animate-in fade-in duration-200">
+          <button
+            onClick={() => setSelectedPhotoIndex(null)}
+            className="absolute top-6 right-6 p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors z-50"
+            aria-label="Close lightbox"
+          >
+            <span className="text-3xl leading-none">&times;</span>
+          </button>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setSelectedPhotoIndex((prev) =>
+                prev !== null && prev > 0 ? prev - 1 : prev,
+              )
+            }}
+            disabled={selectedPhotoIndex === 0}
+            className="absolute left-6 p-3 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors disabled:opacity-30 disabled:cursor-not-allowed z-50"
+            aria-label="Previous photo"
+          >
+            <span className="text-4xl leading-none">&#8249;</span>
+          </button>
+
+          <div className="relative max-w-5xl max-h-[85vh] w-full px-16 flex flex-col items-center justify-center">
+            <img
+              src={selectedPhoto.url}
+              alt={`Full size shared by ${selectedPhoto.sender}`}
+              className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+            />
+            <div className="mt-4 text-center">
+              <p className="text-white font-medium">
+                Shared by {selectedPhoto.sender}
+              </p>
+              <p className="text-gray-400 text-sm">{selectedPhoto.date}</p>
+            </div>
+          </div>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setSelectedPhotoIndex((prev) =>
+                prev !== null && prev < photos.length - 1 ? prev + 1 : prev,
+              )
+            }}
+            disabled={selectedPhotoIndex === photos.length - 1}
+            className="absolute right-6 p-3 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors disabled:opacity-30 disabled:cursor-not-allowed z-50"
+            aria-label="Next photo"
+          >
+            <span className="text-4xl leading-none">&#8250;</span>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function apiFetch(path: string, options?: RequestInit): Promise<any> {
   const token = localStorage.getItem("token")
@@ -165,6 +330,7 @@ function ConversationThread() {
   const [oldestPage, setOldestPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [activeTab, setActiveTab] = useState<"chat" | "gallery">("chat")
   const navigate = useNavigate()
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -275,6 +441,25 @@ function ConversationThread() {
       loadMore()
   }
 
+  const galleryPhotos: GalleryPhoto[] = messages.flatMap((msg) => {
+    if (!msg.attachments || msg.attachments.length === 0) return []
+    const senderLabel =
+      msg.senderType === "incarcerated"
+        ? "You"
+        : conv
+          ? `${conv.familyMember.firstName} ${conv.familyMember.lastName}`
+          : "Family"
+
+    return msg.attachments.map((att, index) => ({
+      id: `${msg.id}-${index}`,
+      url: att.fileUrl,
+      thumbnail: att.fileUrl,
+      date: new Date(msg.createdAt).toLocaleDateString(),
+      sender: senderLabel,
+      status: msg.status,
+    }))
+  })
+
   const send = async () => {
     if ((!text.trim() && selectedFiles.length === 0) || !conversationId) return
     const formData = new FormData()
@@ -298,27 +483,57 @@ function ConversationThread() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-        >
-          ← Back
-        </button>
-        {conv && (
-          <h1 className="text-xl font-bold text-gray-900">
-            {conv.familyMember.firstName} {conv.familyMember.lastName}
-          </h1>
-        )}
+    <div className="space-y-2 scroll-y-auto">
+      <div className="space-y-2 scroll-y-auto">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate(-1)}
+            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+          >
+            &lt; Back
+          </button>
+          {conv && (
+            <h1 className="text-xl font-bold text-gray-900">
+              {conv.familyMember.firstName} {conv.familyMember.lastName}
+            </h1>
+          )}
+        </div>
+
+        <div className="border-b border-gray-200">
+          <nav className="flex gap-6 text-sm font-medium">
+            <button
+              type="button"
+              onClick={() => setActiveTab("chat")}
+              className={`relative -mb-px pb-3 pt-2 border-b-2 transition-colors ${
+                activeTab === "chat"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              Chat
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("gallery")}
+              className={`relative -mb-px pb-3 pt-2 border-b-2 transition-colors ${
+                activeTab === "gallery"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              Gallery
+            </button>
+          </nav>
+        </div>
       </div>
 
-      <Card padding="none">
-        <div
-          ref={containerRef}
-          onScroll={handleScroll}
-          className="h-[500px] overflow-y-auto p-4 space-y-3"
-        >
+      {activeTab === "chat" && (
+        <Card padding="none">
+          <div
+            ref={containerRef}
+            onScroll={handleScroll}
+            className="h-[400px] overflow-y-auto p-4 space-y-3"
+          >
           {loadingMore && (
             <p className="text-center text-xs text-gray-400 py-2">
               Loading older messages...
@@ -329,11 +544,11 @@ function ConversationThread() {
               Scroll up for older messages
             </p>
           )}
-          {messages.length === 0 && !loadingMore && (
-            <p className="text-center text-gray-400 text-sm mt-8">
-              No messages yet. Say hello!
-            </p>
-          )}
+            {messages.length === 0 && !loadingMore && (
+              <p className="text-center text-gray-400 text-sm mt-8">
+                No messages yet. Say hello!
+              </p>
+            )}
           {messages.map((msg, index) => {
             const msgDate = new Date(msg.createdAt)
             const prevMsg = messages[index - 1]
@@ -380,13 +595,15 @@ function ConversationThread() {
                     }`}
                   >
                     {msg.attachments && msg.attachments.length > 0 && (
-                      <div className="mb-1 space-y-1">
+                      <div className="my-4 space-y-3">
                         {msg.attachments.map((att, i) => (
                           <img
                             key={i}
                             src={att.fileUrl}
                             alt="attachment"
-                            className="max-w-full rounded-lg"
+                            className={`max-w-full rounded-lg space-y-2 ${
+                              msg.status === "pending_review" ? "blur-md scale-100" : ""
+                            }`}
                           />
                         ))}
                       </div>
@@ -415,60 +632,80 @@ function ConversationThread() {
               </div>
             )
           })}
-          <div ref={bottomRef} />
-          {/* Photo preview */}
-          {selectedFiles.length > 0 && (
-            <div className="flex flex-wrap gap-2 ml-1">
-              {selectedFiles.map((file, i) => (
-                <div key={i} className="relative w-20 h-20">
-                  <img
-                    src={URL.createObjectURL(file)}
-                    alt={`Preview ${i + 1}`}
-                    className="w-20 h-20 object-cover rounded-lg border border-gray-200"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSelectedFiles((prev) => prev.filter((_, j) => j !== i))
-                    }
-                    className="absolute -top-1.5 -right-1.5 bg-gray-700 text-white rounded-full w-1 h-1 flex items-center justify-center text-xs hover:bg-gray-900 transition-colors"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="border-t p-3 flex flex-col gap-2">
-          {/* Input row */}
-          <div className="flex gap-2 items-end">
-            <PhotoUploadButton
-              onFileSelect={(files) => setSelectedFiles(files)}
-            />
-            <textarea
-              className="flex-1 border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={2}
-              placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  send()
-                }
-              }}
-            />
-            <Button
-              onClick={send}
-              loading={sending}
-              disabled={!text.trim() && selectedFiles.length === 0}
-            >
-              Send
-            </Button>
+          
+            <div ref={bottomRef} />
+            
           </div>
-        </div>
-      </Card>
+          <div className="border-t p-3 flex flex-col gap-2">
+            {/* Attachments Preview Section */}
+            {selectedFiles.length > 0 && (
+              <div className="px-6 pt-3 flex flex-wrap gap-2">
+                {selectedFiles.map((file, i) => (
+                  <div key={i} className="relative mr-4">
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt={file.name}
+                      className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedFiles((prev) =>
+                          prev.filter((_, j) => j !== i),
+                        )
+                      }
+                      className="absolute -top-5 -right-5 bg-red-500 text-white rounded-full flex items-center justify-center"
+                      style={{ width: 16, height: 16, fontSize: 16 }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2 items-end">
+              <PhotoUploadButton
+                onFileSelect={(files) => setSelectedFiles(files)}
+              />
+              <textarea
+                className="flex-1 border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={2}
+                placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault()
+                    send()
+                  }
+                }}
+              />
+              <Button
+                onClick={send}
+                loading={sending}
+                disabled={!text.trim() && selectedFiles.length === 0}
+              >
+                Send
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {activeTab === "gallery" && (
+        <Card padding="none">
+          <div className="h-[400px] overflow-y-auto p-4">
+            <GalleryView
+              photos={galleryPhotos}
+              participantLabel={
+                conv
+                  ? `${conv.familyMember.firstName} ${conv.familyMember.lastName}`
+                  : "this contact"
+              }
+            />
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
