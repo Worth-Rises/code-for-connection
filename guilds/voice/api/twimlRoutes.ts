@@ -38,7 +38,7 @@ twimlRouter.post('/greeting/:callId', async (req: Request, res: Response) => {
 
     const facilityName = call.incarceratedPerson.facility.name;
 
-    // Check if the announcement should include the inmate's name
+    // Check if the announcement should include the person's name
     const nameSetting = await prisma.systemConfiguration.findUnique({
       where: { key: 'announcement_include_name' },
     });
@@ -49,7 +49,7 @@ twimlRouter.post('/greeting/:callId', async (req: Request, res: Response) => {
       const { firstName, lastName } = call.incarceratedPerson;
       greeting = `You are receiving a call from ${firstName} ${lastName} at ${facilityName}.`;
     } else {
-      greeting = `You are receiving a call from an inmate at ${facilityName}.`;
+      greeting = `You are receiving a call from someone who is incarcerated at ${facilityName}.`;
     }
 
     const twiml = new VoiceResponse();
