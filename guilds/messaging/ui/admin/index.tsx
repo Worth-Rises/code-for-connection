@@ -26,11 +26,19 @@ interface FamilyMember extends Person {
   phone?: string;
 }
 
+interface Attachment {
+  id: string;
+  fileUrl: string;
+  fileType: string;
+  status: string;
+}
+
 interface PendingMessage {
   id: string;
   body: string;
   senderType: "incarcerated" | "family";
   createdAt: string;
+  attachments?: Attachment[];
   conversation: {
     id: string;
     incarceratedPerson: Person;
@@ -257,9 +265,23 @@ function PendingMessages({ onReviewed }: { onReviewed?: () => void }) {
                       ? `${fullName(msg.conversation.incarceratedPerson)} → ${fullName(msg.conversation.familyMember)}`
                       : `${fullName(msg.conversation.familyMember)} → ${fullName(msg.conversation.incarceratedPerson)}`}
                   </p>
-                  <p className="text-sm text-gray-900 break-words">
-                    {msg.body}
-                  </p>
+                  {msg.body && (
+                    <p className="text-sm text-gray-900 break-words">
+                      {msg.body}
+                    </p>
+                  )}
+                  {msg.attachments && msg.attachments.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {msg.attachments.map((att) => (
+                        <img
+                          key={att.id}
+                          src={att.fileUrl}
+                          alt="attachment"
+                          className="w-20 h-20 object-cover rounded border border-gray-200"
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <Button onClick={() => handleDecision(msg.id, "approve")}>
