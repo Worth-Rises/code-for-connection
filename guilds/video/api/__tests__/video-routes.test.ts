@@ -208,7 +208,11 @@ describe('POST /api/video/join/:callId', () => {
   });
 
   it('returns 400 when now > scheduledEnd (too late)', async () => {
+<<<<<<< Updated upstream
     const pastEnd = new Date(Date.now() - 16 * 60 * 1000); // ended 16 min ago (outside 15 min grace)
+=======
+    const pastEnd = new Date(Date.now() - 16 * 60 * 1000); // ended 16 mins ago (past 15-min tolerance)
+>>>>>>> Stashed changes
     (prisma.videoCall.findUnique as any).mockResolvedValue(
       mockCall({ status: 'scheduled', scheduledStart: new Date(pastEnd.getTime() - THIRTY_MIN), scheduledEnd: pastEnd }),
     );
@@ -309,5 +313,25 @@ describe('POST /api/video/end/:callId', () => {
     expect(res.status).toBe(200);
     // prisma.update should NOT be called since already completed
     expect(prisma.videoCall.update).not.toHaveBeenCalled();
+  });
+});
+
+// ─── GET /api/video/bandwidth-test ────────────────────────────────────────
+describe('GET /api/video/bandwidth-test', () => {
+  it('returns a 200 OK and generates a 1MB payload of zeros', async () => {
+    const res = await request(app).get('/api/video/bandwidth-test');
+    
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('application/octet-stream');
+    expect(res.headers['content-length']).toBe((1024 * 1024).toString());
+    
+    // Check cache control headers
+    expect(res.headers['cache-control']).toBe('no-store, no-cache, must-revalidate, proxy-revalidate');
+    expect(res.headers['pragma']).toBe('no-cache');
+    expect(res.headers['expires']).toBe('0');
+    
+    // Check that length of buffer is correct
+    // res.body will be a Buffer instance when using supertest with binary data
+    expect(res.body.length).toBe(1024 * 1024);
   });
 });

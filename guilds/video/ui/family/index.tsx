@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import { Button, Card } from '@openconnect/ui';
 import { VideoCallRoom } from '../shared/VideoCallRoom.js';
+import { PreCallCheck } from '../shared/PreCallCheck.js';
 import ManageContact from './manage_contact';
 import ScheduleCall from './schedule';
 import ScheduledCalls from './scheduled';
@@ -28,9 +29,11 @@ function getUserIdFromToken(): string {
 function FamilyVideoHomeDevStub() {
   const [callId, setCallId] = useState('');
   const [activeCall, setActiveCall] = useState<{ callId: string; scheduledEnd: string } | null>(null);
+  const [isPrechecking, setIsPrechecking] = useState(false);
+  const [deviceConfig, setDeviceConfig] = useState<{video: string, audio: string} | null>(null);
   const userId = getUserIdFromToken();
 
-  if (activeCall) {
+  if (activeCall && !isPrechecking) {
     return (
       <VideoCallRoom
         callId={activeCall.callId}
@@ -38,7 +41,23 @@ function FamilyVideoHomeDevStub() {
         userRole="family"
         scheduledEnd={activeCall.scheduledEnd}
         signalingUrl={SIGNALING_URL}
-        onExit={() => setActiveCall(null)}
+        onExit={() => {
+          setActiveCall(null);
+          setDeviceConfig(null);
+        }}
+        // In a real app we'd pass deviceConfig down if VideoCallRoom supported it
+      />
+    );
+  }
+
+  if (isPrechecking) {
+    return (
+      <PreCallCheck 
+        onCancel={() => setIsPrechecking(false)}
+        onJoin={(config) => {
+          setDeviceConfig(config);
+          setIsPrechecking(false);
+        }}
       />
     );
   }
@@ -98,6 +117,7 @@ function FamilyVideoHomeDevStub() {
               .then((body) => {
                 if (body.success) {
                   setActiveCall({ callId: callId.trim(), scheduledEnd: body.data.scheduledEnd });
+                  setIsPrechecking(true);
                 } else {
                   alert(`Cannot join: ${body.error?.message ?? 'Unknown error'}`);
                 }
@@ -134,6 +154,7 @@ function VideoHome() {
   const [error, setError] = useState<string | null>(null);
   const [testCallLoading, setTestCallLoading] = useState(false);
   const [activeTestCall, setActiveTestCall] = useState<{ callId: string; scheduledEnd: string } | null>(null);
+  const [isPrechecking, setIsPrechecking] = useState(false);
   const userId = getUserIdFromToken();
 
   useEffect(() => {
@@ -181,6 +202,7 @@ function VideoHome() {
       if (!joinJson.success) throw new Error(joinJson.error?.message ?? 'Failed to join call');
 
       setActiveTestCall({ callId: json.data.id, scheduledEnd: joinJson.data.scheduledEnd });
+      setIsPrechecking(true);
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -188,7 +210,7 @@ function VideoHome() {
     }
   }
 
-  if (activeTestCall) {
+  if (activeTestCall && !isPrechecking) {
     return (
       <VideoCallRoom
         callId={activeTestCall.callId}
@@ -197,6 +219,15 @@ function VideoHome() {
         scheduledEnd={activeTestCall.scheduledEnd}
         signalingUrl={SIGNALING_URL}
         onExit={() => setActiveTestCall(null)}
+      />
+    );
+  }
+
+  if (isPrechecking) {
+    return (
+      <PreCallCheck 
+        onCancel={() => setIsPrechecking(false)}
+        onJoin={() => setIsPrechecking(false)}
       />
     );
   }

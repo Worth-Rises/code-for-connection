@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Card } from '@openconnect/ui';
+<<<<<<< Updated upstream
 import { VideoCallRoom } from '../shared/VideoCallRoom.js';
+=======
+import { Copy, Check } from 'lucide-react';
+>>>>>>> Stashed changes
 import { familyMessages } from '../messages';
 
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'http://localhost:3001';
@@ -43,9 +47,13 @@ export default function ScheduledCalls() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cancelingCallId, setCancelingCallId] = useState<string | null>(null);
+<<<<<<< Updated upstream
   const [joiningCallId, setJoiningCallId] = useState<string | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const userId = getUserIdFromToken();
+=======
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+>>>>>>> Stashed changes
 
   useEffect(() => {
     let mounted = true;
@@ -220,10 +228,29 @@ export default function ScheduledCalls() {
                   </div>
                   {getStatusBadge(call.status)}
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-gray-500 mb-1">
                   {familyMessages.scheduled.durationLabel}
                 </div>
+<<<<<<< Updated upstream
                 {(canJoinCall(call) || canRescheduleCall(call) || canCancelCall(call)) && (
+=======
+                <div className="text-xs font-mono text-gray-500 bg-gray-50 p-1.5 rounded border border-gray-100 mb-2 inline-flex items-center gap-2">
+                  <span className="font-semibold text-gray-700">Call ID:</span> 
+                  <span className="select-all text-gray-900">{call.id}</span>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(call.id);
+                      setCopiedId(call.id);
+                      setTimeout(() => setCopiedId(null), 2000);
+                    }}
+                    className="ml-2 hover:bg-gray-200 p-1 rounded transition-colors text-gray-500"
+                    title="Copy to clipboard"
+                  >
+                    {copiedId === call.id ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
+                  </button>
+                </div>
+                {canCancelCall(call.status) && (
+>>>>>>> Stashed changes
                   <div className="mt-3">
                     <div className="flex gap-2">
                       {canJoinCall(call) && (
