@@ -31,7 +31,9 @@ interface Message {
   body: string
   status: string
   createdAt: Date
-  attachments?: { fileUrl: string; status: string }[]
+  attachments?: {
+    status: string, fileUrl: string 
+}[]
 }
 
 interface GalleryPhoto {
@@ -91,7 +93,7 @@ function GalleryView({ photos, participantLabel }: GalleryViewProps) {
 
   return (
     <div className="flex flex-col bg-gray-50 rounded-xl">
-      <div className="p-6 max-w-6xl mx-auto w-full">
+      <div className="px-6 max-w-6xl mx-auto w-full">
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900">Shared Photos</h2>
           <p className="text-gray-500 mt-1">
@@ -491,8 +493,8 @@ function ConversationThread() {
   }
 
   return (
-    <div className="space-y-2 scroll-y-auto">
-      <div className="space-y-2 scroll-y-auto">
+    <div className="space-y-2">
+      <div className="space-y-2">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
@@ -507,8 +509,8 @@ function ConversationThread() {
           )}
         </div>
 
-        <div className="border-b border-gray-200">
-          <nav className="flex gap-6 text-sm font-medium">
+        <div className="border-b border-gray-200 gap-y-2">
+          <nav className="flex gap-6 text-sm font-medium gap-y-2">
             <button
               type="button"
               onClick={() => setActiveTab("chat")}
@@ -537,10 +539,11 @@ function ConversationThread() {
 
       {activeTab === "chat" && (
         <Card padding="none">
+            <div className="flex flex-col" style={{ height: 'calc(100vh - 220px)' }}>
           <div
             ref={containerRef}
             onScroll={handleScroll}
-            className="h-[400px] overflow-y-auto p-4 space-y-3"
+            className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0"
           >
           {loadingMore && (
             <p className="text-center text-xs text-gray-400 py-2">
@@ -655,16 +658,14 @@ function ConversationThread() {
               </div>
             )
           })}
-          
             <div ref={bottomRef} />
-            
           </div>
-          <div className="border-t p-3 flex flex-col gap-2">
-            {/* Attachments Preview Section */}
+          {/* Input bar — fixed at bottom, never pushed off */}
+          <div className="border-t p-3 flex flex-col gap-2 flex-shrink-0">
             {selectedFiles.length > 0 && (
-              <div className="px-6 pt-3 flex flex-wrap gap-2">
+              <div className="pt-1 flex flex-wrap gap-2 max-h-24 overflow-y-auto">
                 {selectedFiles.map((file, i) => (
-                  <div key={i} className="relative mr-4">
+                  <div key={i} className="relative flex-shrink-0">
                     <img
                       src={URL.createObjectURL(file)}
                       alt={file.name}
@@ -673,12 +674,9 @@ function ConversationThread() {
                     <button
                       type="button"
                       onClick={() =>
-                        setSelectedFiles((prev) =>
-                          prev.filter((_, j) => j !== i),
-                        )
+                        setSelectedFiles((prev) => prev.filter((_, j) => j !== i))
                       }
-                      className="absolute -top-5 -right-5 bg-red-500 text-white rounded-full flex items-center justify-center"
-                      style={{ width: 16, height: 16, fontSize: 16 }}
+                      className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full flex items-center justify-center w-4 h-4 leading-none text-xs p-0 m-0"
                     >
                       ×
                     </button>
@@ -712,12 +710,13 @@ function ConversationThread() {
               </Button>
             </div>
           </div>
+          </div>
         </Card>
       )}
 
       {activeTab === "gallery" && (
         <Card padding="none">
-          <div className="h-[400px] overflow-y-auto p-4">
+          <div className="h-[500px] overflow-y-auto p-4" style={{ height: 'calc(100vh - 220px)' }}>
             <GalleryView
               photos={galleryPhotos}
               participantLabel={
