@@ -29,6 +29,38 @@ export default function PinLoginPage() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isFormField = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
+
+      if (isFormField && event.key !== 'Enter') {
+        return;
+      }
+
+      if (/^[0-9]$/.test(event.key)) {
+        event.preventDefault();
+        setPin((prev) => (prev.length < 4 ? prev + event.key : prev));
+        return;
+      }
+
+      if (event.key === 'Backspace' || event.key === 'Delete') {
+        event.preventDefault();
+        setPin((prev) => prev.slice(0, -1));
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        void handleSubmit();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [pin, facilityId, loading]);
+
   const handlePinInput = (digit: string) => {
     if (pin.length < 4) setPin(pin + digit);
   };
