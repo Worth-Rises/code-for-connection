@@ -969,6 +969,69 @@ messagingRouter.get(
   },
 )
 
+// Get approved contacts for the logged-in incarcerated person
+messagingRouter.get(
+  "/my-contacts",
+  requireAuth,
+  requireRole("incarcerated"),
+  async (req: Request, res: Response) => {
+    try {
+      const contacts = await prisma.approvedContact.findMany({
+        where: { incarceratedPersonId: req.user!.id, status: "approved" },
+        include: {
+          familyMember: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+        },
+      });
+
+      res.json(createSuccessResponse(contacts));
+    } catch (error) {
+      console.error("Error fetching contacts:", error);
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch contacts",
+        }),
+      );
+    }
+  },
+);
+
+// Get pending contact requests for the logged-in incarcerated person
+messagingRouter.get(
+  "/pending-contacts",
+  requireAuth,
+  requireRole("incarcerated"),
+  async (req: Request, res: Response) => {
+    try {
+      const contacts = await prisma.approvedContact.findMany({
+        where: { incarceratedPersonId: req.user!.id, status: "pending" },
+        include: {
+          familyMember: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      });
+
+      res.json(createSuccessResponse(contacts));
+    } catch (error) {
+      console.error("Error fetching pending contacts:", error);
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch pending contacts",
+        }),
+      );
+    }
+  },
+);
+
+
 // Get approved contacts for the logged-in family member
 messagingRouter.get(
   "/my-contacts",

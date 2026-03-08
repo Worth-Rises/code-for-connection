@@ -7,6 +7,7 @@ import data from "@emoji-mart/data"
 
 interface Conversation {
   id: string
+  familyMemberId: string
   familyMember: { firstName: string; lastName: string }
   messages: {
     id: string
@@ -19,6 +20,19 @@ function requestNotificationPermission() {
   if ("Notification" in window && Notification.permission === "default") {
     Notification.requestPermission()
   }
+}
+
+interface ApprovedContact {
+  id: string
+  familyMemberId: string  // add this
+  familyMember: { firstName: string; lastName: string }
+}
+
+interface PendingContact {
+  id: string;
+  relationship: string;
+  requestedAt: string;
+  contact: { id: string; firstName: string; lastName: string; externalId: string | null };
 }
 
 function fireNotification(title: string, body: string) {
@@ -231,6 +245,16 @@ function apiFetch(path: string, options?: RequestInit): Promise<any> {
 function ConversationList() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [unread, setUnread] = useState<Set<string>>(new Set())
+  const [showNew, setShowNew] = useState(false);
+  const [contacts, setContacts] = useState<ApprovedContact[]>([]);
+  const [pendingContacts, setPendingContacts] = useState<PendingContact[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [showRequest, setShowRequest] = useState(false);
+  const [requestExternalId, setRequestExternalId] = useState('');
+  const [requestRelationship, setRequestRelationship] = useState('');
+  const [requestIsAttorney, setRequestIsAttorney] = useState(false);
+  const [requestSent, setRequestSent] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
   const lastMsgIdRef = useRef<Map<string, string>>(new Map())
   const navigate = useNavigate()
 
@@ -273,9 +297,170 @@ function ConversationList() {
     return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    apiFetch('/auth/me').then(data => {
+      if (data.success) setUserId(data.data.id)
+    })
+  }, [])
+
+  const fetchPendingContacts = () => {
+    apiFetch('/messaging/pending-contacts').then(data => {
+      if (data.success) setPendingContacts(data.data);
+    });
+  };
+
+  const openNew = () => {
+    setShowNew(true);
+    setShowRequest(false);
+    setRequestRelationship('');
+    setRequestIsAttorney(false);
+    setRequestSent(false);
+    setRequestError(null);
+    apiFetch('/messaging/my-contacts').then(data => {
+      if (data.success) setContacts(data.data);
+    });
+  };
+
+  const submitContactRequest = async () => {
+    if (!requestExternalId.trim() || !requestRelationship.trim()) return;
+    const payload = {
+      externalId: requestExternalId.trim(),
+      relationship: requestRelationship.trim(),
+      isAttorney: requestIsAttorney,
+    };
+    console.log('Contact request payload:', payload);
+    const data = await apiFetch('/messaging/contact-request', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (data.success) {
+      setRequestSent(true);
+      setRequestError(null);
+      fetchPendingContacts();
+      setRequestExternalId('');
+      setRequestRelationship('');
+      setRequestIsAttorney(false);
+    } else {
+      setRequestError(data.error?.message ?? 'Something went wrong. Please try again.');
+    }
+  };
+
+  const startConversation = async (familyMemberId: string) => {
+    const existing = conversations.find(c => c.familyMemberId === familyMemberId)
+    if (existing) {
+      setShowNew(false)
+      navigate(existing.id)
+      return
+    }
+  
+    const data = await apiFetch('/messaging/conversations', {
+      method: 'POST',
+      body: JSON.stringify({
+        incarceratedPersonId: userId,  // now populated from /auth/me
+        familyMemberId,
+      }),
+    })
+    if (data.success) {
+      setShowNew(false)
+      navigate(data.data.id)
+    }
+  }
+
+
+
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
+      <div className="flex items-center justify-between">
+      <h1 className="text-2xl font-bold text-gray-900">Messages</h1><div className="flex items-center justify-end">
+        <Button size="sm" onClick={openNew}>New Message</Button>
+      </div>
+      </div>
+      {showNew && (
+        <Card padding="md">
+          <p className="text-sm font-medium text-gray-700 mb-3">Select someone to message:</p>
+          {(() => {
+          // Filter out contacts who already have a conversation
+          const existingConversationIds = new Set(
+            conversations.map(c => c.familyMember.firstName + c.familyMember.lastName) // temp
+          );
+          // Better: compare by contact id directly
+          const conversationContactIds = new Set(conversations.map(c => c.id)); // conversation ids, not contact ids
+
+          // Just show all contacts — let the backend handle deduplication
+          return contacts.length === 0 ? (
+            <p className="text-sm text-gray-500">No contacts available to message.</p>
+          ) : (
+            <div className="space-y-2">
+              {contacts.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => startConversation(c.familyMemberId)}  // use familyMemberId, not c.id
+                  className="w-full text-left px-3 py-2 rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-sm transition-colors"
+                >
+                  {c.familyMember.firstName} {c.familyMember.lastName}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <button
+            disabled
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+              onClick={() => { setShowRequest(v => !v); setRequestSent(false); }}
+            >
+              {showRequest ? 'Hide' : '+ Request a new contact'}
+            </button>
+            {showRequest && (
+              <div className="mt-3 space-y-3">
+                {requestSent ? (
+                  <p className="text-sm text-green-600 font-medium">Request submitted! An admin will review it.</p>
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-sm text-gray-700 mb-1">Contact email</p>
+                      <input
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={requestExternalId}
+                        onChange={e => setRequestExternalId(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-700 mb-1">Your relationship to them</p>
+                      <input
+                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={requestRelationship}
+                        onChange={e => setRequestRelationship(e.target.value)}
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requestIsAttorney}
+                        onChange={e => setRequestIsAttorney(e.target.checked)}
+                        className="rounded"
+                      />
+                      This is an attorney
+                    </label>
+                    {requestError && (
+                      <p className="text-sm text-red-600">{requestError}</p>
+                    )}
+                    <Button
+                      size="sm"
+                      onClick={submitContactRequest}
+                      disabled={!requestExternalId.trim() || !requestRelationship.trim()}
+                    >
+                      Submit Request
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <Button size="sm" variant="ghost" className="mt-3" onClick={() => setShowNew(false)}>Cancel</Button>
+        </Card>
+      )}
+
       {conversations.length === 0 ? (
         <Card padding="lg">
           <p className="text-center text-gray-500 py-8">No conversations yet</p>
