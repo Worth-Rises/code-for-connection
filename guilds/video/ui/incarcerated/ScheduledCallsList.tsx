@@ -31,7 +31,9 @@ export function ScheduledCallsList({ onJoinCall }: ScheduledCallsListProps) {
   if (loading) return <p style={{ color: '#94a3b8', textAlign: 'center' }}>Loading scheduled calls…</p>;
   if (error)   return <p style={{ color: '#f87171', textAlign: 'center' }}>{error}</p>;
 
-  const visibleCalls = calls.filter((call) => Boolean(call.approvedBy));
+  const visibleCalls = calls
+    .filter((call) => Boolean(call.approvedBy))
+    .sort((a, b) => new Date(b.scheduledStart).getTime() - new Date(a.scheduledStart).getTime());
   const now = Date.now();
   const TOLERANCE_MS = 900_000;
 
