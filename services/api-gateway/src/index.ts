@@ -8,6 +8,7 @@ import { authRouter } from './routes/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { adminRouter } from '@openconnect/admin';
 import { videoRouter } from '@openconnect/video';
+import { messagingRouter } from '@openconnect/messaging';
 
 dotenv.config();
 
@@ -27,9 +28,9 @@ app.use('/api/auth', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/video', videoRouter);
 
-// Guild route mounting (teams will implement these)
+// Guild route mounting
 // app.use('/api/voice', voiceRouter);
-// app.use('/api/messaging', messagingRouter);
+app.use('/api/messaging', messagingRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

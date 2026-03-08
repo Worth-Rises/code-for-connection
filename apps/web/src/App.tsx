@@ -133,6 +133,7 @@ function App() {
         >
           <Route index element={<AdminDashboard />} />
           <Route path="housing" element={<HousingConfigPage />} />
+          <Route path="search" element={<SearchPage />} />
           <Route path="residents" element={<ResidentListPage />} />
           <Route path="residents/:id" element={<ResidentProfilePage />} />
           <Route path="voice/*" element={<VoiceAdmin />} />
