@@ -368,17 +368,16 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
           {contact.familyMember.firstName[0]}{contact.familyMember.lastName[0]}
         </div>
 
-        {/* Name & Phone */}
-        <h2 className="text-3xl font-bold mb-1">{contactName}</h2>
-        <p className="text-blue-300 text-lg mb-1">{contact.relationship}</p>
-        <p className="text-blue-200/70 text-base mb-8">{formatPhone(contact.familyMember.phone)}</p>
+        {/* Name & Relationship */}
+        <h2 className="text-3xl font-bold mb-2">{contactName}</h2>
+        <p className="text-blue-200 text-2xl font-medium mb-8">{contact.relationship}</p>
 
         {/* Status */}
         {callState === 'connecting' && (
           <div className="flex flex-col items-center mb-10">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
-              <span className="text-yellow-300 text-xl font-medium">Setting up call…</span>
+              <span className="text-yellow-300 text-xl font-medium">Getting your call ready…</span>
             </div>
             <LoadingSpinner size="sm" />
           </div>
@@ -393,30 +392,44 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
           </div>
         )}
 
-        {callState === 'connected' && (
-          <div className="flex flex-col items-center mb-10">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse" />
-              <span className="text-green-300 text-lg">Connected</span>
-            </div>
-            <span className="text-5xl font-mono font-light tracking-wider text-white tabular-nums">
-              {formatDuration(elapsed)}
-              <span className="text-2xl text-blue-200/80 ml-2">
-                / {formatDuration(MAX_CALL_DURATION_SECONDS)}
+        {callState === 'connected' && (() => {
+          const remaining = MAX_CALL_DURATION_SECONDS - elapsed;
+          const progress = Math.max(0, Math.min(1, remaining / MAX_CALL_DURATION_SECONDS));
+          const barColor = remaining <= 60 ? 'bg-amber-400' : 'bg-blue-400';
+          const barBg = remaining <= 60 ? 'bg-amber-900/30' : 'bg-white/10';
+
+          return (
+            <div className="flex flex-col items-center mb-10 w-full max-w-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse" />
+                <span className="text-green-300 text-lg">Connected</span>
+              </div>
+              <span className="text-5xl font-mono font-light tracking-wider text-white tabular-nums mb-4">
+                {formatDuration(remaining > 0 ? remaining : 0)}
               </span>
-            </span>
-            {elapsed >= MAX_CALL_DURATION_SECONDS - 60 && elapsed < MAX_CALL_DURATION_SECONDS && (
-              <p className="text-amber-400 text-sm font-medium mt-2">
-                1 minute remaining
-              </p>
-            )}
-            {elapsed >= MAX_CALL_DURATION_SECONDS && (
-              <p className="text-red-400 text-sm font-medium mt-2">
-                Time limit reached
-              </p>
-            )}
-          </div>
-        )}
+              <p className="text-blue-200/60 text-sm mb-3">time remaining</p>
+
+              {/* Warm progress bar */}
+              <div className={`w-full h-2 rounded-full ${barBg} overflow-hidden`}>
+                <div
+                  className={`h-full rounded-full ${barColor} transition-all duration-1000 ease-linear`}
+                  style={{ width: `${progress * 100}%` }}
+                />
+              </div>
+
+              {remaining <= 60 && remaining > 0 && (
+                <p className="text-amber-300 text-base font-medium mt-3">
+                  Less than a minute left
+                </p>
+              )}
+              {remaining <= 0 && (
+                <p className="text-amber-300 text-base font-medium mt-3">
+                  Time is up
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
         {callState === 'ended' && (
           <div className="flex flex-col items-center mb-10">
@@ -428,43 +441,73 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
         {callState === 'error' && (
           <div className="flex flex-col items-center mb-10 max-w-sm">
             <div className="bg-red-500/20 border border-red-400/30 rounded-xl px-6 py-4 text-center">
-              <span className="text-red-300 text-lg block mb-1">Call Failed</span>
+              <span className="text-red-300 text-lg block mb-1">Couldn't connect</span>
               <p className="text-red-200/70 text-sm">{errorMsg}</p>
             </div>
           </div>
         )}
 
-        {/* Controls */}
-        <div className="flex items-center gap-8">
+        {/* Controls — iPhone-style circular buttons with labels */}
+        <div className="flex items-center gap-12">
           {callState === 'connected' && (
             <button
               onClick={handleToggleMute}
-              className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl transition-all duration-200 ${isMuted
-                ? 'bg-red-500/30 border-2 border-red-400 text-red-300'
-                : 'bg-white/10 border-2 border-white/20 text-white hover:bg-white/20'
-                }`}
-              title={isMuted ? 'Unmute' : 'Mute'}
+              className="flex flex-col items-center gap-2 group"
             >
-              {isMuted ? '🔇' : '🎤'}
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 overflow-hidden ${isMuted
+                ? 'bg-white/90 border border-white/90'
+                : 'bg-white/15 border border-white/30 hover:bg-white/25'
+                }`}
+              >
+                {isMuted ? (
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1e3a5f" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .76-.13 1.49-.35 2.17" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
+                  </svg>
+                ) : (
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
+                  </svg>
+                )}
+              </div>
+              <span className={`text-lg font-bold ${isMuted ? 'text-white' : 'text-white/80'}`}>
+                {isMuted ? 'Unmute' : 'Mute'}
+              </span>
             </button>
           )}
 
           {(callState === 'connecting' || callState === 'ringing' || callState === 'connected') && (
             <button
               onClick={handleEndCall}
-              className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center text-3xl shadow-lg shadow-red-900/50 transition-all duration-200 active:scale-95 border-2 border-red-400/30"
-              title="End Call"
+              className="flex flex-col items-center gap-2 group"
             >
-              📵
+              <div className="w-20 h-20 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center shadow-lg shadow-red-900/50 transition-all duration-200 active:scale-95 overflow-hidden">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
+                  <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 0 1-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 0 0-2.67-1.85.996.996 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" />
+                </svg>
+              </div>
+              <span className="text-lg font-bold text-white/80">End</span>
             </button>
           )}
 
           {(callState === 'ended' || callState === 'error') && (
             <button
               onClick={onCallEnded}
-              className="px-8 py-4 rounded-xl bg-white/10 hover:bg-white/20 text-white text-lg font-medium transition-all border border-white/20"
+              className="flex flex-col items-center gap-2 group"
             >
-              Back to Contacts
+              <div className="w-20 h-20 rounded-full bg-white/15 border border-white/30 hover:bg-white/25 flex items-center justify-center transition-all duration-200 active:scale-95">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="19" y1="12" x2="5" y2="12" />
+                  <polyline points="12 19 5 12 12 5" />
+                </svg>
+              </div>
+              <span className="text-lg font-bold text-white/80">Back</span>
             </button>
           )}
         </div>

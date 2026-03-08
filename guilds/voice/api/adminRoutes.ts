@@ -56,6 +56,12 @@ voiceAdminRouter.get('/call-logs', requireAuth, async (req: Request, res: Respon
     const take = parseInt(String(pageSize));
 
     const where: Record<string, unknown> = {};
+
+    // Incarcerated users can only see their own calls (DB-level filter)
+    if (req.user!.role === 'incarcerated') {
+      where.incarceratedPersonId = req.user!.id;
+    }
+
     if (facilityId) where.facilityId = String(facilityId);
     if (userId) {
       where.OR = [
