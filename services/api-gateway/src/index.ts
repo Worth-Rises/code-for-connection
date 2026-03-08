@@ -28,7 +28,6 @@ app.get('/health', (_req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/video', videoRouter);
-
 app.use('/api/voice', voiceRouter);
 app.use('/api/messaging', messagingRouter);
 

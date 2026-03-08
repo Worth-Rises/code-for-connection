@@ -11,12 +11,12 @@ import {
   fetchVideoCallLogs,
   approveVideoRequest,
   denyVideoRequest,
-} from '../shared/api';
+} from './api';
 import {
   VideoPendingRequestsTable,
   VideoActiveCallsTable,
   VideoCallHistoryTable,
-} from '../shared/components';
+} from './components';
 
 function VideoDashboard() {
   const { token } = useAuth();

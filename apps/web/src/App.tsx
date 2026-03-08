@@ -11,15 +11,15 @@ import RegisterPage from './pages/RegisterPage';
 
 const VoiceIncarcerated = lazy(() => import('../../../guilds/voice/ui/incarcerated'));
 const VoiceFamily = lazy(() => import('../../../guilds/voice/ui/family'));
-const VoiceAdmin = lazy(() => import('../../../guilds/voice/ui/admin'));
+const VoiceAdmin = lazy(() => import('../../../guilds/admin/ui/voice'));
 
 const VideoIncarcerated = lazy(() => import('../../../guilds/video/ui/incarcerated'));
 const VideoFamily = lazy(() => import('../../../guilds/video/ui/family'));
-const VideoAdmin = lazy(() => import('../../../guilds/video/ui/admin'));
+const VideoAdmin = lazy(() => import('../../../guilds/admin/ui/video'));
 
 const MessagingIncarcerated = lazy(() => import('../../../guilds/messaging/ui/incarcerated'));
 const MessagingFamily = lazy(() => import('../../../guilds/messaging/ui/family'));
-const MessagingAdmin = lazy(() => import('../../../guilds/messaging/ui/admin'));
+const MessagingAdmin = lazy(() => import('../../../guilds/admin/ui/messaging'));
 
 const AdminDashboard = lazy(() => import('../../../guilds/admin/ui'));
 const ResidentListPage = lazy(() => import('../../../guilds/admin/ui/residents/ResidentListPage'));

@@ -1,6 +1,5 @@
 /**
  * Reusable stat card with optional pulsing indicator.
- * Used by both the video admin page and the overview dashboard.
  */
 import { Card } from '@openconnect/ui';
 

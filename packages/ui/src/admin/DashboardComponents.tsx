@@ -29,9 +29,12 @@ export function StatusBadge({ status }: { status: string }) {
     missed: 'bg-red-100 text-red-700',
     terminated_by_admin: 'bg-purple-100 text-purple-700',
     blocked_by_receiver: 'bg-red-100 text-red-800',
-    // Messaging statuses (for future use)
+    // Messaging statuses
     pending_review: 'bg-yellow-100 text-yellow-800',
+    sent: 'bg-blue-100 text-blue-800',
     delivered: 'bg-green-100 text-green-800',
+    read: 'bg-gray-100 text-gray-700',
+    blocked: 'bg-red-100 text-red-800',
     flagged: 'bg-orange-100 text-orange-700',
   };
   return (
