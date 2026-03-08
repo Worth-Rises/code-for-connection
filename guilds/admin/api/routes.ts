@@ -200,6 +200,97 @@ adminRouter.get('/user/:userId', requireAuth, async (req: Request, res: Response
   }
 });
 
+adminRouter.get('/residents', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = req.user!;
+    const where: any = {};
+
+    if (user.role === 'facility_admin') {
+      where.facilityId = user.facilityId;
+    } else if (user.role === 'agency_admin') {
+      where.agencyId = user.agencyId;
+    }
+
+    const status = req.query.status as string | undefined;
+    if (status) {
+      where.status = status;
+    }
+
+    const search = req.query.search as string | undefined;
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { externalId: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const residents = await prisma.incarceratedPerson.findMany({
+      where,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        externalId: true,
+        status: true,
+        admittedAt: true,
+        facility: { select: { id: true, name: true } },
+        housingUnit: { select: { id: true, name: true } },
+      },
+      orderBy: { lastName: 'asc' },
+    });
+
+    res.json(createSuccessResponse(residents));
+  } catch (error) {
+    console.error('Error fetching residents:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch residents',
+    }));
+  }
+});
+
+adminRouter.get('/residents/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const resident = await prisma.incarceratedPerson.findUnique({
+      where: { id: req.params.id },
+      include: {
+        facility: { select: { id: true, name: true } },
+        housingUnit: {
+          select: { id: true, name: true, unitType: true },
+        },
+      },
+    });
+
+    if (!resident) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Resident not found',
+      }));
+      return;
+    }
+
+    const user = req.user!;
+    if (user.role === 'facility_admin' && user.facilityId !== resident.facilityId) {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'No access to this resident',
+      }));
+      return;
+    }
+
+    // Never expose the PIN hash
+    const { pin, ...safeResident } = resident;
+    res.json(createSuccessResponse(safeResident));
+  } catch (error) {
+    console.error('Error fetching resident:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch resident',
+    }));
+  }
+});
+
 adminRouter.get('/blocked-numbers/check', requireAuth, async (req: Request, res: Response) => {
   try {
     const { phoneNumber, facilityId } = req.query;

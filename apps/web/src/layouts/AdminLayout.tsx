@@ -21,6 +21,12 @@ export default function AdminLayout() {
       ],
     },
     {
+      title: 'Management',
+      items: [
+        { path: '/admin/residents', label: 'Residents', icon: '👤' },
+      ],
+    },
+    {
       title: 'Communication',
       items: [
         { path: '/admin/voice', label: 'Voice Calls', icon: '📞' },
