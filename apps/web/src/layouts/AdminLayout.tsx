@@ -27,6 +27,12 @@ export default function AdminLayout() {
       ],
     },
     {
+      title: 'Administration',
+      items: [
+        { path: '/admin/housing', label: 'Housing Config', icon: '🏢' },
+      ],
+    },
+    {
       title: 'Communication',
       items: [
         { path: '/admin/voice', label: 'Voice Calls', icon: '📞' },

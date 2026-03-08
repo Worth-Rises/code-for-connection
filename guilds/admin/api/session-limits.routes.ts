@@ -142,6 +142,55 @@ async function getPersonLimitsAndUsage(incarceratedPersonId: string): Promise<{
   };
 }
 
+// All config fields on HousingUnitType
+const allConfigSelect = {
+  id: true,
+  name: true,
+  maxDailyVoiceCalls: true,
+  maxDailyMessages: true,
+  maxWeeklyVideoRequests: true,
+  voiceCallsEnabled: true,
+  videoCallsEnabled: true,
+  messagingEnabled: true,
+  voiceCallDurationMinutes: true,
+  videoCallDurationMinutes: true,
+  callingHoursStart: true,
+  callingHoursEnd: true,
+  maxContacts: true,
+  videoSlotDurationMinutes: true,
+  maxConcurrentVideoCalls: true,
+};
+
+// List all unit types for the admin's agency
+sessionLimitsRouter.get('/unit-types', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.agencyId) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'Authenticated admin must have an agency',
+      }));
+      return;
+    }
+
+    const unitTypes = await prisma.housingUnitType.findMany({
+      where: { agencyId: req.user.agencyId },
+      select: {
+        ...allConfigSelect,
+        _count: { select: { housingUnits: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    res.json(createSuccessResponse(unitTypes));
+  } catch (error) {
+    console.error('Error fetching unit types:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch unit types',
+    }));
+  }
+});
+
 sessionLimitsRouter.get('/unit-types/:unitTypeId/limits', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const { unitTypeId } = req.params;
@@ -159,16 +208,7 @@ sessionLimitsRouter.get('/unit-types/:unitTypeId/limits', requireAuth, requireRo
         id: unitTypeId,
         agencyId: req.user.agencyId,
       },
-      select: {
-        id: true,
-        name: true,
-        maxDailyVoiceCalls: true,
-        maxDailyMessages: true,
-        maxWeeklyVideoRequests: true,
-        voiceCallsEnabled: true,
-        videoCallsEnabled: true,
-        messagingEnabled: true,
-      },
+      select: allConfigSelect,
     });
 
     if (!unitType) {
@@ -199,6 +239,13 @@ sessionLimitsRouter.patch('/unit-types/:unitTypeId/limits', requireAuth, require
       voiceCallsEnabled,
       videoCallsEnabled,
       messagingEnabled,
+      voiceCallDurationMinutes,
+      videoCallDurationMinutes,
+      callingHoursStart,
+      callingHoursEnd,
+      maxContacts,
+      videoSlotDurationMinutes,
+      maxConcurrentVideoCalls,
     } = req.body;
 
     if (!req.user?.agencyId) {
@@ -234,17 +281,15 @@ sessionLimitsRouter.patch('/unit-types/:unitTypeId/limits', requireAuth, require
         ...(voiceCallsEnabled !== undefined ? { voiceCallsEnabled: Boolean(voiceCallsEnabled) } : {}),
         ...(videoCallsEnabled !== undefined ? { videoCallsEnabled: Boolean(videoCallsEnabled) } : {}),
         ...(messagingEnabled !== undefined ? { messagingEnabled: Boolean(messagingEnabled) } : {}),
+        ...(voiceCallDurationMinutes !== undefined ? { voiceCallDurationMinutes } : {}),
+        ...(videoCallDurationMinutes !== undefined ? { videoCallDurationMinutes } : {}),
+        ...(callingHoursStart !== undefined ? { callingHoursStart } : {}),
+        ...(callingHoursEnd !== undefined ? { callingHoursEnd } : {}),
+        ...(maxContacts !== undefined ? { maxContacts } : {}),
+        ...(videoSlotDurationMinutes !== undefined ? { videoSlotDurationMinutes } : {}),
+        ...(maxConcurrentVideoCalls !== undefined ? { maxConcurrentVideoCalls } : {}),
       },
-      select: {
-        id: true,
-        name: true,
-        maxDailyVoiceCalls: true,
-        maxDailyMessages: true,
-        maxWeeklyVideoRequests: true,
-        voiceCallsEnabled: true,
-        videoCallsEnabled: true,
-        messagingEnabled: true,
-      },
+      select: allConfigSelect,
     });
 
     res.json(createSuccessResponse(updated));
@@ -350,6 +395,139 @@ sessionLimitsRouter.get('/usage/:incarceratedPersonId/check', requireAuth, requi
     res.status(500).json(createErrorResponse({
       code: 'INTERNAL_ERROR',
       message: 'Failed to check session limits',
+    }));
+  }
+});
+
+// Video time slot CRUD
+
+sessionLimitsRouter.get('/unit-types/:unitTypeId/time-slots', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { unitTypeId } = req.params;
+
+    if (!req.user?.agencyId) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'Authenticated admin must have an agency',
+      }));
+      return;
+    }
+
+    // Verify unit type belongs to admin's agency
+    const unitType = await prisma.housingUnitType.findFirst({
+      where: { id: unitTypeId, agencyId: req.user.agencyId },
+      select: { id: true },
+    });
+
+    if (!unitType) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Housing unit type not found',
+      }));
+      return;
+    }
+
+    const slots = await prisma.videoCallTimeSlot.findMany({
+      where: { housingUnitTypeId: unitTypeId },
+      include: { facility: { select: { id: true, name: true } } },
+      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    });
+
+    res.json(createSuccessResponse(slots));
+  } catch (error) {
+    console.error('Error fetching time slots:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch time slots',
+    }));
+  }
+});
+
+sessionLimitsRouter.post('/unit-types/:unitTypeId/time-slots', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { unitTypeId } = req.params;
+    const { facilityId, dayOfWeek, startTime, endTime, maxConcurrent } = req.body;
+
+    if (!req.user?.agencyId) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'Authenticated admin must have an agency',
+      }));
+      return;
+    }
+
+    // Verify unit type belongs to admin's agency
+    const unitType = await prisma.housingUnitType.findFirst({
+      where: { id: unitTypeId, agencyId: req.user.agencyId },
+      select: { id: true },
+    });
+
+    if (!unitType) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Housing unit type not found',
+      }));
+      return;
+    }
+
+    const slot = await prisma.videoCallTimeSlot.create({
+      data: {
+        facilityId,
+        housingUnitTypeId: unitTypeId,
+        dayOfWeek,
+        startTime,
+        endTime,
+        maxConcurrent: maxConcurrent ?? 5,
+      },
+      include: { facility: { select: { id: true, name: true } } },
+    });
+
+    res.status(201).json(createSuccessResponse(slot));
+  } catch (error) {
+    console.error('Error creating time slot:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to create time slot',
+    }));
+  }
+});
+
+sessionLimitsRouter.delete('/time-slots/:slotId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { slotId } = req.params;
+
+    if (!req.user?.agencyId) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'Authenticated admin must have an agency',
+      }));
+      return;
+    }
+
+    // Verify slot belongs to admin's agency via unit type
+    const slot = await prisma.videoCallTimeSlot.findFirst({
+      where: {
+        id: slotId,
+        housingUnitType: { agencyId: req.user.agencyId },
+      },
+    });
+
+    if (!slot) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Time slot not found',
+      }));
+      return;
+    }
+
+    await prisma.videoCallTimeSlot.delete({ where: { id: slotId } });
+
+    res.json(createSuccessResponse({ deleted: true }));
+  } catch (error) {
+    console.error('Error deleting time slot:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to delete time slot',
     }));
   }
 });
