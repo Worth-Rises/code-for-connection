@@ -427,7 +427,7 @@ function ConversationThread() {
         setMessages(prev => {
           const polledById = new Map(polledMsgs.map(m => [m.id, m]));
           const updated = prev.map(m =>
-            polledById.has(m.id) ? { ...m, status: polledById.get(m.id)!.status } : m
+            polledById.has(m.id) ? { ...m, status: polledById.get(m.id)!.status, attachments: polledById.get(m.id)!.attachments } : m
           );
           const existingIds = new Set(prev.map(m => m.id));
           const toAdd = polledMsgs.filter(m => !existingIds.has(m.id));
