@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { ScheduledCallsList } from './ScheduledCallsList.js';
-import { PastCallsList } from './PastCallsList.js';
+import { PastCallsList } from './PastCallsList.tsx';
 import { VideoCallRoom } from '../shared/VideoCallRoom.js';
 
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'http://localhost:3001';
