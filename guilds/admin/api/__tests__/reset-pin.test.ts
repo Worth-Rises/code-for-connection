@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-// Mock prisma before importing routes
 vi.mock('@openconnect/shared', async () => {
   const actual = await vi.importActual('@openconnect/shared');
   return {
     ...actual,
+    requireAuth: (_req: any, _res: any, next: any) => next(),
     prisma: {
       incarceratedPerson: {
         findUnique: vi.fn(),

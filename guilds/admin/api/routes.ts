@@ -292,7 +292,7 @@ adminRouter.get('/residents/:id', requireAuth, async (req: Request, res: Respons
   }
 });
 
-adminRouter.post('/residents/:id/reset-pin', async (req: Request, res: Response) => {
+adminRouter.post('/residents/:id/reset-pin', requireAuth, async (req: Request, res: Response) => {
   try {
     if (!req.user) {
       res.status(401).json(createErrorResponse({

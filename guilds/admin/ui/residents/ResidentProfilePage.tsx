@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../../../apps/web/src/context/AuthContext';
 import { Button } from '@/components/ui/button';
+import ResetPinModal from './ResetPinModal';
 
 interface Resident {
   id: string;
@@ -32,6 +33,7 @@ export default function ResidentProfilePage() {
   const [resident, setResident] = useState<Resident | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [resetPinOpen, setResetPinOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -122,14 +124,22 @@ export default function ResidentProfilePage() {
           </dl>
         </section>
 
-        {/* PIN section — TICKET-03 will add the Reset PIN modal here */}
         <section className="rounded-lg border border-gray-200 bg-white p-6">
           <h2 className="mb-4 text-lg font-semibold text-gray-900">PIN</h2>
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-500">PIN: ••••</span>
-            <Button variant="outline" disabled>Reset PIN</Button>
+            <Button variant="outline" onClick={() => setResetPinOpen(true)}>
+              Reset PIN
+            </Button>
           </div>
         </section>
+
+        <ResetPinModal
+          residentId={resident.id}
+          residentName={`${resident.firstName} ${resident.lastName}`}
+          open={resetPinOpen}
+          onOpenChange={setResetPinOpen}
+        />
       </div>
     </div>
   );
