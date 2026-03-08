@@ -162,7 +162,7 @@ const allConfigSelect = {
 };
 
 // List all unit types for the admin's agency
-sessionLimitsRouter.get('/unit-types', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+sessionLimitsRouter.get('/unit-types', requireAuth, requireRole('agency_admin'), async (req: Request, res: Response) => {
   try {
     if (!req.user?.agencyId) {
       res.status(400).json(createErrorResponse({
@@ -191,7 +191,7 @@ sessionLimitsRouter.get('/unit-types', requireAuth, requireRole('facility_admin'
   }
 });
 
-sessionLimitsRouter.get('/unit-types/:unitTypeId/limits', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+sessionLimitsRouter.get('/unit-types/:unitTypeId/limits', requireAuth, requireRole('agency_admin'), async (req: Request, res: Response) => {
   try {
     const { unitTypeId } = req.params;
 
@@ -229,7 +229,7 @@ sessionLimitsRouter.get('/unit-types/:unitTypeId/limits', requireAuth, requireRo
   }
 });
 
-sessionLimitsRouter.patch('/unit-types/:unitTypeId/limits', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+sessionLimitsRouter.patch('/unit-types/:unitTypeId/limits', requireAuth, requireRole('agency_admin'), async (req: Request, res: Response) => {
   try {
     const { unitTypeId } = req.params;
     const {
@@ -401,7 +401,7 @@ sessionLimitsRouter.get('/usage/:incarceratedPersonId/check', requireAuth, requi
 
 // Video time slot CRUD
 
-sessionLimitsRouter.get('/unit-types/:unitTypeId/time-slots', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+sessionLimitsRouter.get('/unit-types/:unitTypeId/time-slots', requireAuth, requireRole('agency_admin'), async (req: Request, res: Response) => {
   try {
     const { unitTypeId } = req.params;
 
@@ -443,7 +443,7 @@ sessionLimitsRouter.get('/unit-types/:unitTypeId/time-slots', requireAuth, requi
   }
 });
 
-sessionLimitsRouter.post('/unit-types/:unitTypeId/time-slots', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+sessionLimitsRouter.post('/unit-types/:unitTypeId/time-slots', requireAuth, requireRole('agency_admin'), async (req: Request, res: Response) => {
   try {
     const { unitTypeId } = req.params;
     const { facilityId, dayOfWeek, startTime, endTime, maxConcurrent } = req.body;
@@ -492,7 +492,7 @@ sessionLimitsRouter.post('/unit-types/:unitTypeId/time-slots', requireAuth, requ
   }
 });
 
-sessionLimitsRouter.delete('/time-slots/:slotId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+sessionLimitsRouter.delete('/time-slots/:slotId', requireAuth, requireRole('agency_admin'), async (req: Request, res: Response) => {
   try {
     const { slotId } = req.params;
 
