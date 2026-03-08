@@ -774,9 +774,8 @@ videoRouter.post('/reschedule-call/:callId', requireAuth, requireRole('family'),
       data: {
         scheduledStart: start,
         scheduledEnd: end,
-        // scheduled calls must be re-approved after reschedule.
-        // requested calls stay requested.
-        status: 'requested',
+        // scheduled calls must be re-approved after reschedule ONLY if admin approval is required.
+        status: ADMIN_APPROVAL_REQUIRED ? 'requested' : 'scheduled',
         approvedBy: null,
       },
       include: {
