@@ -15,7 +15,7 @@ const VoiceAdmin = lazy(() => import('../../../guilds/admin/ui/voice'));
 
 const VideoIncarcerated = lazy(() => import('../../../guilds/video/ui/incarcerated'));
 const VideoFamily = lazy(() => import('../../../guilds/video/ui/family'));
-const VideoAdmin = lazy(() => import('../../../guilds/video/ui/admin'));
+const VideoAdmin = lazy(() => import('../../../guilds/admin/ui/video'));
 
 const MessagingIncarcerated = lazy(() => import('../../../guilds/messaging/ui/incarcerated'));
 const MessagingFamily = lazy(() => import('../../../guilds/messaging/ui/family'));
