@@ -214,6 +214,9 @@ describe('useVideoCall — timer enforcement', () => {
     const onCallEnded = vi.fn();
     const { result } = renderHook(() => useVideoCall(createHookProps({ scheduledEnd, onCallEnded })));
     await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => {
+      mockSocket._trigger('room-joined', { roomId: 'call-test-1', phase: 'active', participants: [] });
+    });
 
     expect(result.current.connectionState).not.toBe('ENDED');
     await act(async () => { vi.advanceTimersByTime(5001); });
@@ -226,6 +229,9 @@ describe('useVideoCall — timer enforcement', () => {
     const onTimeWarning = vi.fn();
     const { result } = renderHook(() => useVideoCall(createHookProps({ scheduledEnd, onTimeWarning })));
     await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => {
+      mockSocket._trigger('room-joined', { roomId: 'call-test-1', phase: 'active', participants: [] });
+    });
     expect(result.current.timeRemaining).toBeGreaterThan(60);
 
     await act(async () => { vi.advanceTimersByTime(30_001); }); // advance 30s → ~60s left
@@ -233,11 +239,39 @@ describe('useVideoCall — timer enforcement', () => {
     expect(result.current.timeRemaining).toBeLessThanOrEqual(61);
   });
 
+  it('does not start countdown in waiting room until call-started', async () => {
+    const scheduledStart = new Date(Date.now() + 60_000).toISOString();
+    const scheduledEnd = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const { result } = renderHook(() => useVideoCall(
+      createHookProps({ scheduledStart, scheduledEnd, initialPhase: 'waiting' }),
+    ));
+
+    await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => {
+      mockSocket._trigger('room-joined', { roomId: 'call-test-1', phase: 'waiting', participants: [] });
+    });
+
+    const waitingTime = result.current.timeRemaining;
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(result.current.timeRemaining).toBe(waitingTime);
+
+    await act(async () => {
+      mockSocket._trigger('call-started', { roomId: 'call-test-1', phase: 'active', participants: [] });
+    });
+
+    const afterStart = result.current.timeRemaining;
+    await act(async () => { vi.advanceTimersByTime(2_000); });
+    expect(result.current.timeRemaining).toBeLessThan(afterStart);
+  });
+
   it('clears timers on unmount — no timer fires after unmount', async () => {
     const onCallEnded = vi.fn();
     const scheduledEnd = new Date(Date.now() + 1000).toISOString();
     const { unmount } = renderHook(() => useVideoCall(createHookProps({ scheduledEnd, onCallEnded })));
     await act(async () => { mockSocket._trigger('connect'); });
+    await act(async () => {
+      mockSocket._trigger('room-joined', { roomId: 'call-test-1', phase: 'active', participants: [] });
+    });
     unmount();
     await act(async () => { vi.advanceTimersByTime(2000); });
     // onCallEnded should NOT be called after unmount

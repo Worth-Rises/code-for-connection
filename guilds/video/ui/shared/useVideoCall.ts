@@ -72,8 +72,14 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<number>(() => {
-    const endWithTolerance = new Date(scheduledEnd).getTime() + 900_000; // 15-minute tolerance
-    return Math.max(0, Math.round((endWithTolerance - Date.now()) / 1000));
+    const endMs = new Date(scheduledEnd).getTime();
+    const startMs = scheduledStart ? new Date(scheduledStart).getTime() : Number.NaN;
+
+    if (initialCallPhase === 'waiting' && !Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs > startMs) {
+      return Math.max(0, Math.round((endMs - startMs) / 1000));
+    }
+
+    return Math.max(0, Math.round((endMs - Date.now()) / 1000));
   });
 
   const socketRef = useRef<Socket | null>(null);
@@ -144,19 +150,60 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
       const socket = io(signalingUrl, { transports: ['websocket'] });
       socketRef.current = socket;
 
-      // Scheduled-end client-side enforcement (with 15 min tolerance)
-      const endWithTolerance = new Date(scheduledEnd).getTime() + 900_000;
-      const msRemaining = endWithTolerance - Date.now();
-      if (msRemaining > 0) {
+      const scheduledEndMs = new Date(scheduledEnd).getTime();
+      const scheduledStartMs = scheduledStart ? new Date(scheduledStart).getTime() : Number.NaN;
+      const scheduledDurationSeconds =
+        !Number.isNaN(scheduledStartMs)
+        && !Number.isNaN(scheduledEndMs)
+        && scheduledEndMs > scheduledStartMs
+          ? Math.max(0, Math.round((scheduledEndMs - scheduledStartMs) / 1000))
+          : Math.max(0, Math.round((scheduledEndMs - Date.now()) / 1000));
+
+      const stopActiveCountdown = () => {
+        if (endTimerRef.current) {
+          clearTimeout(endTimerRef.current);
+          endTimerRef.current = null;
+        }
+        if (countdownRef.current) {
+          clearInterval(countdownRef.current);
+          countdownRef.current = null;
+        }
+      };
+
+      const syncActiveRemaining = () => {
+        const remaining = Math.max(0, Math.round((scheduledEndMs - Date.now()) / 1000));
+        setTimeRemaining(remaining);
+        if (remaining <= 60 && !warningFiredRef.current) {
+          warningFiredRef.current = true;
+          onTimeWarning?.();
+        }
+        return remaining;
+      };
+
+      const startActiveCountdown = () => {
+        stopActiveCountdown();
+        if (Number.isNaN(scheduledEndMs)) return;
+
+        const msRemaining = scheduledEndMs - Date.now();
+        const remaining = syncActiveRemaining();
+        if (msRemaining <= 0 || remaining <= 0) {
+          hangUp('time_limit');
+          return;
+        }
+
         endTimerRef.current = setTimeout(() => hangUp('time_limit'), msRemaining);
         countdownRef.current = setInterval(() => {
-          const remaining = Math.max(0, Math.round((endWithTolerance - Date.now()) / 1000));
-          setTimeRemaining(remaining);
-          if (remaining <= 60 && !warningFiredRef.current) {
-            warningFiredRef.current = true;
-            onTimeWarning?.();
+          const nextRemaining = syncActiveRemaining();
+          if (nextRemaining <= 0) {
+            stopActiveCountdown();
           }
         }, 1000);
+      };
+
+      if (callPhaseRef.current === 'waiting') {
+        setTimeRemaining(scheduledDurationSeconds);
+      } else {
+        setTimeRemaining(Math.max(0, Math.round((scheduledEndMs - Date.now()) / 1000)));
       }
 
       socket.on('connect', () => {
@@ -181,9 +228,13 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
         callPhaseRef.current = phase;
 
         if (phase === 'waiting') {
+          stopActiveCountdown();
+          setTimeRemaining(scheduledDurationSeconds);
           setConnectionState('WAITING_FOR_START');
           return;
         }
+
+        startActiveCountdown();
 
         if (data.participants.length > 0 || peerRef.current) {
           setConnectionState('CONNECTING');
@@ -207,6 +258,10 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
         const previousPhase = callPhaseRef.current;
         callPhaseRef.current = data.phase ?? 'active';
         activatedFromWaitingRef.current = previousPhase === 'waiting' && callPhaseRef.current === 'active';
+
+        if (callPhaseRef.current === 'active') {
+          startActiveCountdown();
+        }
 
         const hasOtherParticipants = !!data.participants?.some((participant) => participant.userId !== userId);
         setConnectionState((prev) => {
@@ -261,6 +316,8 @@ export function useVideoCall(options: UseVideoCallOptions): UseVideoCallReturn {
         if (cancelled) return;
         if (data.phase === 'waiting') {
           callPhaseRef.current = 'waiting';
+          stopActiveCountdown();
+          setTimeRemaining(scheduledDurationSeconds);
           setConnectionState('WAITING_FOR_START');
         }
       });
