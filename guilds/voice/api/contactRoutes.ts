@@ -8,17 +8,14 @@ import {
 
 export const voiceContactRouter = Router();
 
-// In-memory map of callId -> Twilio SID (hackathon workaround since we can't modify the Prisma schema)
-const twilioSidMap = new Map<string, string>();
-
 // ==========================================
 // FAMILY MEMBER / LOVED ONE USER ENDPOINTS
 // ==========================================
 
 /**
- * GET /contacts — Approved contacts for the logged-in incarcerated person
+ * GET /contacts — Approved contacts for the logged-in contact
  */
-voiceContactRouter.get('/contacts', requireAuth, async (req: Request, res: Response) => {
+voiceContactRouter.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
 
@@ -28,12 +25,17 @@ voiceContactRouter.get('/contacts', requireAuth, async (req: Request, res: Respo
         status: 'approved',
       },
       include: {
-        familyMember: {
+        incarceratedPerson: {
           select: {
             id: true,
             firstName: true,
             lastName: true,
-            phone: true,
+            externalId: true,
+            facility: {
+              select: {
+                name: true,
+              },
+            }
           },
         },
       },
@@ -49,7 +51,5 @@ voiceContactRouter.get('/contacts', requireAuth, async (req: Request, res: Respo
     }));
   }
 });
-
-
 
 export default voiceContactRouter;
