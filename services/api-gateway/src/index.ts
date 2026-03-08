@@ -14,10 +14,13 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+/** Allow larger JSON bodies for e.g. base64 name-audio uploads (~2MB decoded → ~2.7MB in body) */
+const JSON_LIMIT = '5mb';
+
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: JSON_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: JSON_LIMIT }));
 app.use(morgan('dev'));
 
 app.get('/health', (_req, res) => {
