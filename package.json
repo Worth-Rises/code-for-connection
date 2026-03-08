@@ -23,6 +23,7 @@
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "test:video": "npm run test -w @openconnect/video",
     "db:reset": "prisma migrate reset --force",
     "db:studio": "prisma studio",
     "clean": "rm -rf node_modules **/node_modules **/dist **/.turbo"

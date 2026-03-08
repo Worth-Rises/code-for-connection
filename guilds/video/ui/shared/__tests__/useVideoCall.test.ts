@@ -76,9 +76,14 @@ describe('useVideoCall — state machine', () => {
 
   it('transitions to JOINING after socket connects and emits join-room', async () => {
     const { result } = renderHook(() => useVideoCall(createHookProps()));
+    // getUserMedia returns a resolved promise, but connectSocket() is called
+    // after it resolves. Flush the microtask queue so connectSocket runs and
+    // registers socket.on('connect') before we fire the event.
     await act(async () => {
-      mockSocket._trigger('connect');
+      vi.runAllTicks();
+      await Promise.resolve();
     });
+    await act(async () => { mockSocket._trigger('connect'); });
     expect(result.current.connectionState).toBe('WAITING_FOR_PEER');
     const joinEmit = mockSocket._emitted.find(([e]) => e === 'join-room');
     expect(joinEmit).toBeDefined();
@@ -126,6 +131,11 @@ describe('useVideoCall — state machine', () => {
 
   it('disconnects socket on unmount', async () => {
     const { unmount } = renderHook(() => useVideoCall(createHookProps()));
+    // Flush getUserMedia microtask so socketRef.current is populated
+    await act(async () => {
+      vi.runAllTicks();
+      await Promise.resolve();
+    });
     unmount();
     expect(mockSocket.disconnect).toHaveBeenCalled();
   });

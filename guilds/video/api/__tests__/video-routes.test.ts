@@ -126,7 +126,9 @@ describe('GET /api/video/my-scheduled', () => {
 
 // ─── POST /api/video/join/:callId ─────────────────────────────────────────
 describe('POST /api/video/join/:callId', () => {
-  beforeEach(() => vi.clearAllMocks());
+  // resetAllMocks is needed (not clearAllMocks) so that mockResolvedValue
+  // implementations don't leak between tests.
+  beforeEach(() => vi.resetAllMocks());
 
   it('returns 404 when call does not exist', async () => {
     (prisma.videoCall.findUnique as any).mockResolvedValue(null);
@@ -162,7 +164,8 @@ describe('POST /api/video/join/:callId', () => {
   });
 
   it('returns 400 when now > scheduledEnd (too late)', async () => {
-    const pastEnd = new Date(Date.now() - 60 * 1000); // ended 1 min ago
+    // Route has a 15-min tolerance; use 20 min ago to be firmly outside the window
+    const pastEnd = new Date(Date.now() - 20 * 60 * 1000);
     (prisma.videoCall.findUnique as any).mockResolvedValue(
       mockCall({ status: 'scheduled', scheduledStart: new Date(pastEnd.getTime() - THIRTY_MIN), scheduledEnd: pastEnd }),
     );
