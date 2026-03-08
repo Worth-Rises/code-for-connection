@@ -421,7 +421,7 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
         where: { id: voiceCall.id },
         data: {
           status: 'ringing',
-          conferenceSid: clientParticipant.conferenceSid,
+          // conferenceSid: clientParticipant.conferenceSid, // temporarily disabled
         },
         include: {
           familyMember: {
