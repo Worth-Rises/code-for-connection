@@ -1,6 +1,13 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useVideoCall, type ConnectionState, type CallPhase } from '../shared/useVideoCall.js';
 import { useBlurBackground } from '../shared/useBlurBackground.js';
+import micIcon from './icons/mic_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg';
+import micOffIcon from './icons/mic_off_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg';
+import videoCameraIcon from './icons/video_camera_front_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg';
+import videoCameraOffIcon from './icons/video_camera_front_off_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg';
+import blurOnIcon from './icons/blur_on_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg';
+import blurOffIcon from './icons/blur_off_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg';
+import phoneCancelIcon from './icons/phone_cancel_24dp_E3E3E3_FILL0_wght400_GRAD0_opsz24.svg';
 
 interface VideoCallRoomProps {
   callId: string;
@@ -244,7 +251,7 @@ export function VideoCallRoom({
           title={isMuted ? 'Unmute' : 'Mute'}
           style={controlBtnStyle(isMuted)}
         >
-          {isMuted ? '🔇' : '🎤'}
+          <img src={isMuted ? micOffIcon : micIcon} alt={isMuted ? 'Unmute' : 'Mute'} style={{ width: '24px', height: '24px' }} />
         </button>
 
         <button
@@ -253,7 +260,7 @@ export function VideoCallRoom({
           title={isCameraOff ? 'Turn on camera' : 'Turn off camera'}
           style={controlBtnStyle(isCameraOff)}
         >
-          {isCameraOff ? '📵' : '📹'}
+          <img src={isCameraOff ? videoCameraOffIcon : videoCameraIcon} alt={isCameraOff ? 'Turn on camera' : 'Turn off camera'} style={{ width: '24px', height: '24px' }} />
         </button>
 
         <button
@@ -261,9 +268,9 @@ export function VideoCallRoom({
           onClick={toggleBlur}
           title={isBlurOn ? 'Disable background blur' : 'Enable background blur'}
           disabled={blurLoading}
-          style={{ ...controlBtnStyle(isBlurOn), fontSize: 'clamp(10px, 2.5vw, 11px)', fontWeight: 700, color: '#e2e8f0' }}
+          style={controlBtnStyle(isBlurOn)}
         >
-          {blurLoading ? '...' : 'BG'}
+          <img src={isBlurOn ? blurOnIcon : blurOffIcon} alt={isBlurOn ? 'Disable background blur' : 'Enable background blur'} style={{ width: '24px', height: '24px' }} />
         </button>
 
         <button
@@ -275,7 +282,7 @@ export function VideoCallRoom({
             background: '#ef4444',
           }}
         >
-          📵
+          <img src={phoneCancelIcon} alt="End call" style={{ width: '24px', height: '24px' }} />
         </button>
       </div>
     </div>
