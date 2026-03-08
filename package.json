@@ -10,7 +10,7 @@
     "guilds/*"
   ],
   "scripts": {
-    "dev": "concurrently --kill-others \"npm run dev:services\" \"npm run dev:web\" \"npx ngrok http 3000\"",
+    "dev": "concurrently \"npm run dev:services\" \"npm run dev:web\"",
     "dev:services": "concurrently \"npm run dev:signaling\" \"npm run dev:api\"",
     "dev:api": "npm run dev -w @openconnect/api-gateway",
     "dev:signaling": "npm run dev -w @openconnect/signaling",
