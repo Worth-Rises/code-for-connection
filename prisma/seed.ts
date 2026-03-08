@@ -770,6 +770,14 @@ async function main() {
     },
   });
 
+  await prisma.systemConfiguration.create({
+    data: {
+      key: 'announcement_include_name',
+      value: 'YES',
+      description: 'Controls whether to include the person\'s name in the announcement: YES, NO',
+    },
+  });
+
   console.log('✅ Seed completed successfully!');
   console.log('');
   console.log('📋 Login Credentials:');
