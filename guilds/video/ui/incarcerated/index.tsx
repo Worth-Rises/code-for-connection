@@ -47,27 +47,29 @@ function IncarceratedVideoHome() {
           <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-6 text-center lg:text-left">
             Scheduled Calls
           </h2>
-          <ScheduledCallsList
-            onJoinCall={(callId, scheduledEnd) => {
-              // First POST to join the call to mark it in_progress, then open the room
-              fetch(`/api/video/join/${callId}`, {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${localStorage.getItem('token') ?? ''}`,
-                  'Content-Type': 'application/json',
-                },
-              })
-                .then((r) => r.json())
-                .then((body) => {
-                  if (body.success) {
-                    setActiveCall({ callId, scheduledEnd: body.data.scheduledEnd });
-                  } else {
-                    alert(`Cannot join: ${body.error?.message ?? 'Unknown error'}`);
-                  }
+          <div className="overflow-y-auto max-h-[70vh] rounded-xl border border-white/10 bg-white/5 p-4">
+            <ScheduledCallsList
+              onJoinCall={(callId, scheduledEnd) => {
+                // First POST to join the call to mark it in_progress, then open the room
+                fetch(`/api/video/join/${callId}`, {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${localStorage.getItem('token') ?? ''}`,
+                    'Content-Type': 'application/json',
+                  },
                 })
-                .catch(() => alert('Failed to join call. Please try again.'));
-            }}
-          />
+                  .then((r) => r.json())
+                  .then((body) => {
+                    if (body.success) {
+                      setActiveCall({ callId, scheduledEnd: body.data.scheduledEnd });
+                    } else {
+                      alert(`Cannot join: ${body.error?.message ?? 'Unknown error'}`);
+                    }
+                  })
+                  .catch(() => alert('Failed to join call. Please try again.'));
+              }}
+            />
+          </div>
         </div>
 
         {/* Right column — past calls */}
@@ -75,7 +77,9 @@ function IncarceratedVideoHome() {
           <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-6 text-center lg:text-left">
             Past Calls
           </h2>
-          <PastCallsList />
+          <div className="overflow-y-auto max-h-[70vh] rounded-xl border border-white/10 bg-white/5 p-4">
+            <PastCallsList />
+          </div>
         </div>
       </div>
     </div>
