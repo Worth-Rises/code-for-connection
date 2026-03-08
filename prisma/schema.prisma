@@ -104,6 +104,12 @@ model IncarceratedPerson {
   releasedAt    DateTime?    @map("released_at")
   createdAt     DateTime     @default(now()) @map("created_at")
 
+  // Short audio of incarcerated person saying their name (for call announcements).
+  // Facility staff must approve; auto-approved for now.
+  nameAudioBytes       Bytes?   @db.ByteA @map("name_audio_bytes")
+  nameAudioContentType String?  @map("name_audio_content_type")
+  nameAudioApproved    Boolean  @default(false) @map("name_audio_approved")
+
   agency           Agency            @relation(fields: [agencyId], references: [id])
   facility         Facility          @relation(fields: [facilityId], references: [id])
   housingUnit      HousingUnit       @relation(fields: [housingUnitId], references: [id])

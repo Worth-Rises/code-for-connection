@@ -1,9 +1,10 @@
 import React, { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { LoadingSpinner } from '@openconnect/ui';
 import IncarceratedLayout from './layouts/IncarceratedLayout';
 import PinLoginPage from './pages/PinLoginPage';
+import RecordNamePage from './pages/RecordNamePage';
 
 const VoiceIncarcerated = lazy(() => import('../../../guilds/voice/ui/incarcerated'));
 const VideoIncarcerated = lazy(() => import('../../../guilds/video/ui/incarcerated'));
@@ -19,6 +20,19 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     );
   }
   return user ? <>{children}</> : <Navigate to="/login" replace />;
+}
+
+/** When needsNameRecording, show record-name flow; otherwise show main incarcerated layout. */
+function IncarceratedGate() {
+  const { needsNameRecording } = useAuth();
+  if (needsNameRecording) {
+    return <RecordNamePage />;
+  }
+  return (
+    <IncarceratedLayout>
+      <Outlet />
+    </IncarceratedLayout>
+  );
 }
 
 export default function App() {
@@ -42,7 +56,7 @@ export default function App() {
             path="/incarcerated"
             element={
               <RequireAuth>
-                <IncarceratedLayout />
+                <IncarceratedGate />
               </RequireAuth>
             }
           >
