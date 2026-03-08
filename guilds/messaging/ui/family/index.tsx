@@ -4,7 +4,7 @@ import { Button, Card } from '@openconnect/ui';
 
 interface Conversation {
   id: string;
-  incarceratedPerson: { firstName: string; lastName: string };
+  incarceratedPerson: { id: string; firstName: string; lastName: string };
   messages: { id: string; body: string; senderType: 'incarcerated' | 'family' }[];
 }
 
@@ -32,11 +32,19 @@ interface PendingContact {
   incarceratedPerson: { id: string; firstName: string; lastName: string; externalId: string | null };
 }
 
+interface Attachment {
+  id: string;
+  fileUrl: string;
+  fileType: string;
+  status: string;
+}
+
 interface Message {
   id: string;
   senderType: 'incarcerated' | 'family';
   body: string;
   status: string;
+  attachments?: Attachment[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -164,19 +172,21 @@ function ConversationList() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
+      <div className="flex items-center justify-end">
         <Button size="sm" onClick={openNew}>New Message</Button>
       </div>
 
       {showNew && (
         <Card padding="md">
           <p className="text-sm font-medium text-gray-700 mb-3">Select someone to message:</p>
-          {contacts.length === 0 ? (
-            <p className="text-sm text-gray-500">No approved contacts found.</p>
-          ) : (
-            <div className="space-y-2">
-              {contacts.map(c => (
+          {(() => {
+            const existingIds = new Set(conversations.map(c => c.incarceratedPerson.id));
+            const newContacts = contacts.filter(c => !existingIds.has(c.incarceratedPerson.id));
+            return newContacts.length === 0 ? (
+              <p className="text-sm text-gray-500">No new contacts to message.</p>
+            ) : (
+              <div className="space-y-2">
+                {newContacts.map(c => (
                 <button
                   key={c.id}
                   onClick={() => startConversation(c.incarceratedPerson.id)}
@@ -186,7 +196,8 @@ function ConversationList() {
                 </button>
               ))}
             </div>
-          )}
+            );
+          })()}
           <div className="mt-4 pt-4 border-t border-gray-200">
             <button
               className="text-sm text-blue-600 hover:text-blue-800 font-medium"
@@ -245,7 +256,7 @@ function ConversationList() {
       )}
 
       {conversations.length > 0 && (
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Approved Contacts</h2>
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Recent Conversations</h2>
       )}
 
       {conversations.length === 0 && !showNew ? (
@@ -274,11 +285,6 @@ function ConversationList() {
                         <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
                       )}
                     </div>
-                    {conv.messages[0] && (
-                      <p className={`text-sm mt-1 truncate ${unread.has(conv.id) ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
-                        {conv.messages[0].body}
-                      </p>
-                    )}
                   </div>
                   <span className="text-gray-400 text-lg ml-2">›</span>
                 </div>
@@ -322,6 +328,9 @@ function ConversationThread() {
   const [sending, setSending] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [oldestPage, setOldestPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const navigate = useNavigate();
@@ -329,6 +338,12 @@ function ConversationThread() {
   const containerRef = useRef<HTMLDivElement>(null);
   const prevTotalRef = useRef(0);
   const shouldScrollRef = useRef(true);
+
+  // Mark messages as read when conversation opens
+  useEffect(() => {
+    if (!conversationId) return;
+    apiFetch(`/messaging/conversations/${conversationId}/read`, { method: 'PATCH' });
+  }, [conversationId]);
 
   // Initial load — fetch page info then jump to most recent page
   useEffect(() => {
@@ -420,16 +435,34 @@ function ConversationThread() {
   };
 
   const send = async () => {
-    if (!text.trim() || !conversationId) return;
+    if (!text.trim() && selectedFiles.length === 0) return;
+    if (!conversationId) return;
     setSending(true);
-    const data = await apiFetch('/messaging/send', {
-      method: 'POST',
-      body: JSON.stringify({ conversationId, body: text }),
-    });
+    let data;
+    if (selectedFiles.length > 0) {
+      const token = localStorage.getItem('token');
+      const fd = new FormData();
+      fd.append('conversationId', conversationId);
+      if (text.trim()) fd.append('body', text.trim());
+      selectedFiles.forEach(f => fd.append('images', f));
+      const res = await fetch('/api/messaging/send', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token ?? ''}` },
+        body: fd,
+      });
+      data = await res.json();
+    } else {
+      data = await apiFetch('/messaging/send', {
+        method: 'POST',
+        body: JSON.stringify({ conversationId, body: text }),
+      });
+    }
     if (data.success) {
       shouldScrollRef.current = true;
       setMessages(prev => [...prev, data.data.message]);
       setText('');
+      setSelectedFiles([]);
+      setPreviewUrls([]);
     }
     setSending(false);
   };
@@ -470,7 +503,19 @@ function ConversationThread() {
                     : 'bg-gray-100 text-gray-800'
                 }`}
               >
-                <p>{msg.body}</p>
+                {msg.attachments && msg.attachments.length > 0 && (
+                  <div className="mt-1 space-y-1">
+                    {msg.attachments.map(att => (
+                      <img
+                        key={att.id}
+                        src={att.fileUrl}
+                        alt="attachment"
+                        className="max-w-full rounded-lg"
+                      />
+                    ))}
+                  </div>
+                )}
+                {msg.body && <p>{msg.body}</p>}
                 <p className={`text-xs mt-1 ${msg.senderType === 'family' ? 'text-blue-200' : 'text-gray-400'}`}>
                   {msg.status === 'pending_review' && '🕐 Pending review'}
                   {msg.status === 'approved' && '✓ Approved'}
@@ -483,23 +528,71 @@ function ConversationThread() {
           ))}
           <div ref={bottomRef} />
         </div>
-        <div className="border-t p-3 flex gap-2 items-end">
-          <textarea
-            className="flex-1 border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-            rows={2}
-            placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
-            value={text}
-            onChange={e => setText(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-          />
-          <Button onClick={send} loading={sending} disabled={!text.trim()}>
-            Send
-          </Button>
+        <div className="border-t">
+          {selectedFiles.length > 0 && (
+            <div className="px-3 pt-3 flex flex-wrap gap-2">
+              {selectedFiles.map((f, i) => (
+                <div key={i} className="relative">
+                  <img
+                    src={previewUrls[i]}
+                    alt={f.name}
+                    className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedFiles(prev => prev.filter((_, j) => j !== i));
+                      setPreviewUrls(prev => prev.filter((_, j) => j !== i));
+                    }}
+                    className="absolute -top-5 -right-5 bg-red-500 text-white rounded-full flex items-center justify-center"
+                    style={{ width: 16, height: 16, fontSize: 16 }}
+                  >×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="p-3 flex gap-2 items-end">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={e => {
+                const files = Array.from(e.target.files ?? []);
+                console.log('Files selected:', files.map(f => f.name));
+                const urls = files.map(f => URL.createObjectURL(f));
+                setSelectedFiles(prev => [...prev, ...files]);
+                setPreviewUrls(prev => [...prev, ...urls]);
+                e.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="text-gray-400 hover:text-gray-600 p-1 shrink-0"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </button>
+            <textarea
+              className="flex-1 border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={2}
+              placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+            />
+            <Button onClick={send} loading={sending} disabled={!text.trim() && selectedFiles.length === 0}>
+              Send
+            </Button>
+          </div>
         </div>
       </Card>
     </div>

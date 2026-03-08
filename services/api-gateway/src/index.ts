@@ -30,6 +30,7 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() })
 })
 
+app.use("/uploads", express.static("uploads"))
 app.use("/api/auth", authRouter)
 app.use("/api/admin", adminRouter)
 app.use("/api/messaging", messagingRouter)

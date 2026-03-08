@@ -94,7 +94,7 @@ messagingRouter.post(
 
       const facilityId = conversation.incarceratedPerson.facilityId
       const matchedKeyword = await screenMessage(bodyText, facilityId)
-      const status = matchedKeyword ? "pending_review" : "sent"
+      const status = (matchedKeyword || hasFiles) ? "pending_review" : "sent"
 
       const message = await prisma.message.create({
         data: {
@@ -1000,6 +1000,40 @@ messagingRouter.post(
   },
 );
 
+// Mark approved messages in a conversation as read
+messagingRouter.patch(
+  "/conversations/:conversationId/read",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const { conversationId } = req.params
+      const user = req.user!
+
+      // Only mark messages sent by the other party
+      const senderType = user.role === "family" ? "incarcerated" : "family"
+
+      await prisma.message.updateMany({
+        where: {
+          conversationId,
+          senderType,
+          status: { in: ["sent", "delivered"] },
+        },
+        data: { status: "read", readAt: new Date() },
+      })
+
+      res.json(createSuccessResponse({ success: true }))
+    } catch (error) {
+      console.error("Error marking messages as read:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to mark messages as read",
+        }),
+      )
+    }
+  },
+)
+
 // Get or create a conversation between an incarcerated person and family member
 messagingRouter.post(
   "/conversations",
@@ -1100,6 +1134,7 @@ messagingRouter.get(
         prisma.message.findMany({
           where: { conversationId },
           orderBy: { createdAt: "asc" },
+          include: { attachments: true },
           skip,
           take,
         }),

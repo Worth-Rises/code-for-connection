@@ -379,7 +379,19 @@ function ConversationThread() {
                         : "bg-gray-100 text-gray-800"
                     }`}
                   >
-                    <p>{msg.body}</p>
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div className="mb-1 space-y-1">
+                        {msg.attachments.map((att, i) => (
+                          <img
+                            key={i}
+                            src={att.fileUrl}
+                            alt="attachment"
+                            className="max-w-full rounded-lg"
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {msg.body && <p>{msg.body}</p>}
                     <div className="flex items-center justify-between text-xs mt-1">
                       <p
                         className={`${msg.senderType === "incarcerated" ? "text-blue-200" : "text-gray-400"}`}
