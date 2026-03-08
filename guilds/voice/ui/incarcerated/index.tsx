@@ -4,10 +4,7 @@ import { Card, Button, Modal, LoadingSpinner } from '@openconnect/ui';
 import { Device, Call } from '@twilio/voice-sdk';
 
 const API_BASE = '/api';
-
-// ==========================================
-// Types
-// ==========================================
+const MAX_CALL_DURATION_SECONDS = 70; // 30 minutes
 
 interface FamilyMemberInfo {
   id: string;
@@ -123,9 +120,16 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
   const twilioCallRef = useRef<Call | null>(null);
   const callIdRef = useRef<string | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const warningAudioRef = useRef<HTMLAudioElement | null>(null);
+  const warningPlayedRef = useRef(false);
 
   // Keep callIdRef in sync with callId state
   useEffect(() => { callIdRef.current = callId; }, [callId]);
+
+  // Prepare 1-minute warning audio (provide this asset in public/sounds)
+  useEffect(() => {
+    warningAudioRef.current = new Audio('/sounds/one-minute-warning.mp3');
+  }, []);
 
   // Listen for the incoming conference call from Twilio and auto-accept
   useEffect(() => {
@@ -265,18 +269,6 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contact.id]);
 
-  // Timer
-  useEffect(() => {
-    if (callState === 'connected') {
-      timerRef.current = setInterval(() => {
-        setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-      }, 1000);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [callState]);
-
   const handleEndCall = useCallback(async () => {
     if (timerRef.current) clearInterval(timerRef.current);
 
@@ -307,6 +299,38 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
 
     setTimeout(onCallEnded, 1500);
   }, [callId, onCallEnded]);
+
+  // Timer + auto-end at max duration
+  useEffect(() => {
+    if (callState === 'connected') {
+      timerRef.current = setInterval(() => {
+        const e = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        setElapsed(e);
+
+        if (e >= MAX_CALL_DURATION_SECONDS) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          handleEndCall();
+        }
+      }, 1000);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [callState, handleEndCall]);
+
+  // 1-minute remaining audio warning
+  useEffect(() => {
+    if (callState !== 'connected') return;
+
+    const remaining = MAX_CALL_DURATION_SECONDS - elapsed;
+
+    if (!warningPlayedRef.current && remaining === 60) {
+      warningPlayedRef.current = true;
+      warningAudioRef.current?.play().catch(() => {
+        // Ignore autoplay or missing-file errors
+      });
+    }
+  }, [elapsed, callState]);
 
   const handleToggleMute = useCallback(() => {
     if (twilioCallRef.current) {
@@ -375,7 +399,22 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
               <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse" />
               <span className="text-green-300 text-lg">Connected</span>
             </div>
-            <span className="text-5xl font-mono font-light tracking-wider text-white">{formatDuration(elapsed)}</span>
+            <span className="text-5xl font-mono font-light tracking-wider text-white tabular-nums">
+              {formatDuration(elapsed)}
+              <span className="text-2xl text-blue-200/80 ml-2">
+                / {formatDuration(MAX_CALL_DURATION_SECONDS)}
+              </span>
+            </span>
+            {elapsed >= MAX_CALL_DURATION_SECONDS - 60 && elapsed < MAX_CALL_DURATION_SECONDS && (
+              <p className="text-amber-400 text-sm font-medium mt-2">
+                1 minute remaining
+              </p>
+            )}
+            {elapsed >= MAX_CALL_DURATION_SECONDS && (
+              <p className="text-red-400 text-sm font-medium mt-2">
+                Time limit reached
+              </p>
+            )}
           </div>
         )}
 
