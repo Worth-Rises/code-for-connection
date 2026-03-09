@@ -16,21 +16,22 @@ import {
   statusIcon,
 } from "../shared";
 import { ApprovedUserContact, VoiceCallRecord } from "../types";
-import { useFetchData } from "../hooks";
+import { useFetch } from "../hooks";
 
 function VoiceHome() {
   const {
     data: callHistoryData,
     isLoading: loadingHistory,
     error: callHistoryError,
-  } = useFetchData<VoiceCallRecord[]>(
-    `${API_BASE}/voice/call-logs?pageSize=10`,
+  } = useFetch<VoiceCallRecord[]>(
+    `${API_BASE}/call-logs?pageSize=10`,
   );
+
   const {
     data: contactsData,
     isLoading: loadingContacts,
     error: contactsError,
-  } = useFetchData<ApprovedUserContact[]>(`${API_BASE}/voice/contacts  `);
+  } = useFetch<ApprovedUserContact[]>(`${API_BASE}/contacts`);
 
   return (
     <Layout>

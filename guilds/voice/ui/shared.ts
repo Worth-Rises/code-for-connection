@@ -1,4 +1,4 @@
-export const API_BASE = "/api";
+export const API_BASE = "/api/voice";
 
 export function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
