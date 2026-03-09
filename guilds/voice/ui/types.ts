@@ -1,5 +1,5 @@
 
-interface FamilyMemberInfo {
+export interface FamilyMemberInfo {
   id: string;
   firstName: string;
   lastName: string;

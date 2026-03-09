@@ -1,24 +1,18 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Routes, Route } from 'react-router-dom';
-import { Card, Button, Modal, LoadingSpinner } from '@openconnect/ui';
-import { Device, Call } from '@twilio/voice-sdk';
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Routes, Route } from "react-router-dom";
+import { Card, CardContent, CardHeader, Button, Modal, LoadingSpinner } from "@openconnect/ui";
+import { Device, Call } from "@twilio/voice-sdk";
+import {
+  formatDuration,
+  statusIcon,
+  formatDate,
+  statusLabel,
+  API_BASE
+} from "../shared";
+import { useAuthHeader, useFetch } from "../hooks";
+import { ApprovedContact, FamilyMemberInfo} from "../types";
 
-const API_BASE = '/api';
 const MAX_CALL_DURATION_SECONDS = 70; // 30 minutes
-
-interface FamilyMemberInfo {
-  id: string;
-  firstName: string;
-  lastName: string;
-  phone: string;
-}
-
-interface ApprovedContact {
-  id: string;
-  relationship: string;
-  isAttorney: boolean;
-  familyMember: FamilyMemberInfo;
-}
 
 interface VoiceCallRecord {
   id: string;
@@ -39,63 +33,15 @@ interface VoiceCallRecord {
 // Helpers
 // ==========================================
 
-function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem('token');
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
 function formatPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
+  const digits = phone.replace(/\D/g, "");
   if (digits.length === 10) {
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
-  if (digits.length === 11 && digits[0] === '1') {
+  if (digits.length === 11 && digits[0] === "1") {
     return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
   }
   return phone;
-}
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  const now = new Date();
-  const diff = now.getTime() - d.getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-}
-
-function statusIcon(status: string): string {
-  switch (status) {
-    case 'completed': return '✅';
-    case 'missed': return '❌';
-    case 'terminated_by_admin': return '🚫';
-    case 'connected': return '🟢';
-    case 'ringing': return '📞';
-    default: return '📞';
-  }
-}
-
-function statusLabel(status: string): string {
-  switch (status) {
-    case 'completed': return 'Completed';
-    case 'missed': return 'Missed';
-    case 'terminated_by_admin': return 'Terminated';
-    case 'connected': return 'Connected';
-    case 'ringing': return 'Ringing';
-    default: return status;
-  }
 }
 
 // ==========================================
@@ -108,12 +54,13 @@ interface ActiveCallProps {
   onCallEnded: () => void;
 }
 
-
 function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
-  const [callState, setCallState] = useState<'connecting' | 'ringing' | 'connected' | 'ended' | 'error'>('connecting');
+  const [callState, setCallState] = useState<
+    "connecting" | "ringing" | "connected" | "ended" | "error"
+  >("connecting");
   const [callId, setCallId] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState("");
   const [isMuted, setIsMuted] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(Date.now());
@@ -123,12 +70,21 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
   const warningAudioRef = useRef<HTMLAudioElement | null>(null);
   const warningPlayedRef = useRef(false);
 
+  const { authHeader } = useAuthHeader();
+
+  const headers = { 
+    "Content-Type": "application/json",
+    ...authHeader,
+  } 
+
   // Keep callIdRef in sync with callId state
-  useEffect(() => { callIdRef.current = callId; }, [callId]);
+  useEffect(() => {
+    callIdRef.current = callId;
+  }, [callId]);
 
   // Prepare 1-minute warning audio (provide this asset in public/sounds)
   useEffect(() => {
-    warningAudioRef.current = new Audio('/sounds/one-minute-warning.mp3');
+    warningAudioRef.current = new Audio("/sounds/one-minute-warning.mp3");
   }, []);
 
   // Listen for the incoming conference call from Twilio and auto-accept
@@ -136,39 +92,58 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
     if (!device) return;
 
     const handleIncoming = (incomingCall: Call) => {
-      console.log('[voice-ui] Incoming conference call received, auto-accepting');
+      console.log(
+        "[voice-ui] Incoming conference call received, auto-accepting",
+      );
       incomingCall.accept();
       twilioCallRef.current = incomingCall;
 
-      incomingCall.on('disconnect', () => {
-        console.log('[voice-ui] Twilio call disconnected (remote hangup or conference ended)');
+      incomingCall.on("disconnect", () => {
+        console.log(
+          "[voice-ui] Twilio call disconnected (remote hangup or conference ended)",
+        );
         // Release the mic/speakers
-        if (device) { try { device.disconnectAll(); } catch (e) { /* ignore */ } }
+        if (device) {
+          try {
+            device.disconnectAll();
+          } catch (e) {
+            /* ignore */
+          }
+        }
         // Notify the server so DB status is updated (fallback for when no PUBLIC_URL callback)
         const cid = callIdRef.current;
         if (cid) {
-          fetch(`${API_BASE}/voice/users/end-call/${cid}?endedBy=receiver`, {
-            method: 'POST',
-            headers: getAuthHeaders(),
-          }).catch(() => { /* best effort */ });
+          fetch(`${API_BASE}/users/end-call/${cid}?endedBy=receiver`, {
+            method: "POST",
+            headers,
+          }).catch(() => {
+            /* best effort */
+          });
         }
         // Stop polling if still active
-        if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
-        setCallState('ended');
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+        setCallState("ended");
       });
 
-      incomingCall.on('error', (err: Error) => {
-        console.error('[voice-ui] Twilio call error:', err);
-        setCallState('error');
-        setErrorMsg(err.message || 'Call connection error');
+      incomingCall.on("error", (err: Error) => {
+        console.error("[voice-ui] Twilio call error:", err);
+        setCallState("error");
+        setErrorMsg(err.message || "Call connection error");
       });
     };
 
-    device.on('incoming', handleIncoming);
+    device.on("incoming", handleIncoming);
     return () => {
-      device.removeListener('incoming', handleIncoming);
+      device.removeListener("incoming", handleIncoming);
       // Ensure mic is released when this screen unmounts
-      try { device.disconnectAll(); } catch (e) { /* ignore */ }
+      try {
+        device.disconnectAll();
+      } catch (e) {
+        /* ignore */
+      }
     };
   }, [device]);
 
@@ -182,49 +157,56 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
 
     async function startCall() {
       try {
-        setCallState('connecting');
+        setCallState("connecting");
 
         // Wait up to 5 seconds for the device to be ready
         let d = deviceRef.current;
         for (let i = 0; i < 10 && !d; i++) {
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise((r) => setTimeout(r, 500));
           if (abortController.signal.aborted) return;
           d = deviceRef.current;
         }
         if (!d) {
-          setCallState('error');
-          setErrorMsg('Voice device not ready. Please refresh and try again.');
+          setCallState("error");
+          setErrorMsg("Voice device not ready. Please refresh and try again.");
           return;
         }
 
-        console.log('[voice-ui] Initiating call for contact', contact.id);
+        console.log("[voice-ui] Initiating call for contact", contact.id);
 
         // Tell the backend to create the conference and add both participants
-        const resp = await fetch(`${API_BASE}/voice/users/initiate-call`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ contactId: contact.id }),
+        console.log(contact.id);
+        const resp = await fetch(`${API_BASE}/users/initiate-call`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ contactId: contact.id}),
           signal: abortController.signal,
         });
-        const data = await resp.json() as { success: boolean; data?: { id: string; conferenceName: string }; error?: { message: string } };
+        const data = (await resp.json()) as {
+          success: boolean;
+          data?: { id: string; conferenceName: string };
+          error?: { message: string };
+        };
 
         if (abortController.signal.aborted) return;
 
         if (!resp.ok || !data.success) {
           // 409 = server dedup caught a duplicate request, first call is already in progress
           if (resp.status === 409) {
-            console.log('[voice-ui] Duplicate call blocked by server (409), ignoring');
+            console.log(
+              "[voice-ui] Duplicate call blocked by server (409), ignoring",
+            );
             return;
           }
-          setCallState('error');
-          setErrorMsg(data.error?.message || 'Failed to connect call');
+          setCallState("error");
+          setErrorMsg(data.error?.message || "Failed to connect call");
           return;
         }
 
         const newCallId = data.data!.id;
         setCallId(newCallId);
         // Tablet is in conference, phone is ringing — show Ringing
-        setCallState('ringing');
+        setCallState("ringing");
 
         // Poll for phone answer
         const pollInterval = setInterval(async () => {
@@ -234,15 +216,21 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
             return;
           }
           try {
-            const statusResp = await fetch(`${API_BASE}/voice/users/call-status/${newCallId}`, {
-              headers: getAuthHeaders(),
-              signal: abortController.signal,
-            });
-            const statusData = await statusResp.json() as { success: boolean; data?: { phoneAnswered: boolean } };
+            const statusResp = await fetch(
+              `${API_BASE}/users/call-status/${newCallId}`,
+              {
+                headers,
+                signal: abortController.signal,
+              },
+            );
+            const statusData = (await statusResp.json()) as {
+              success: boolean;
+              data?: { phoneAnswered: boolean };
+            };
             if (statusData.success && statusData.data?.phoneAnswered) {
               clearInterval(pollInterval);
               pollIntervalRef.current = null;
-              setCallState('connected');
+              setCallState("connected");
               startTimeRef.current = Date.now();
             }
           } catch {
@@ -252,20 +240,22 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
         pollIntervalRef.current = pollInterval;
 
         // Store the interval so cleanup can clear it
-        abortController.signal.addEventListener('abort', () => {
+        abortController.signal.addEventListener("abort", () => {
           clearInterval(pollInterval);
           pollIntervalRef.current = null;
         });
       } catch (err) {
         // Ignore abort errors
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        setCallState('error');
-        setErrorMsg('Network error — could not reach the server');
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setCallState("error");
+        setErrorMsg("Network error — could not reach the server");
       }
     }
 
     startCall();
-    return () => { abortController.abort(); };
+    return () => {
+      abortController.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contact.id]);
 
@@ -274,35 +264,43 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
 
     // Disconnect the browser Twilio call
     if (twilioCallRef.current) {
-      try { twilioCallRef.current.disconnect(); } catch (e) { /* ignore */ }
+      try {
+        twilioCallRef.current.disconnect();
+      } catch (e) {
+        /* ignore */
+      }
       twilioCallRef.current = null;
     }
 
     // Also try device.disconnectAll() as a fallback
     if (device) {
-      try { device.disconnectAll(); } catch (e) { /* ignore */ }
+      try {
+        device.disconnectAll();
+      } catch (e) {
+        /* ignore */
+      }
     }
 
     // Tell the backend to end both legs of the conference
     if (callId) {
       try {
-        await fetch(`${API_BASE}/voice/users/end-call/${callId}`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
+        await fetch(`${API_BASE}/users/end-call/${callId}`, {
+          method: "POST",
+          headers,
         });
       } catch {
         // Best effort
       }
     }
 
-    setCallState('ended');
+    setCallState("ended");
 
     setTimeout(onCallEnded, 1500);
   }, [callId, onCallEnded]);
 
   // Timer + auto-end at max duration
   useEffect(() => {
-    if (callState === 'connected') {
+    if (callState === "connected") {
       timerRef.current = setInterval(() => {
         const e = Math.floor((Date.now() - startTimeRef.current) / 1000);
         setElapsed(e);
@@ -320,7 +318,7 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
 
   // 1-minute remaining audio warning
   useEffect(() => {
-    if (callState !== 'connected') return;
+    if (callState !== "connected") return;
 
     const remaining = MAX_CALL_DURATION_SECONDS - elapsed;
 
@@ -343,21 +341,32 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
   const contactName = `${contact.familyMember.firstName} ${contact.familyMember.lastName}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center"
+    <div
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center"
       style={{
-        background: 'linear-gradient(135deg, #1e3a5f 0%, #0f1f3a 50%, #0a1628 100%)',
+        background:
+          "linear-gradient(135deg, #1e3a5f 0%, #0f1f3a 50%, #0a1628 100%)",
       }}
     >
       {/* Animated background rings */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
-        {callState === 'connected' && (
+        {callState === "connected" && (
           <>
-            <div className="absolute w-64 h-64 rounded-full border border-blue-400 opacity-20 animate-ping" style={{ animationDuration: '3s' }} />
-            <div className="absolute w-80 h-80 rounded-full border border-blue-300 opacity-10 animate-ping" style={{ animationDuration: '4s' }} />
+            <div
+              className="absolute w-64 h-64 rounded-full border border-blue-400 opacity-20 animate-ping"
+              style={{ animationDuration: "3s" }}
+            />
+            <div
+              className="absolute w-80 h-80 rounded-full border border-blue-300 opacity-10 animate-ping"
+              style={{ animationDuration: "4s" }}
+            />
           </>
         )}
-        {(callState === 'connecting' || callState === 'ringing') && (
-          <div className="absolute w-48 h-48 rounded-full border-2 border-yellow-400 opacity-30 animate-ping" style={{ animationDuration: '1.5s' }} />
+        {(callState === "connecting" || callState === "ringing") && (
+          <div
+            className="absolute w-48 h-48 rounded-full border-2 border-yellow-400 opacity-30 animate-ping"
+            style={{ animationDuration: "1.5s" }}
+          />
         )}
       </div>
 
@@ -365,7 +374,8 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
       <div className="relative z-10 flex flex-col items-center text-white px-6">
         {/* Avatar */}
         <div className="w-28 h-28 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-5xl font-bold shadow-2xl mb-6 border-4 border-white/20">
-          {contact.familyMember.firstName[0]}{contact.familyMember.lastName[0]}
+          {contact.familyMember.firstName[0]}
+          {contact.familyMember.lastName[0]}
         </div>
 
         {/* Name & Relationship */}
@@ -373,7 +383,7 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
         <p className="text-blue-200 text-2xl font-medium mb-8">{contact.relationship}</p>
 
         {/* Status */}
-        {callState === 'connecting' && (
+        {callState === "connecting" && (
           <div className="flex flex-col items-center mb-10">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
@@ -383,11 +393,13 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
           </div>
         )}
 
-        {callState === 'ringing' && (
+        {callState === "ringing" && (
           <div className="flex flex-col items-center mb-10">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
-              <span className="text-yellow-300 text-xl font-medium">Ringing…</span>
+              <span className="text-yellow-300 text-xl font-medium">
+                Ringing…
+              </span>
             </div>
           </div>
         )}
@@ -431,14 +443,16 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
           );
         })()}
 
-        {callState === 'ended' && (
+        {callState === "ended" && (
           <div className="flex flex-col items-center mb-10">
             <span className="text-gray-300 text-xl mb-2">Call Ended</span>
-            <span className="text-2xl font-mono text-gray-400">{formatDuration(elapsed)}</span>
+            <span className="text-2xl font-mono text-gray-400">
+              {formatDuration(elapsed)}
+            </span>
           </div>
         )}
 
-        {callState === 'error' && (
+        {callState === "error" && (
           <div className="flex flex-col items-center mb-10 max-w-sm">
             <div className="bg-red-500/20 border border-red-400/30 rounded-xl px-6 py-4 text-center">
               <span className="text-red-300 text-lg block mb-1">Couldn't connect</span>
@@ -482,7 +496,9 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
             </button>
           )}
 
-          {(callState === 'connecting' || callState === 'ringing' || callState === 'connected') && (
+          {(callState === "connecting" ||
+            callState === "ringing" ||
+            callState === "connected") && (
             <button
               onClick={handleEndCall}
               className="flex flex-col items-center gap-2 group"
@@ -496,7 +512,7 @@ function ActiveCallScreen({ contact, device, onCallEnded }: ActiveCallProps) {
             </button>
           )}
 
-          {(callState === 'ended' || callState === 'error') && (
+          {(callState === "ended" || callState === "error") && (
             <button
               onClick={onCallEnded}
               className="flex flex-col items-center gap-2 group"
@@ -542,9 +558,15 @@ function ContactCard({ contact, onCall, disabled }: ContactCardProps) {
           </h3>
           <p className="text-sm text-gray-500">
             {relationship}
-            {isAttorney && <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">Attorney</span>}
+            {isAttorney && (
+              <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                Attorney
+              </span>
+            )}
           </p>
-          <p className="text-sm text-gray-400 mt-0.5">{formatPhone(familyMember.phone)}</p>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {formatPhone(familyMember.phone)}
+          </p>
         </div>
       </div>
       <button
@@ -570,7 +592,7 @@ interface CallHistoryItemProps {
 function CallHistoryItem({ call }: CallHistoryItemProps) {
   const name = call.familyMember
     ? `${call.familyMember.firstName} ${call.familyMember.lastName}`
-    : 'Unknown';
+    : "Unknown";
 
   return (
     <div className="flex items-center justify-between py-3 px-4 border-b border-gray-100 last:border-0">
@@ -583,7 +605,9 @@ function CallHistoryItem({ call }: CallHistoryItemProps) {
       </div>
       <div className="text-right">
         <p className="text-sm text-gray-600">
-          {call.durationSeconds != null ? formatDuration(call.durationSeconds) : '—'}
+          {call.durationSeconds != null
+            ? formatDuration(call.durationSeconds)
+            : "—"}
         </p>
         <p className="text-xs text-gray-400">{statusLabel(call.status)}</p>
       </div>
@@ -596,17 +620,40 @@ function CallHistoryItem({ call }: CallHistoryItemProps) {
 // ==========================================
 
 function VoiceHome() {
-  const [contacts, setContacts] = useState<ApprovedContact[]>([]);
-  const [callHistory, setCallHistory] = useState<VoiceCallRecord[]>([]);
-  const [loadingContacts, setLoadingContacts] = useState(true);
-  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  const {
+      data: contactsData,
+      isLoading: loadingContacts,
+      error: contactsError,
+    } = useFetch<ApprovedContact[]>(`${API_BASE}/users/contacts`);
+
+    const {
+      data: hotlinesData,
+      isLoading: loadingHotlines,
+      error: hotlinesError,
+    } = useFetch<FamilyMemberInfo[]>(`${API_BASE}/users/hotlines`);
+
+    const {
+      data: callHistoryData,
+      isLoading: loadingHistory,
+      error: callHistoryError,
+      refetch: refetchCallHistory,
+    } = useFetch<VoiceCallRecord[]>(
+      `${API_BASE}/call-logs?pageSize=10`,
+    );
+
   const [activeCall, setActiveCall] = useState<ApprovedContact | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(""); // Ensure we're authenticated and have the token available
+  const { authHeader } = useAuthHeader();
+    const headers = { 
+    "Content-Type": "application/json",
+    ...authHeader,
+  } 
 
   // Twilio Device state
   const [twilioDevice, setTwilioDevice] = useState<Device | null>(null);
   const [deviceReady, setDeviceReady] = useState(false);
-  const [deviceError, setDeviceError] = useState('');
+  const [deviceError, setDeviceError] = useState("");
 
   // Initialize Twilio Device with access token (incoming calls only, no TwiML App)
   useEffect(() => {
@@ -614,15 +661,15 @@ function VoiceHome() {
 
     async function initDevice() {
       try {
-        const resp = await fetch(`${API_BASE}/voice/users/token`, {
-          headers: getAuthHeaders(),
+        const resp = await fetch(`${API_BASE}/users/token`, {
+          headers,
         });
         const data = await resp.json();
 
         if (cancelled) return;
 
         if (!resp.ok || !data.success) {
-          setDeviceError('Could not initialize voice — token error');
+          setDeviceError("Could not initialize voice — token error");
           return;
         }
 
@@ -631,19 +678,19 @@ function VoiceHome() {
           logLevel: 1,
         });
 
-        device.on('registered', () => {
+        device.on("registered", () => {
           if (!cancelled) setDeviceReady(true);
         });
 
-        device.on('error', (err: Error) => {
-          console.error('Twilio Device error:', err);
+        device.on("error", (err: Error) => {
+          console.error("Twilio Device error:", err);
           if (!cancelled) setDeviceError(`Voice device error: ${err.message}`);
         });
 
         device.register();
         setTwilioDevice(device);
       } catch (err) {
-        if (!cancelled) setDeviceError('Failed to initialize voice device');
+        if (!cancelled) setDeviceError("Failed to initialize voice device");
       }
     }
 
@@ -652,62 +699,29 @@ function VoiceHome() {
       cancelled = true;
       // Destroy device to release connections and remove listeners
       if (twilioDevice) {
-        try { twilioDevice.destroy(); } catch { /* ignore */ }
+        try {
+          twilioDevice.destroy();
+        } catch {
+          /* ignore */
+        }
       }
     };
   }, []);
 
-  // Load contacts
-  useEffect(() => {
-    async function fetchContacts() {
-      try {
-        const resp = await fetch(`${API_BASE}/voice/users/contacts`, {
-          headers: getAuthHeaders(),
-        });
-        const data = await resp.json();
-        if (data.success) {
-          setContacts(data.data);
-        } else {
-          setError(data.error?.message || 'Failed to load contacts');
-        }
-      } catch {
-        setError('Could not connect to the server');
-      } finally {
-        setLoadingContacts(false);
-      }
-    }
-    fetchContacts();
-  }, []);
-
-  // Load call history
-  const fetchHistory = useCallback(async () => {
-    try {
-      const resp = await fetch(`${API_BASE}/voice/call-logs?pageSize=10`, {
-        headers: getAuthHeaders(),
-      });
-      const data = await resp.json();
-      if (data.success) {
-        setCallHistory(data.data);
-      }
-    } catch {
-      // Silently fail for history
-    } finally {
-      setLoadingHistory(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
 
   const handleCallEnded = useCallback(() => {
     setActiveCall(null);
-    fetchHistory();
-  }, [fetchHistory]);
-
+    refetchCallHistory();
+  }, []);
 
   if (activeCall) {
-    return <ActiveCallScreen contact={activeCall} device={twilioDevice} onCallEnded={handleCallEnded} />;
+    return (
+      <ActiveCallScreen
+        contact={activeCall}
+        device={twilioDevice}
+        onCallEnded={handleCallEnded}
+      />
+    );
   }
 
   return (
@@ -716,11 +730,17 @@ function VoiceHome() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Voice Calls</h1>
-          <p className="text-sm text-gray-500 mt-1">Tap a contact to start a call</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Tap a contact to start a call
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className={`w-3 h-3 rounded-full ${deviceReady ? 'bg-green-400' : 'bg-yellow-400 animate-pulse'}`} />
-          <span className="text-xs text-gray-400">{deviceReady ? 'Ready' : 'Connecting…'}</span>
+          <div
+            className={`w-3 h-3 rounded-full ${deviceReady ? "bg-green-400" : "bg-yellow-400 animate-pulse"}`}
+          />
+          <span className="text-xs text-gray-400">
+            {deviceReady ? "Ready" : "Connecting…"}
+          </span>
         </div>
       </div>
 
@@ -740,6 +760,47 @@ function VoiceHome() {
 
       {/* Contact List */}
       <div>
+        {/* Speed Dial section - use ContactCard for consistent appearance */}
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">Speed Dial</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+        {loadingHotlines? (
+          <Card padding="lg">
+            <div className="flex justify-center py-8">
+              <LoadingSpinner size="lg" />
+            </div>
+          </Card>
+        ) : hotlinesData?.length === 0 ? (
+          <Card padding="lg">
+            <div className="text-center py-8">
+              <span className="text-5xl block mb-4">📋</span>
+              <p className="text-gray-500">No approved hotlines yet.</p>
+              <p className="text-sm text-gray-400 mt-1">
+                Ask your facility to approve hotlines for calling.
+              </p>
+            </div>
+          </Card>
+        ) : (
+          <div>
+            {hotlinesData?.map((hotline) => (
+              <ContactCard
+                key={hotline.id}
+                contact={{
+                  isAttorney: false,
+                  relationship: hotline.firstName,
+                  id: hotline.id,
+                  familyMember: hotline,
+                }}
+                onCall={setActiveCall}
+                disabled={!deviceReady}
+              />
+            ))}
+          </div>
+        )}
+          </div>
+        </div>
+
         <h2 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
           <span>👥</span> Approved Contacts
         </h2>
@@ -750,17 +811,19 @@ function VoiceHome() {
               <LoadingSpinner size="lg" />
             </div>
           </Card>
-        ) : contacts.length === 0 ? (
+        ) : contactsData?.length === 0 ? (
           <Card padding="lg">
             <div className="text-center py-8">
               <span className="text-5xl block mb-4">📋</span>
               <p className="text-gray-500">No approved contacts yet.</p>
-              <p className="text-sm text-gray-400 mt-1">Ask your facility to approve contacts for calling.</p>
+              <p className="text-sm text-gray-400 mt-1">
+                Ask your facility to approve contacts for calling.
+              </p>
             </div>
           </Card>
         ) : (
           <div className="space-y-3">
-            {contacts.map((c) => (
+            {contactsData?.map((c) => (
               <ContactCard
                 key={c.id}
                 contact={c}
@@ -784,15 +847,17 @@ function VoiceHome() {
               <LoadingSpinner size="md" />
             </div>
           </Card>
-        ) : callHistory.length === 0 ? (
+        ) : callHistoryData?.length === 0 ? (
           <Card padding="md">
             <div className="text-center py-6">
-              <p className="text-gray-500 text-sm">No calls yet. Make your first call above!</p>
+              <p className="text-gray-500 text-sm">
+                No calls yet. Make your first call above!
+              </p>
             </div>
           </Card>
         ) : (
           <Card padding="none">
-            {callHistory.map((call) => (
+            {callHistoryData?.map((call) => (
               <CallHistoryItem key={call.id} call={call} />
             ))}
           </Card>

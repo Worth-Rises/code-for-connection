@@ -18,7 +18,6 @@ export const voiceContactRouter = Router();
 voiceContactRouter.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-
     const contacts = await prisma.approvedContact.findMany({
       where: {
         familyMemberId: userId,
@@ -41,6 +40,7 @@ voiceContactRouter.get('/', requireAuth, async (req: Request, res: Response) => 
       },
       orderBy: { requestedAt: 'desc' },
     });
+    console.log(`Fetched ${contacts.length} approved contacts for user ${userId}`);
 
     res.json(createSuccessResponse(contacts));
   } catch (error) {
