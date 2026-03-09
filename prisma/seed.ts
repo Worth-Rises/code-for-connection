@@ -293,7 +293,7 @@ async function main() {
     prisma.familyMember.create({
       data: {
         email: 'alice@example.com',
-        phone: '+13478636959',
+        phone: process.env.TEST_CONTACT_PHONE_NUMBER || '+15551234001',
         firstName: 'Alice',
         lastName: 'Doe',
         passwordHash: await hashPassword('password123'),
@@ -356,9 +356,27 @@ async function main() {
     prisma.familyMember.create({
       data: {
         email: 'attorney@lawfirm.com',
-        phone: '+19175966881',
+        phone: process.env.TEST_ATTORNEY_PHONE_NUMBER || '+15551234008',
         firstName: 'Henry',
         lastName: 'Attorney',
+        passwordHash: await hashPassword('password123'),
+      },
+    }),
+    prisma.familyMember.create({
+      data: {
+        email: 'crisis@hotline.com',
+        phone: process.env.TEST_HOTLINE_PHONE_NUMBER || '+15551234009',
+        firstName: 'Crisis',
+        lastName: 'Hotline',
+        passwordHash: await hashPassword('password123'),
+      },
+    }),
+    prisma.familyMember.create({
+      data: {
+        email: 'PREA@hotline.com',
+        phone: process.env.TEST_HOTLINE_PHONE_NUMBER || '+15551234010',
+        firstName: 'PREA',
+        lastName: 'Hotline',
         passwordHash: await hashPassword('password123'),
       },
     }),

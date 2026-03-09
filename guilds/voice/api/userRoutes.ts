@@ -1,20 +1,25 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response } from "express";
 import {
   requireAuth,
   requireRole,
   createSuccessResponse,
   createErrorResponse,
   prisma,
-} from '@openconnect/shared';
+} from "@openconnect/shared";
 import twilio from "twilio";
 
 const AccessToken = twilio.jwt.AccessToken;
 const VoiceGrant = AccessToken.VoiceGrant;
 
+const twilioFrom = process.env.TWILIO_PHONE_NUMBER!;
+
 export const voiceUserRouter = Router();
 
 // In-memory map of callId -> { twilioSids, conferenceName }
-const callMetadata = new Map<string, { clientSid?: string; phoneSid?: string; conferenceName: string }>();
+const callMetadata = new Map<
+  string,
+  { clientSid?: string; phoneSid?: string; conferenceName: string }
+>();
 
 // ==========================================
 // PUBLIC URL DISCOVERY
@@ -39,9 +44,11 @@ async function getPublicUrl(): Promise<string | null> {
 
   // Dev fallback: discover ngrok
   try {
-    const res = await fetch('http://127.0.0.1:4040/api/tunnels');
-    const data = await res.json() as { tunnels: Array<{ proto: string; public_url: string }> };
-    const tunnel = data.tunnels.find((t) => t.proto === 'https');
+    const res = await fetch("http://127.0.0.1:4040/api/tunnels");
+    const data = (await res.json()) as {
+      tunnels: Array<{ proto: string; public_url: string }>;
+    };
+    const tunnel = data.tunnels.find((t) => t.proto === "https");
     if (tunnel) {
       _cachedPublicUrl = tunnel.public_url;
       console.log(`[voice] Discovered ngrok URL: ${_cachedPublicUrl}`);
@@ -52,7 +59,9 @@ async function getPublicUrl(): Promise<string | null> {
   }
 
   _cachedPublicUrl = null;
-  console.warn('[voice] No PUBLIC_URL set and ngrok not detected. IVR webhooks will not work.');
+  console.warn(
+    "[voice] No PUBLIC_URL set and ngrok not detected. IVR webhooks will not work.",
+  );
   return null;
 }
 
@@ -65,31 +74,37 @@ async function getPublicUrl(): Promise<string | null> {
  * The token allows the browser Device to receive incoming conference calls.
  * No TwiML App required — we add participants via the Conference Participants API.
  */
-voiceUserRouter.get('/token', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const identity = req.user!.id;
+voiceUserRouter.get(
+  "/token",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const identity = req.user!.id;
 
-    const token = new AccessToken(
-      process.env.TWILIO_ACCOUNT_SID!,
-      process.env.TWILIO_API_KEY_SID!,
-      process.env.TWILIO_API_KEY_SECRET!,
-      { identity }
-    );
+      const token = new AccessToken(
+        process.env.TWILIO_ACCOUNT_SID!,
+        process.env.TWILIO_API_KEY_SID!,
+        process.env.TWILIO_API_KEY_SECRET!,
+        { identity },
+      );
 
-    const voiceGrant = new VoiceGrant({
-      incomingAllow: true,
-    });
-    token.addGrant(voiceGrant);
+      const voiceGrant = new VoiceGrant({
+        incomingAllow: true,
+      });
+      token.addGrant(voiceGrant);
 
-    res.json(createSuccessResponse({ token: token.toJwt(), identity }));
-  } catch (error) {
-    console.error('Error generating token:', error);
-    res.status(500).json(createErrorResponse({
-      code: 'INTERNAL_ERROR',
-      message: 'Failed to generate voice token',
-    }));
-  }
-});
+      res.json(createSuccessResponse({ token: token.toJwt(), identity }));
+    } catch (error) {
+      console.error("Error generating token:", error);
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to generate voice token",
+        }),
+      );
+    }
+  },
+);
 
 // ==========================================
 // CALL STATUS POLLING
@@ -99,38 +114,46 @@ voiceUserRouter.get('/token', requireAuth, async (req: Request, res: Response) =
  * GET /call-status/:callId — Check if the phone participant has answered.
  * Polls the Twilio REST API directly — no webhook/ngrok needed.
  */
-voiceUserRouter.get('/call-status/:callId', requireAuth, async (req: Request, res: Response) => {
-  const { callId } = req.params;
-  const userId = req.user!.id;
+voiceUserRouter.get(
+  "/call-status/:callId",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    const { callId } = req.params;
+    const userId = req.user!.id;
 
-  // Verify ownership
-  const call = await prisma.voiceCall.findFirst({
-    where: { id: callId, incarceratedPersonId: userId },
-  });
-  if (!call) {
-    return res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Call not found' }));
-  }
+    // Verify ownership
+    const call = await prisma.voiceCall.findFirst({
+      where: { id: callId, incarceratedPersonId: userId },
+    });
+    if (!call) {
+      return res
+        .status(404)
+        .json(
+          createErrorResponse({ code: "NOT_FOUND", message: "Call not found" }),
+        );
+    }
 
-  const metadata = callMetadata.get(callId);
+    const metadata = callMetadata.get(callId);
 
-  if (!metadata?.phoneSid) {
-    return res.json(createSuccessResponse({ phoneAnswered: false }));
-  }
+    if (!metadata?.phoneSid) {
+      return res.json(createSuccessResponse({ phoneAnswered: false }));
+    }
 
-  try {
-    const client = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN,
-    );
-    const call = await client.calls(metadata.phoneSid).fetch();
-    // 'in-progress' means the phone was answered and is connected
-    const phoneAnswered = call.status === 'in-progress';
-    res.json(createSuccessResponse({ phoneAnswered }));
-  } catch (error) {
-    console.error('[voice] Error checking call status:', error);
-    res.json(createSuccessResponse({ phoneAnswered: false }));
-  }
-});
+    try {
+      const client = twilio(
+        process.env.TWILIO_ACCOUNT_SID,
+        process.env.TWILIO_AUTH_TOKEN,
+      );
+      const call = await client.calls(metadata.phoneSid).fetch();
+      // 'in-progress' means the phone was answered and is connected
+      const phoneAnswered = call.status === "in-progress";
+      res.json(createSuccessResponse({ phoneAnswered }));
+    } catch (error) {
+      console.error("[voice] Error checking call status:", error);
+      res.json(createSuccessResponse({ phoneAnswered: false }));
+    }
+  },
+);
 
 // ==========================================
 // INCARCERATED USER ENDPOINTS
@@ -139,37 +162,229 @@ voiceUserRouter.get('/call-status/:callId', requireAuth, async (req: Request, re
 /**
  * GET /contacts — Approved contacts for the logged-in incarcerated person
  */
-voiceUserRouter.get('/contacts', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
+voiceUserRouter.get(
+  "/contacts",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
 
-    const contacts = await prisma.approvedContact.findMany({
-      where: {
-        incarceratedPersonId: userId,
-        status: 'approved',
+      const contacts = await prisma.approvedContact.findMany({
+        where: {
+          incarceratedPersonId: userId,
+          status: "approved",
+        },
+        include: {
+          familyMember: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              phone: true,
+            },
+          },
+        },
+        orderBy: { requestedAt: "desc" },
+      });
+
+      res.json(createSuccessResponse(contacts));
+    } catch (error) {
+      console.error("Error fetching contacts:", error);
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch contacts",
+        }),
+      );
+    }
+  },
+);
+
+/**
+ * GET /hotlines — Approved hotlines for the logged-in incarcerated person
+ */
+voiceUserRouter.get(
+  "/hotlines",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      // TODO: move hotlines to a separate table instead of using mock family members
+      const hotlines = await prisma.familyMember.findMany({
+        where: {
+          lastName: "Hotline",
+        },
+        select: { id: true, firstName: true, lastName: true, phone: true },
+      });
+
+      res.json(createSuccessResponse(hotlines));
+    } catch (error) {
+      console.error("Error fetching hotlines:", error);
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch hotlines",
+        }),
+      );
+    }
+  },
+);
+
+async function handleHotlineCallInitiate(
+  req: Request,
+  res: Response,
+  userId: string,
+  contactId: string,
+  facilityId: string,
+  phoneNumber: string,
+) {
+  // Create DB record
+  const voiceCall = await prisma.voiceCall.create({
+    data: {
+      incarceratedPersonId: userId,
+      familyMemberId: contactId,
+      facilityId: facilityId,
+      status: "ringing",
+      isLegal: false,
+    },
+  });
+
+  const conferenceName = `call-${voiceCall.id}`;
+
+  try {
+    const client = twilio(
+      process.env.TWILIO_ACCOUNT_SID,
+      process.env.TWILIO_AUTH_TOKEN,
+    );
+
+    // Step 1: Add the tablet user (browser Device) to the conference
+    console.log(
+      `[voice] Step 1: Adding client:${userId} to conference ${conferenceName}`,
+    );
+    const clientParticipant = await client
+      .conferences(conferenceName)
+      .participants.create({
+        from: twilioFrom,
+        to: `client:${userId}`,
+        maxParticipants: 2,
+        label: `client:${userId}`,
+        startConferenceOnEnter: true,
+        endConferenceOnExit: true,
+        waitUrl: "",
+      });
+    console.log(
+      `[voice] Step 1 done: clientCallSid=${clientParticipant.callSid} conferenceSid=${clientParticipant.conferenceSid}`,
+    );
+
+    // Store metadata immediately so we can clean up even if step 2 fails
+    callMetadata.set(voiceCall.id, {
+      clientSid: clientParticipant.callSid,
+      conferenceName,
+    });
+
+    try {
+      console.log(
+        `[voice] Step 2: Adding client:${userId} to conference ${conferenceName}`,
+      );
+      const statusCallbackFields = process.env.PUBLIC_URL
+        ? {
+            // Status callback: Twilio POSTs here when the phone call ends
+            statusCallback: `${process.env.PUBLIC_URL}/api/voice/users/status-callback/${voiceCall.id}`,
+            statusCallbackEvent: ["answered", "completed"],
+          }
+        : {};
+
+      const phoneParticipant = await client
+        .conferences(conferenceName)
+        .participants.create({
+          from: twilioFrom,
+          to: phoneNumber,
+          label: phoneNumber,
+          startConferenceOnEnter: true,
+          endConferenceOnExit: true,
+          ...statusCallbackFields,
+        });
+      console.log(
+        `[voice] Step 2 done: phoneCallSid=${phoneParticipant.callSid} conferenceSid=${phoneParticipant.conferenceSid}`,
+      );
+
+      // Update metadata with phone SID
+      callMetadata.set(voiceCall.id, {
+        clientSid: clientParticipant.callSid,
+        phoneSid: phoneParticipant.callSid,
+        conferenceName,
+      });
+    } catch (phoneError: unknown) {
+      // Phone call failed — clean up the client participant
+      console.error("[voice] Phone call failed:", phoneError);
+      try {
+        await client
+          .calls(clientParticipant.callSid)
+          .update({ status: "completed" });
+      } catch (cleanupErr) {
+        console.error(
+          "[voice] Failed to clean up client participant:",
+          cleanupErr,
+        );
+      }
+      callMetadata.delete(voiceCall.id);
+
+      await prisma.voiceCall.update({
+        where: { id: voiceCall.id },
+        data: { status: "missed", endedAt: new Date() },
+      });
+
+      const errorMessage =
+        phoneError instanceof Error
+          ? phoneError.message
+          : "Failed to call contact";
+      return res.status(502).json(
+        createErrorResponse({
+          code: "TWILIO_ERROR",
+          message: errorMessage,
+        }),
+      );
+    }
+
+    // Call is now ringing — don't mark as 'connected' yet.
+    // The status callback (or UI polling) will update to 'connected' when phone answers.
+    const updatedCall = await prisma.voiceCall.update({
+      where: { id: voiceCall.id },
+      data: {
+        status: "ringing",
+        conferenceSid: clientParticipant.conferenceSid, // temporarily disabled
       },
       include: {
         familyMember: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            phone: true,
-          },
+          select: { firstName: true, lastName: true, phone: true },
         },
       },
-      orderBy: { requestedAt: 'desc' },
     });
 
-    res.json(createSuccessResponse(contacts));
-  } catch (error) {
-    console.error('Error fetching contacts:', error);
-    res.status(500).json(createErrorResponse({
-      code: 'INTERNAL_ERROR',
-      message: 'Failed to fetch contacts',
-    }));
+    res.json(
+      createSuccessResponse({
+        ...updatedCall,
+        conferenceName,
+      }),
+    );
+  } catch (twilioError: unknown) {
+    console.error("[voice] Twilio error (client participant):", twilioError);
+    await prisma.voiceCall.update({
+      where: { id: voiceCall.id },
+      data: { status: "missed", endedAt: new Date() },
+    });
+
+    const errorMessage =
+      twilioError instanceof Error
+        ? twilioError.message
+        : "Failed to connect call via Twilio";
+    return res.status(502).json(
+      createErrorResponse({
+        code: "TWILIO_ERROR",
+        message: errorMessage,
+      }),
+    );
   }
-});
+}
 
 /**
  * POST /initiate-call — Start a conference call with an approved contact.
@@ -183,245 +398,515 @@ voiceUserRouter.get('/contacts', requireAuth, async (req: Request, res: Response
  *
  * Body: { contactId: string }
  */
-voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const { contactId } = req.body;
-
-    console.log(`[voice] === INITIATE-CALL REQUEST === userId=${userId} contactId=${contactId}`);
-
-    if (!contactId) {
-      return res.status(400).json(createErrorResponse({
-        code: 'VALIDATION_ERROR',
-        message: 'contactId is required',
-      }));
-    }
-
-    // Check DB for an already active call for this user
-    const existingActiveCall = await prisma.voiceCall.findFirst({
-      where: {
-        incarceratedPersonId: userId,
-        status: { in: ['ringing', 'connected'] },
-      },
-    });
-    if (existingActiveCall) {
-      // Verify with Twilio whether the conference is actually still running
-      const conferenceName = `call-${existingActiveCall.id}`;
-      try {
-        const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-        const conferences = await client.conferences.list({
-          friendlyName: conferenceName,
-          status: 'in-progress',
-        });
-        if (conferences.length > 0) {
-          // Conference is genuinely still active — block the new call
-          console.log(`[voice] BLOCKED: User ${userId} has active conference ${conferenceName}`);
-          return res.status(409).json(createErrorResponse({
-            code: 'ALREADY_IN_CALL',
-            message: 'You already have an active call',
-          }));
-        }
-      } catch (err) {
-        console.error(`[voice] Error checking Twilio conference ${conferenceName}:`, err);
-      }
-
-      // Conference is not active on Twilio — clean up the stale DB record
-      console.log(`[voice] Stale call ${existingActiveCall.id} detected, marking as completed`);
-      const durationSeconds = existingActiveCall.connectedAt
-        ? Math.floor((Date.now() - existingActiveCall.connectedAt.getTime()) / 1000)
-        : 0;
-      await prisma.voiceCall.update({
-        where: { id: existingActiveCall.id },
-        data: { status: 'completed', endedAt: new Date(), durationSeconds },
-      });
-    }
-
-    // Verify the contact is approved for this user
-    const contact = await prisma.approvedContact.findFirst({
-      where: {
-        id: contactId,
-        incarceratedPersonId: userId,
-        status: 'approved',
-      },
-      include: {
-        familyMember: true,
-        incarceratedPerson: { include: { facility: true } },
-      },
-    });
-
-    if (!contact) {
-      return res.status(404).json(createErrorResponse({
-        code: 'NOT_FOUND',
-        message: 'Approved contact not found',
-      }));
-    }
-
-    // Check if number is blocked
-    const blocked = await prisma.blockedNumber.findFirst({
-      where: {
-        phoneNumber: contact.familyMember.phone,
-        OR: [
-          { scope: 'agency', agencyId: contact.incarceratedPerson.agencyId },
-          { scope: 'facility', facilityId: contact.incarceratedPerson.facilityId },
-        ],
-      },
-    });
-
-    if (blocked) {
-      return res.status(403).json(createErrorResponse({
-        code: 'BLOCKED',
-        message: 'This number has been blocked by administration',
-      }));
-    }
-
-    // Create DB record
-    const voiceCall = await prisma.voiceCall.create({
-      data: {
-        incarceratedPersonId: userId,
-        familyMemberId: contact.familyMemberId,
-        facilityId: contact.incarceratedPerson.facilityId,
-        status: 'ringing',
-        isLegal: contact.isAttorney,
-      },
-    });
-
-    const conferenceName = `call-${voiceCall.id}`;
-    const twilioFrom = process.env.TWILIO_PHONE_NUMBER!;
-
-    console.log(`[voice] Created DB record ${voiceCall.id}, conference=${conferenceName}`);
-
+voiceUserRouter.post(
+  "/initiate-call",
+  requireAuth,
+  async (req: Request, res: Response) => {
     try {
-      const client = twilio(
-        process.env.TWILIO_ACCOUNT_SID,
-        process.env.TWILIO_AUTH_TOKEN,
+      const userId = req.user!.id;
+      const { contactId } = req.body;
+
+      console.log(
+        `[voice] === INITIATE-CALL REQUEST === userId=${userId} contactId=${contactId}`,
       );
 
-      // Step 0: Conditionally send SMS heads-up based on system configuration
-      const smsSetting = await prisma.systemConfiguration.findUnique({
-        where: { key: 'sms_send_setting' },
+      if (!contactId) {
+        return res.status(400).json(
+          createErrorResponse({
+            code: "VALIDATION_ERROR",
+            message: "contactId is required",
+          }),
+        );
+      }
+
+      // Check DB for an already active call for this user
+      const existingActiveCall = await prisma.voiceCall.findFirst({
+        where: {
+          incarceratedPersonId: userId,
+          status: { in: ["ringing", "connected"] },
+        },
       });
-      const smsMode = smsSetting?.value ?? 'NO_SMS';
-
-      if (smsMode !== 'NO_SMS') {
-        const inmate = contact.incarceratedPerson;
-        const facilityName = inmate.facility.name;
-
-        let smsBody: string;
-        if (smsMode === 'SEND_SMS_WITH_NAME') {
-          smsBody = `You are about to receive a call from ${inmate.firstName} ${inmate.lastName} at ${facilityName} from this number.`;
-        } else {
-          // SEND_SMS — generic message without the inmate's name
-          smsBody = `You are about to receive a call from an inmate at ${facilityName} from this number.`;
-        }
-
-        console.log(`[voice] Step 0: Sending SMS to ${contact.familyMember.phone} (mode=${smsMode})`);
+      if (existingActiveCall) {
+        // Verify with Twilio whether the conference is actually still running
+        const conferenceName = `call-${existingActiveCall.id}`;
         try {
-          await client.messages.create({
-            from: twilioFrom,
-            to: contact.familyMember.phone,
-            body: smsBody,
+          const client = twilio(
+            process.env.TWILIO_ACCOUNT_SID,
+            process.env.TWILIO_AUTH_TOKEN,
+          );
+          const conferences = await client.conferences.list({
+            friendlyName: conferenceName,
+            status: "in-progress",
           });
-          console.log(`[voice] Step 0 done: SMS sent successfully`);
-        } catch (smsError) {
-          // Log but don't block the call if SMS fails
-          console.error('[voice] SMS sending failed (proceeding with call):', smsError);
+          if (conferences.length > 0) {
+            // Conference is genuinely still active — block the new call
+            console.log(
+              `[voice] BLOCKED: User ${userId} has active conference ${conferenceName}`,
+            );
+            return res.status(409).json(
+              createErrorResponse({
+                code: "ALREADY_IN_CALL",
+                message: "You already have an active call",
+              }),
+            );
+          }
+        } catch (err) {
+          console.error(
+            `[voice] Error checking Twilio conference ${conferenceName}:`,
+            err,
+          );
         }
 
-        // Wait 10 seconds so the recipient can read the SMS before the phone rings
-        await new Promise(resolve => setTimeout(resolve, 10_000));
-      } else {
-        console.log(`[voice] SMS disabled (sms_send_setting=NO_SMS), skipping`);
+        // Conference is not active on Twilio — clean up the stale DB record
+        console.log(
+          `[voice] Stale call ${existingActiveCall.id} detected, marking as completed`,
+        );
+        const durationSeconds = existingActiveCall.connectedAt
+          ? Math.floor(
+              (Date.now() - existingActiveCall.connectedAt.getTime()) / 1000,
+            )
+          : 0;
+        await prisma.voiceCall.update({
+          where: { id: existingActiveCall.id },
+          data: { status: "completed", endedAt: new Date(), durationSeconds },
+        });
       }
 
-      // Step 1: Add the tablet user (browser Device) to the conference
-      console.log(`[voice] Step 1: Adding client:${userId} to conference ${conferenceName}`);
-      const clientParticipant = await client.conferences(conferenceName)
-        .participants
-        .create({
-          from: twilioFrom,
-          to: `client:${userId}`,
-          maxParticipants: 2,
-          label: `client:${userId}`,
-          startConferenceOnEnter: true,
-          endConferenceOnExit: true,
-        });
-      console.log(`[voice] Step 1 done: clientCallSid=${clientParticipant.callSid} conferenceSid=${clientParticipant.conferenceSid}`);
-
-      // Store metadata immediately so we can clean up even if step 2 fails
-      callMetadata.set(voiceCall.id, {
-        clientSid: clientParticipant.callSid,
-        conferenceName,
+      const user = await prisma.incarceratedPerson.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          agencyId: true,
+          facility: { select: { id: true, name: true } },
+        },
       });
 
-      // Step 2: Call the contact's phone with IVR greeting
-      const publicUrl = await getPublicUrl();
-      if (!publicUrl) {
-        // Cannot proceed without a public URL for TwiML webhooks
-        console.error('[voice] No PUBLIC_URL available — cannot initiate IVR call');
-        try {
-          await client.calls(clientParticipant.callSid).update({ status: 'completed' });
-        } catch (cleanupErr) {
-          console.error('[voice] Failed to clean up client participant:', cleanupErr);
-        }
-        callMetadata.delete(voiceCall.id);
-
-        await prisma.voiceCall.update({
-          where: { id: voiceCall.id },
-          data: { status: 'missed', endedAt: new Date() },
-        });
-
-        return res.status(500).json(createErrorResponse({
-          code: 'CONFIG_ERROR',
-          message: 'Server is not configured for outbound calls (PUBLIC_URL not available)',
-        }));
+      if (!user) {
+        return res.status(404).json(
+          createErrorResponse({
+            code: "USER_NOT_FOUND",
+            message: "User initiating call not found",
+          }),
+        );
       }
 
-      console.log(`[voice] Step 2: Calling ${contact.familyMember.phone} with IVR greeting`);
-      try {
-        const phoneCall = await client.calls.create({
-          from: twilioFrom,
-          to: contact.familyMember.phone,
-          url: `${publicUrl}/api/voice/twiml/greeting/${voiceCall.id}`,
-          statusCallback: `${publicUrl}/api/voice/users/status-callback/${voiceCall.id}`,
-          statusCallbackEvent: ['answered', 'completed'],
-        });
-        console.log(`[voice] Step 2 done: phoneCallSid=${phoneCall.sid}`);
+      // TODO: switch to using dedicated hotline table
+      const hotline = await prisma.familyMember.findFirst({
+        where: {
+          id: contactId,
+          lastName: "Hotline",
+        },
+      });
 
-        // Update metadata with phone SID
+      if (hotline) {
+        return handleHotlineCallInitiate(
+          req,
+          res,
+          userId,
+          contactId,
+          user.facility.id,
+          hotline.phone,
+        );
+      }
+
+      // Verify the contact is approved for this user
+      const contact = await prisma.approvedContact.findFirst({
+        where: {
+          id: contactId,
+          incarceratedPersonId: userId,
+          status: "approved",
+        },
+        include: {
+          familyMember: true,
+        },
+      });
+
+      if (!contact) {
+        return res.status(404).json(
+          createErrorResponse({
+            code: "NOT_FOUND",
+            message: "Approved contact not found",
+          }),
+        );
+      }
+
+      const callContact = {
+        id: contact.familyMemberId,
+        phoneNumber: contact.familyMember.phone,
+        isAttorney: contact.isAttorney,
+      };
+
+      // Check if number is blocked
+      const blocked = await prisma.blockedNumber.findFirst({
+        where: {
+          phoneNumber: callContact.phoneNumber,
+          OR: [
+            { scope: "agency", agencyId: user.agencyId },
+            { scope: "facility", facilityId: user.facility.id },
+          ],
+        },
+      });
+
+      if (blocked) {
+        return res.status(403).json(
+          createErrorResponse({
+            code: "BLOCKED",
+            message: "This number has been blocked by administration",
+          }),
+        );
+      }
+
+      // Create DB record
+      const voiceCall = await prisma.voiceCall.create({
+        data: {
+          incarceratedPersonId: userId,
+          familyMemberId: callContact.id,
+          facilityId: user.facility.id,
+          status: "ringing",
+          isLegal: callContact.isAttorney,
+        },
+      });
+
+      const conferenceName = `call-${voiceCall.id}`;
+
+      console.log(
+        `[voice] Created DB record ${voiceCall.id}, conference=${conferenceName}`,
+      );
+
+      try {
+        const client = twilio(
+          process.env.TWILIO_ACCOUNT_SID,
+          process.env.TWILIO_AUTH_TOKEN,
+        );
+
+        // Step 0: Conditionally send SMS heads-up based on system configuration
+        const smsSetting = await prisma.systemConfiguration.findUnique({
+          where: { key: "sms_send_setting" },
+        });
+        const smsMode = smsSetting?.value ?? "NO_SMS";
+
+        if (smsMode !== "NO_SMS") {
+          let smsBody: string;
+          if (smsMode === "SEND_SMS_WITH_NAME") {
+            smsBody = `You are about to receive a call from ${user.firstName} ${user.lastName} at ${user.facility.name} from this number.`;
+          } else {
+            // SEND_SMS — generic message without the user's name
+            smsBody = `You are about to receive a call from an incarcerated person at ${user.facility.name} from this number.`;
+          }
+
+          console.log(
+            `[voice] Step 0: Sending SMS to ${callContact.phoneNumber} (mode=${smsMode})`,
+          );
+          try {
+            await client.messages.create({
+              from: twilioFrom,
+              to: callContact.phoneNumber,
+              body: smsBody,
+            });
+            console.log(`[voice] Step 0 done: SMS sent successfully`);
+          } catch (smsError) {
+            // Log but don't block the call if SMS fails
+            console.error(
+              "[voice] SMS sending failed (proceeding with call):",
+              smsError,
+            );
+          }
+
+          // Wait 10 seconds so the recipient can read the SMS before the phone rings
+          await new Promise((resolve) => setTimeout(resolve, 10_000));
+        } else {
+          console.log(
+            `[voice] SMS disabled (sms_send_setting=NO_SMS), skipping`,
+          );
+        }
+
+        // ALL-CALLS
+        // Step 1: Add the tablet user (browser Device) to the conference
+        console.log(
+          `[voice] Step 1: Adding client:${userId} to conference ${conferenceName}`,
+        );
+        const clientParticipant = await client
+          .conferences(conferenceName)
+          .participants.create({
+            from: twilioFrom,
+            to: `client:${userId}`,
+            maxParticipants: 2,
+            label: `client:${userId}`,
+            startConferenceOnEnter: true,
+            endConferenceOnExit: true,
+            waitUrl: "",
+          });
+        console.log(
+          `[voice] Step 1 done: clientCallSid=${clientParticipant.callSid} conferenceSid=${clientParticipant.conferenceSid}`,
+        );
+
+        // Store metadata immediately so we can clean up even if step 2 fails
         callMetadata.set(voiceCall.id, {
           clientSid: clientParticipant.callSid,
-          phoneSid: phoneCall.sid,
           conferenceName,
         });
-      } catch (phoneError: unknown) {
-        // Phone call failed — clean up the client participant
-        console.error('[voice] Phone call failed:', phoneError);
-        try {
-          await client.calls(clientParticipant.callSid).update({ status: 'completed' });
-        } catch (cleanupErr) {
-          console.error('[voice] Failed to clean up client participant:', cleanupErr);
-        }
-        callMetadata.delete(voiceCall.id);
 
-        await prisma.voiceCall.update({
+        // Step 2: Call the contact's phone with IVR greeting
+        const publicUrl = await getPublicUrl();
+        if (!publicUrl) {
+          // Cannot proceed without a public URL for TwiML webhooks
+          console.error(
+            "[voice] No PUBLIC_URL available — cannot initiate IVR call",
+          );
+          try {
+            await client
+              .calls(clientParticipant.callSid)
+              .update({ status: "completed" });
+          } catch (cleanupErr) {
+            console.error(
+              "[voice] Failed to clean up client participant:",
+              cleanupErr,
+            );
+          }
+          callMetadata.delete(voiceCall.id);
+
+          await prisma.voiceCall.update({
+            where: { id: voiceCall.id },
+            data: { status: "missed", endedAt: new Date() },
+          });
+
+          return res.status(500).json(
+            createErrorResponse({
+              code: "CONFIG_ERROR",
+              message:
+                "Server is not configured for outbound calls (PUBLIC_URL not available)",
+            }),
+          );
+        }
+
+        console.log(
+          `[voice] Step 2: Calling ${callContact.phoneNumber} with IVR greeting`,
+        );
+        try {
+          const phoneCall = await client.calls.create({
+            from: twilioFrom,
+            to: callContact.phoneNumber,
+            url: `${publicUrl}/api/voice/twiml/greeting/${voiceCall.id}`,
+            statusCallback: `${publicUrl}/api/voice/users/status-callback/${voiceCall.id}`,
+            statusCallbackEvent: ["answered", "completed"],
+          });
+          console.log(`[voice] Step 2 done: phoneCallSid=${phoneCall.sid}`);
+
+          // Update metadata with phone SID
+          callMetadata.set(voiceCall.id, {
+            clientSid: clientParticipant.callSid,
+            phoneSid: phoneCall.sid,
+            conferenceName,
+          });
+        } catch (phoneError: unknown) {
+          // Phone call failed — clean up the client participant
+          console.error("[voice] Phone call failed:", phoneError);
+          try {
+            await client
+              .calls(clientParticipant.callSid)
+              .update({ status: "completed" });
+          } catch (cleanupErr) {
+            console.error(
+              "[voice] Failed to clean up client participant:",
+              cleanupErr,
+            );
+          }
+          callMetadata.delete(voiceCall.id);
+
+          await prisma.voiceCall.update({
+            where: { id: voiceCall.id },
+            data: { status: "missed", endedAt: new Date() },
+          });
+
+          const errorMessage =
+            phoneError instanceof Error
+              ? phoneError.message
+              : "Failed to call contact";
+          return res.status(502).json(
+            createErrorResponse({
+              code: "TWILIO_ERROR",
+              message: errorMessage,
+            }),
+          );
+        }
+
+        // Call is now ringing — don't mark as 'connected' yet.
+        // The status callback (or UI polling) will update to 'connected' when phone answers.
+        const updatedCall = await prisma.voiceCall.update({
           where: { id: voiceCall.id },
-          data: { status: 'missed', endedAt: new Date() },
+          data: {
+            status: "ringing",
+            conferenceSid: clientParticipant.conferenceSid, // temporarily disabled
+          },
+          include: {
+            familyMember: {
+              select: { firstName: true, lastName: true, phone: true },
+            },
+          },
         });
 
-        const errorMessage = phoneError instanceof Error ? phoneError.message : 'Failed to call contact';
-        return res.status(502).json(createErrorResponse({
-          code: 'TWILIO_ERROR',
-          message: errorMessage,
-        }));
+        res.json(
+          createSuccessResponse({
+            ...updatedCall,
+            conferenceName,
+          }),
+        );
+      } catch (twilioError: unknown) {
+        console.error(
+          "[voice] Twilio error (client participant):",
+          twilioError,
+        );
+        await prisma.voiceCall.update({
+          where: { id: voiceCall.id },
+          data: { status: "missed", endedAt: new Date() },
+        });
+
+        const errorMessage =
+          twilioError instanceof Error
+            ? twilioError.message
+            : "Failed to connect call via Twilio";
+        return res.status(502).json(
+          createErrorResponse({
+            code: "TWILIO_ERROR",
+            message: errorMessage,
+          }),
+        );
+      }
+    } catch (error) {
+      console.error("Error initiating call:", error);
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to initiate call",
+        }),
+      );
+    }
+  },
+);
+
+/**
+ * POST /end-call/:callId — End an active conference call
+ */
+voiceUserRouter.post(
+  "/end-call/:callId",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const { callId } = req.params;
+
+      const call = await prisma.voiceCall.findUnique({ where: { id: callId } });
+
+      if (!call) {
+        return res.status(404).json(
+          createErrorResponse({
+            code: "NOT_FOUND",
+            message: "Call not found",
+          }),
+        );
       }
 
-      // Call is now ringing — don't mark as 'connected' yet.
-      // The status callback (or UI polling) will update to 'connected' when phone answers.
+      // Verify ownership
+      if (call.incarceratedPersonId !== req.user!.id) {
+        return res.status(403).json(
+          createErrorResponse({
+            code: "FORBIDDEN",
+            message: "Not your call",
+          }),
+        );
+      }
+
+      if (!["ringing", "connected"].includes(call.status)) {
+        return res.status(400).json(
+          createErrorResponse({
+            code: "INVALID_STATE",
+            message: "Call is not active",
+          }),
+        );
+      }
+
+      // End the conference (this terminates ALL participants)
+      try {
+        const client = twilio(
+          process.env.TWILIO_ACCOUNT_SID,
+          process.env.TWILIO_AUTH_TOKEN,
+        );
+
+        if (call.conferenceSid) {
+          // Use stored SID to terminate directly
+          console.log(`[voice] Ending conference by SID ${call.conferenceSid}`);
+          try {
+            await client
+              .conferences(call.conferenceSid)
+              .update({ status: "completed" });
+            console.log(`[voice] Conference ${call.conferenceSid} terminated`);
+          } catch (confError: any) {
+            if (confError?.status === 404) {
+              // Conference already ended (e.g. receiver hung up with endConferenceOnExit)
+              console.log(
+                `[voice] Conference ${call.conferenceSid} already ended (404)`,
+              );
+            } else {
+              throw confError;
+            }
+          }
+        } else {
+          // Fallback: look up by friendly name for calls created before conferenceSid was stored
+          const conferenceName = `call-${callId}`;
+          console.log(
+            `[voice] No conferenceSid stored, falling back to friendly name ${conferenceName}`,
+          );
+          const conferences = await client.conferences.list({
+            friendlyName: conferenceName,
+            status: "in-progress",
+          });
+          for (const conf of conferences) {
+            await conf.update({ status: "completed" });
+            console.log(`[voice] Conference ${conf.sid} terminated`);
+          }
+        }
+
+        // Also explicitly end any individual call legs if we have the SIDs
+        const metadata = callMetadata.get(callId);
+        if (metadata) {
+          if (metadata.clientSid) {
+            try {
+              await client
+                .calls(metadata.clientSid)
+                .update({ status: "completed" });
+            } catch {
+              /* may already be ended */
+            }
+          }
+          if (metadata.phoneSid) {
+            try {
+              await client
+                .calls(metadata.phoneSid)
+                .update({ status: "completed" });
+            } catch {
+              /* may already be ended */
+            }
+          }
+          callMetadata.delete(callId);
+        }
+      } catch (twilioError) {
+        console.error("[voice] Error ending conference/calls:", twilioError);
+      }
+
+      const durationSeconds = call.connectedAt
+        ? Math.floor((Date.now() - call.connectedAt.getTime()) / 1000)
+        : 0;
+
       const updatedCall = await prisma.voiceCall.update({
-        where: { id: voiceCall.id },
+        where: { id: callId },
         data: {
-          status: 'ringing',
-          // conferenceSid: clientParticipant.conferenceSid, // temporarily disabled
+          status: "completed",
+          endedAt: new Date(),
+          endedBy: (req.query.endedBy === "receiver"
+            ? "receiver"
+            : "caller") as string,
+          durationSeconds,
         },
         include: {
           familyMember: {
@@ -430,215 +915,120 @@ voiceUserRouter.post('/initiate-call', requireAuth, async (req: Request, res: Re
         },
       });
 
-      res.json(createSuccessResponse({
-        ...updatedCall,
-        conferenceName,
-      }));
-    } catch (twilioError: unknown) {
-      console.error('[voice] Twilio error (client participant):', twilioError);
-      await prisma.voiceCall.update({
-        where: { id: voiceCall.id },
-        data: { status: 'missed', endedAt: new Date() },
-      });
-
-      const errorMessage = twilioError instanceof Error ? twilioError.message : 'Failed to connect call via Twilio';
-      return res.status(502).json(createErrorResponse({
-        code: 'TWILIO_ERROR',
-        message: errorMessage,
-      }));
-    }
-  } catch (error) {
-    console.error('Error initiating call:', error);
-    res.status(500).json(createErrorResponse({
-      code: 'INTERNAL_ERROR',
-      message: 'Failed to initiate call',
-    }));
-  }
-});
-
-/**
- * POST /end-call/:callId — End an active conference call
- */
-voiceUserRouter.post('/end-call/:callId', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const { callId } = req.params;
-
-    const call = await prisma.voiceCall.findUnique({ where: { id: callId } });
-
-    if (!call) {
-      return res.status(404).json(createErrorResponse({
-        code: 'NOT_FOUND',
-        message: 'Call not found',
-      }));
-    }
-
-    // Verify ownership
-    if (call.incarceratedPersonId !== req.user!.id) {
-      return res.status(403).json(createErrorResponse({
-        code: 'FORBIDDEN',
-        message: 'Not your call',
-      }));
-    }
-
-    if (!['ringing', 'connected'].includes(call.status)) {
-      return res.status(400).json(createErrorResponse({
-        code: 'INVALID_STATE',
-        message: 'Call is not active',
-      }));
-    }
-
-    // End the conference (this terminates ALL participants)
-    try {
-      const client = twilio(
-        process.env.TWILIO_ACCOUNT_SID,
-        process.env.TWILIO_AUTH_TOKEN,
+      res.json(createSuccessResponse(updatedCall));
+    } catch (error) {
+      console.error("Error ending call:", error);
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to end call",
+        }),
       );
-
-      if (call.conferenceSid) {
-        // Use stored SID to terminate directly
-        console.log(`[voice] Ending conference by SID ${call.conferenceSid}`);
-        try {
-          await client.conferences(call.conferenceSid).update({ status: 'completed' });
-          console.log(`[voice] Conference ${call.conferenceSid} terminated`);
-        } catch (confError: any) {
-          if (confError?.status === 404) {
-            // Conference already ended (e.g. receiver hung up with endConferenceOnExit)
-            console.log(`[voice] Conference ${call.conferenceSid} already ended (404)`);
-          } else {
-            throw confError;
-          }
-        }
-      } else {
-        // Fallback: look up by friendly name for calls created before conferenceSid was stored
-        const conferenceName = `call-${callId}`;
-        console.log(`[voice] No conferenceSid stored, falling back to friendly name ${conferenceName}`);
-        const conferences = await client.conferences.list({
-          friendlyName: conferenceName,
-          status: 'in-progress',
-        });
-        for (const conf of conferences) {
-          await conf.update({ status: 'completed' });
-          console.log(`[voice] Conference ${conf.sid} terminated`);
-        }
-      }
-
-      // Also explicitly end any individual call legs if we have the SIDs
-      const metadata = callMetadata.get(callId);
-      if (metadata) {
-        if (metadata.clientSid) {
-          try { await client.calls(metadata.clientSid).update({ status: 'completed' }); } catch { /* may already be ended */ }
-        }
-        if (metadata.phoneSid) {
-          try { await client.calls(metadata.phoneSid).update({ status: 'completed' }); } catch { /* may already be ended */ }
-        }
-        callMetadata.delete(callId);
-      }
-    } catch (twilioError) {
-      console.error('[voice] Error ending conference/calls:', twilioError);
     }
-
-
-
-    const durationSeconds = call.connectedAt
-      ? Math.floor((Date.now() - call.connectedAt.getTime()) / 1000)
-      : 0;
-
-    const updatedCall = await prisma.voiceCall.update({
-      where: { id: callId },
-      data: {
-        status: 'completed',
-        endedAt: new Date(),
-        endedBy: (req.query.endedBy === 'receiver' ? 'receiver' : 'caller') as string,
-        durationSeconds,
-      },
-      include: {
-        familyMember: {
-          select: { firstName: true, lastName: true, phone: true },
-        },
-      },
-    });
-
-    res.json(createSuccessResponse(updatedCall));
-  } catch (error) {
-    console.error('Error ending call:', error);
-    res.status(500).json(createErrorResponse({
-      code: 'INTERNAL_ERROR',
-      message: 'Failed to end call',
-    }));
-  }
-});
+  },
+);
 
 /**
  * POST /status-callback/:callId — Twilio calls this when a phone participant's status changes.
  * No auth required — Twilio calls this directly.
  */
-voiceUserRouter.post('/status-callback/:callId', async (req: Request, res: Response) => {
-  const { callId } = req.params;
-  const { CallStatus, CallSid } = req.body;
+voiceUserRouter.post(
+  "/status-callback/:callId",
+  async (req: Request, res: Response) => {
+    const { callId } = req.params;
+    const { CallStatus, CallSid } = req.body;
 
-  console.log(`[voice] Status callback: callId=${callId} CallStatus=${CallStatus} CallSid=${CallSid}`);
+    console.log(
+      `[voice] Status callback: callId=${callId} CallStatus=${CallStatus} CallSid=${CallSid}`,
+    );
 
-  try {
-    // Phone answered → mark call as connected with timestamp
-    if (CallStatus === 'in-progress' || CallStatus === 'answered') {
-      const call = await prisma.voiceCall.findUnique({ where: { id: callId } });
-      if (call && call.status === 'ringing') {
-        await prisma.voiceCall.update({
+    try {
+      // Phone answered → mark call as connected with timestamp
+      if (CallStatus === "in-progress" || CallStatus === "answered") {
+        const call = await prisma.voiceCall.findUnique({
           where: { id: callId },
-          data: { status: 'connected', connectedAt: new Date() },
         });
-        console.log(`[voice] Call ${callId} marked as connected (phone answered)`);
-      }
-    }
-
-  // Call ended → mark as completed/missed
-    if (CallStatus === 'completed' || CallStatus === 'busy' || CallStatus === 'no-answer' || CallStatus === 'failed' || CallStatus === 'canceled') {
-      const call = await prisma.voiceCall.findUnique({ where: { id: callId } });
-      if (call && ['ringing', 'connected'].includes(call.status)) {
-        const durationSeconds = call.connectedAt
-          ? Math.floor((Date.now() - call.connectedAt.getTime()) / 1000)
-          : 0;
-
-        await prisma.voiceCall.update({
-          where: { id: callId },
-          data: {
-            status: CallStatus === 'completed' ? 'completed' : 'missed',
-            endedAt: new Date(),
-            endedBy: 'receiver',
-            durationSeconds,
-          },
-        });
-        console.log(`[voice] Call ${callId} marked as ended by receiver (${CallStatus})`);
-
-        // Terminate the conference so the web/tablet user is disconnected
-        try {
-          const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-          if (call.conferenceSid) {
-            await client.conferences(call.conferenceSid).update({ status: 'completed' });
-          } else {
-            const conferences = await client.conferences.list({
-              friendlyName: `call-${callId}`,
-              status: 'in-progress',
-            });
-            for (const conf of conferences) {
-              await conf.update({ status: 'completed' });
-            }
-          }
-          console.log(`[voice] Conference terminated for call ${callId}`);
-        } catch (confErr) {
-          console.error(`[voice] Error terminating conference for call ${callId}:`, confErr);
+        if (call && call.status === "ringing") {
+          await prisma.voiceCall.update({
+            where: { id: callId },
+            data: { status: "connected", connectedAt: new Date() },
+          });
+          console.log(
+            `[voice] Call ${callId} marked as connected (phone answered)`,
+          );
         }
-
-        // Clean up in-memory metadata
-        callMetadata.delete(callId);
       }
-    }
-  } catch (err) {
-    console.error(`[voice] Error processing status callback for call ${callId}:`, err);
-  }
 
-  // Twilio expects 200 OK
-  res.sendStatus(200);
-});
+      // Call ended → mark as completed/missed
+      if (
+        CallStatus === "completed" ||
+        CallStatus === "busy" ||
+        CallStatus === "no-answer" ||
+        CallStatus === "failed" ||
+        CallStatus === "canceled"
+      ) {
+        const call = await prisma.voiceCall.findUnique({
+          where: { id: callId },
+        });
+        if (call && ["ringing", "connected"].includes(call.status)) {
+          const durationSeconds = call.connectedAt
+            ? Math.floor((Date.now() - call.connectedAt.getTime()) / 1000)
+            : 0;
+
+          await prisma.voiceCall.update({
+            where: { id: callId },
+            data: {
+              status: CallStatus === "completed" ? "completed" : "missed",
+              endedAt: new Date(),
+              endedBy: "receiver",
+              durationSeconds,
+            },
+          });
+          console.log(
+            `[voice] Call ${callId} marked as ended by receiver (${CallStatus})`,
+          );
+
+          // Terminate the conference so the web/tablet user is disconnected
+          try {
+            const client = twilio(
+              process.env.TWILIO_ACCOUNT_SID,
+              process.env.TWILIO_AUTH_TOKEN,
+            );
+            if (call.conferenceSid) {
+              await client
+                .conferences(call.conferenceSid)
+                .update({ status: "completed" });
+            } else {
+              const conferences = await client.conferences.list({
+                friendlyName: `call-${callId}`,
+                status: "in-progress",
+              });
+              for (const conf of conferences) {
+                await conf.update({ status: "completed" });
+              }
+            }
+            console.log(`[voice] Conference terminated for call ${callId}`);
+          } catch (confErr) {
+            console.error(
+              `[voice] Error terminating conference for call ${callId}:`,
+              confErr,
+            );
+          }
+
+          // Clean up in-memory metadata
+          callMetadata.delete(callId);
+        }
+      }
+    } catch (err) {
+      console.error(
+        `[voice] Error processing status callback for call ${callId}:`,
+        err,
+      );
+    }
+
+    // Twilio expects 200 OK
+    res.sendStatus(200);
+  },
+);
 
 export default voiceUserRouter;
