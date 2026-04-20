@@ -15,6 +15,7 @@ async function main() {
   console.log('🌱 Starting seed...');
 
   // Clear existing data
+  await prisma.systemConfiguration.deleteMany();
   await prisma.messageAttachment.deleteMany();
   await prisma.message.deleteMany();
   await prisma.conversation.deleteMany();
@@ -292,7 +293,7 @@ async function main() {
     prisma.familyMember.create({
       data: {
         email: 'alice@example.com',
-        phone: '+15551234001',
+        phone: process.env.TEST_CONTACT_PHONE_NUMBER || '+15551234001',
         firstName: 'Alice',
         lastName: 'Doe',
         passwordHash: await hashPassword('password123'),
@@ -355,9 +356,27 @@ async function main() {
     prisma.familyMember.create({
       data: {
         email: 'attorney@lawfirm.com',
-        phone: '+15551234008',
+        phone: process.env.TEST_ATTORNEY_PHONE_NUMBER || '+15551234008',
         firstName: 'Henry',
         lastName: 'Attorney',
+        passwordHash: await hashPassword('password123'),
+      },
+    }),
+    prisma.familyMember.create({
+      data: {
+        email: 'crisis@hotline.com',
+        phone: process.env.TEST_HOTLINE_PHONE_NUMBER || '+15551234009',
+        firstName: 'Crisis',
+        lastName: 'Hotline',
+        passwordHash: await hashPassword('password123'),
+      },
+    }),
+    prisma.familyMember.create({
+      data: {
+        email: 'PREA@hotline.com',
+        phone: process.env.TEST_HOTLINE_PHONE_NUMBER || '+15551234010',
+        firstName: 'PREA',
+        lastName: 'Hotline',
         passwordHash: await hashPassword('password123'),
       },
     }),
@@ -755,6 +774,25 @@ async function main() {
       agencyId: agency.id,
       reason: 'Spam caller',
       blockedBy: agencyAdmin.id,
+    },
+  });
+
+  console.log('⚙️  Creating system configuration...');
+
+  // Create default system configuration
+  await prisma.systemConfiguration.create({
+    data: {
+      key: 'sms_send_setting',
+      value: 'NO_SMS',
+      description: 'Controls SMS before voice calls: NO_SMS, SEND_SMS (no inmate name), SEND_SMS_WITH_NAME (includes inmate name and facility)',
+    },
+  });
+
+  await prisma.systemConfiguration.create({
+    data: {
+      key: 'announcement_include_name',
+      value: 'YES',
+      description: 'Controls whether to include the person\'s name in the announcement: YES, NO',
     },
   });
 

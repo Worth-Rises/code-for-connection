@@ -59,8 +59,10 @@ authRouter.post('/pin-login', async (req: Request, res: Response) => {
 
     const token = generateToken(user);
 
+    const nameAudioBytes = (matchedPerson as { nameAudioBytes?: Buffer | null }).nameAudioBytes;
+    const needsNameRecording = nameAudioBytes == null || nameAudioBytes.length === 0;
     const response: AuthResponse = { token, user };
-    res.json(createSuccessResponse(response));
+    res.json(createSuccessResponse({ ...response, needsNameRecording }));
   } catch (error) {
     console.error('PIN login error:', error);
     res.status(500).json(createErrorResponse({

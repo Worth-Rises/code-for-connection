@@ -7,15 +7,20 @@ import dotenv from 'dotenv';
 import { authRouter } from './routes/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { adminRouter } from '@openconnect/admin';
+import { voiceRouter } from '@openconnect/voice';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+/** Allow larger JSON bodies for e.g. base64 name-audio uploads (~2MB decoded → ~2.7MB in body) */
+const JSON_LIMIT = '5mb';
+
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: JSON_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: JSON_LIMIT }));
 app.use(morgan('dev'));
 
 app.get('/health', (_req, res) => {
@@ -24,9 +29,9 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/auth', authRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/voice', voiceRouter);
 
 // Guild route mounting (teams will implement these)
-// app.use('/api/voice', voiceRouter);
 // app.use('/api/video', videoRouter);
 // app.use('/api/messaging', messagingRouter);
 

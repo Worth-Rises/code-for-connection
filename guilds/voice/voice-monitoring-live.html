@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice Monitoring — Admin Portal Mockup</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            border: '#e4e4e7',
+            input: '#e4e4e7',
+            ring: '#18181b',
+            background: '#ffffff',
+            foreground: '#09090b',
+            primary: { DEFAULT: '#18181b', foreground: '#fafafa' },
+            secondary: { DEFAULT: '#f4f4f5', foreground: '#18181b' },
+            destructive: { DEFAULT: '#ef4444', foreground: '#fafafa' },
+            muted: { DEFAULT: '#f4f4f5', foreground: '#71717a' },
+            accent: { DEFAULT: '#f4f4f5', foreground: '#18181b' },
+            card: { DEFAULT: '#ffffff', foreground: '#09090b' },
+          },
+          borderRadius: { lg: '0.5rem', md: 'calc(0.5rem - 2px)', sm: 'calc(0.5rem - 4px)' },
+          fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'] },
+        }
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Inter, system-ui, -apple-system, sans-serif; background: #f4f4f5; }
+    .sidebar-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 0.375rem; font-size: 0.875rem; color: #71717a; cursor: pointer; text-decoration: none; }
+    .sidebar-item:hover { background: #f4f4f5; color: #09090b; }
+    .sidebar-item.active { background: #f4f4f5; color: #09090b; font-weight: 600; }
+    .sidebar-label { font-size: 0.75rem; font-weight: 600; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; padding: 1rem 0.75rem 0.25rem; }
+    .card { background: white; border: 1px solid #e4e4e7; border-radius: 0.5rem; }
+    .badge { display: inline-flex; align-items: center; padding: 0.125rem 0.625rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+    .badge-default { background: #f4f4f5; color: #18181b; }
+    .badge-destructive { background: #fef2f2; color: #dc2626; }
+    .badge-warning { background: #fffbeb; color: #d97706; }
+    .badge-success { background: #f0fdf4; color: #16a34a; }
+    .badge-blue { background: #eff6ff; color: #2563eb; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.5rem 1rem; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .btn-primary { background: #18181b; color: #fafafa; border: none; }
+    .btn-primary:hover { background: #27272a; }
+    .btn-outline { background: white; color: #18181b; border: 1px solid #e4e4e7; }
+    .btn-outline:hover { background: #f4f4f5; }
+    .btn-destructive { background: #ef4444; color: white; border: none; }
+    .btn-destructive:hover { background: #dc2626; }
+    .btn-ghost { background: transparent; color: #71717a; border: none; }
+    .btn-ghost:hover { background: #f4f4f5; color: #09090b; }
+    .input { padding: 0.5rem 0.75rem; border: 1px solid #e4e4e7; border-radius: 0.375rem; font-size: 0.875rem; outline: none; width: 100%; }
+    .input:focus { border-color: #18181b; box-shadow: 0 0 0 2px rgba(24,24,27,0.1); }
+    .select { padding: 0.5rem 2rem 0.5rem 0.75rem; border: 1px solid #e4e4e7; border-radius: 0.375rem; font-size: 0.875rem; background: white url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") right 0.5rem center/1.25rem no-repeat; appearance: none; }
+    .tab { padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500; color: #71717a; border-bottom: 2px solid transparent; cursor: pointer; display: inline-block; }
+    .tab.active { color: #09090b; border-bottom-color: #18181b; }
+    .tab .count { background: #ef4444; color: white; font-size: 0.625rem; padding: 0.125rem 0.375rem; border-radius: 9999px; margin-left: 0.375rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 0.75rem 1rem; font-size: 0.75rem; font-weight: 500; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e4e4e7; }
+    td { padding: 0.75rem 1rem; font-size: 0.875rem; color: #09090b; border-bottom: 1px solid #f4f4f5; }
+    tr:hover td { background: #fafafa; }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
+    .live-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #16a34a;
+      border-radius: 50%;
+      animation: pulse-dot 1.5s ease-in-out infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+  <div class="flex h-screen">
+    <!-- Sidebar -->
+    <aside class="w-56 bg-white border-r border-border flex flex-col shrink-0">
+      <div class="p-4 border-b border-border">
+        <h1 class="text-sm font-bold tracking-tight">Open Connect</h1>
+        <p class="text-xs text-muted-foreground">Admin Portal</p>
+      </div>
+      <nav class="flex-1 p-2 space-y-0.5 overflow-y-auto">
+        <a href="01-dashboard.html" class="sidebar-item">📊 Dashboard</a>
+        <div class="sidebar-label">Management</div>
+        <a href="02-residents.html" class="sidebar-item">👥 Residents</a>
+        <a href="03-contacts.html" class="sidebar-item">🤝 Contacts<span class="ml-auto badge badge-destructive text-xs">7</span></a>
+        <a href="04-visitors.html" class="sidebar-item">🚪 Visitors<span class="ml-auto badge badge-destructive text-xs">4</span></a>
+        <div class="sidebar-label">Monitoring</div>
+        <a href="05-voice-monitoring.html" class="sidebar-item active">📞 Voice Calls</a>
+        <a href="06-video-monitoring.html" class="sidebar-item">📹 Video Calls</a>
+        <a href="07-message-review.html" class="sidebar-item">💬 Messages<span class="ml-auto badge badge-destructive text-xs">23</span></a>
+        <div class="sidebar-label">Intelligence</div>
+        <a href="08-search-alerts.html" class="sidebar-item">🔍 Search &amp; Alerts</a>
+        <div class="sidebar-label">Operations</div>
+        <a href="09-housing.html" class="sidebar-item">🏠 Housing</a>
+        <a href="10-reports.html" class="sidebar-item">📈 Reports</a>
+        <a href="11-audit-log.html" class="sidebar-item">📋 Audit Log</a>
+        <a href="12-settings.html" class="sidebar-item">⚙️ Settings</a>
+      </nav>
+    </aside>
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <header class="h-14 bg-white border-b border-border flex items-center px-6 shrink-0 justify-between">
+        <div></div>
+        <div class="flex items-center gap-4">
+          <select class="select text-sm"><option>Sing Sing Correctional Facility</option><option>Bedford Hills Correctional Facility</option><option>All Facilities</option></select>
+          <button class="btn-ghost relative p-2 rounded-md">🔔<span class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">3</span></button>
+          <div class="flex items-center gap-2 text-sm"><span class="w-8 h-8 bg-zinc-200 rounded-full flex items-center justify-center text-xs font-medium">JR</span>J. Rivera ▾</div>
+        </div>
+      </header>
+      <main class="flex-1 overflow-y-auto p-6">
+        <!-- Page Header -->
+        <div class="mb-6">
+          <h2 class="text-xl font-semibold text-foreground">Voice Monitoring</h2>
+          <p class="text-sm text-muted-foreground mt-1">Monitor and manage active voice calls across facilities</p>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="grid grid-cols-4 gap-4 mb-6">
+          <div class="card p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Calls</p>
+            <p class="text-2xl font-semibold text-foreground mt-1" id="stat-active">—</p>
+          </div>
+          <div class="card p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Today Total</p>
+            <p class="text-2xl font-semibold text-foreground mt-1" id="stat-today">—</p>
+          </div>
+          <div class="card p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Avg Duration</p>
+            <p class="text-2xl font-semibold text-foreground mt-1" id="stat-avg">—</p>
+          </div>
+          <div class="card p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Terminated</p>
+            <p class="text-2xl font-semibold text-foreground mt-1" id="stat-terminated">—</p>
+          </div>
+        </div>
+
+        <!-- Tab Bar -->
+        <div class="border-b border-border mb-4">
+          <span class="tab active" id="tab-active" onclick="switchTab('active')"><span class="live-dot"></span>Active Calls<span class="count" id="active-count">0</span></span>
+          <span class="tab" id="tab-history" onclick="switchTab('history')">Call History</span>
+        </div>
+
+        <!-- Refresh indicator -->
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs text-muted-foreground"><span id="connection-status">⟳ Auto-refreshing every 5 seconds</span></p>
+          <p class="text-xs text-muted-foreground">Last refresh: <span id="last-refresh">—</span></p>
+        </div>
+
+        <!-- Active Calls Table -->
+        <div class="card overflow-hidden" id="active-calls-section">
+          <table>
+            <thead>
+              <tr>
+                <th>Resident</th>
+                <th>Contact</th>
+                <th>Started</th>
+                <th>Duration</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="active-calls-body">
+              <tr><td colspan="6" class="text-center text-muted-foreground py-8">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Call History Table -->
+        <div class="card overflow-hidden hidden" id="history-section">
+          <table>
+            <thead>
+              <tr>
+                <th>Resident</th>
+                <th>Contact</th>
+                <th>Date</th>
+                <th>Duration</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="history-body">
+              <tr><td colspan="6" class="text-center text-muted-foreground py-8">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Footer note -->
+        <div class="mt-4 p-3 rounded-md bg-blue-50 border border-blue-100">
+          <p class="text-xs text-blue-700">ℹ️ Attorney calls are monitored for scheduling only. Content is privileged and not subject to keyword analysis.</p>
+        </div>
+
+        <script>
+          const API = 'http://localhost:3000/api';
+          let TOKEN = '';
+          let currentTab = 'active';
+          let durationTimers = {};
+
+          // Login on load
+          async function init() {
+            const res = await fetch(`${API}/auth/login`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: 'admin@singsingcf.gov', password: 'admin123' }),
+            });
+            const data = await res.json();
+            TOKEN = data.data.token;
+            refresh();
+            setInterval(refresh, 5000);
+          }
+
+          async function apiFetch(path) {
+            const res = await fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+            return res.json();
+          }
+
+          async function apiPost(path, body) {
+            const res = await fetch(`${API}${path}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
+              body: JSON.stringify(body),
+            });
+            return res.json();
+          }
+
+          async function apiPatch(path, body) {
+            const res = await fetch(`${API}${path}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
+              body: JSON.stringify(body),
+            });
+            return res.json();
+          }
+
+          function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return `${m}:${String(s).padStart(2, '0')}`;
+          }
+
+          function formatDuration(seconds) {
+            if (!seconds) return '—';
+            const m = Math.floor(seconds / 60);
+            return `${m}m`;
+          }
+
+          function timeAgo(dateStr) {
+            const d = new Date(dateStr);
+            return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          }
+
+          function liveDuration(startedAt) {
+            const elapsed = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+            return formatTime(Math.max(0, elapsed));
+          }
+
+          function statusBadge(status, isLegal) {
+            const map = {
+              ringing: '<span class="badge badge-warning">◉ Ringing</span>',
+              connected: '<span class="badge badge-success">● Connected</span>',
+              completed: '<span class="badge badge-default">Completed</span>',
+              missed: '<span class="badge badge-destructive">Missed</span>',
+              terminated_by_admin: '<span class="badge badge-destructive">Terminated</span>',
+            };
+            let html = map[status] || `<span class="badge badge-default">${status}</span>`;
+            if (isLegal) html += ' <span class="badge badge-blue ml-1">ATTY</span>';
+            return html;
+          }
+
+          async function refresh() {
+            try {
+              const [statsRes, activeRes] = await Promise.all([
+                apiFetch('/voice/stats'),
+                apiFetch('/voice/active-calls'),
+              ]);
+
+              const stats = statsRes.data;
+              document.getElementById('stat-active').textContent = stats.activeCalls;
+              document.getElementById('stat-today').textContent = stats.todayTotal;
+              document.getElementById('stat-avg').textContent = formatDuration(stats.avgDurationSeconds);
+              document.getElementById('stat-terminated').textContent = stats.terminatedToday;
+              document.getElementById('active-count').textContent = stats.activeCalls;
+              document.getElementById('last-refresh').textContent = new Date().toLocaleTimeString();
+              document.getElementById('connection-status').textContent = '⟳ Live — auto-refreshing every 5 seconds';
+
+              // Render active calls
+              const calls = activeRes.data;
+              const tbody = document.getElementById('active-calls-body');
+              if (calls.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted-foreground py-8">No active calls</td></tr>';
+              } else {
+                tbody.innerHTML = calls.map(c => `
+                  <tr>
+                    <td>
+                      <div class="font-medium">${c.incarceratedPerson.firstName} ${c.incarceratedPerson.lastName}</div>
+                      <div class="text-xs text-muted-foreground">#${c.incarceratedPerson.externalId}</div>
+                    </td>
+                    <td>
+                      <div>${c.familyMember.firstName} ${c.familyMember.lastName}</div>
+                      <div class="text-xs text-muted-foreground">${c.familyMember.phone}</div>
+                    </td>
+                    <td>${timeAgo(c.startedAt)}</td>
+                    <td class="font-mono text-sm" data-started="${c.startedAt}">${liveDuration(c.startedAt)}</td>
+                    <td>${statusBadge(c.status, c.isLegal)}</td>
+                    <td>
+                      <div class="flex gap-2">
+                        <button class="btn btn-destructive text-xs px-3 py-1" onclick="terminateCall('${c.id}')">Terminate</button>
+                        <button class="btn ${c.isLegal ? 'btn-primary' : 'btn-outline'} text-xs px-3 py-1" onclick="toggleLegal('${c.id}', ${!c.isLegal})">${c.isLegal ? '✓ Legal' : 'Mark Legal'}</button>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('');
+              }
+
+              // Update live durations every second
+              if (calls.length > 0) updateDurations();
+
+              // If on history tab, load that too
+              if (currentTab === 'history') await loadHistory();
+
+            } catch (err) {
+              document.getElementById('connection-status').textContent = '⚠ Connection error — retrying...';
+              console.error('Refresh error:', err);
+            }
+          }
+
+          function updateDurations() {
+            document.querySelectorAll('td[data-started]').forEach(td => {
+              td.textContent = liveDuration(td.dataset.started);
+            });
+          }
+          setInterval(updateDurations, 1000);
+
+          async function loadHistory() {
+            const res = await apiFetch('/voice/call-logs?pageSize=20');
+            const calls = res.data;
+            const tbody = document.getElementById('history-body');
+            if (calls.length === 0) {
+              tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted-foreground py-8">No call history</td></tr>';
+            } else {
+              tbody.innerHTML = calls.map(c => `
+                <tr>
+                  <td>
+                    <div class="font-medium">${c.incarceratedPerson.firstName} ${c.incarceratedPerson.lastName}</div>
+                    <div class="text-xs text-muted-foreground">#${c.incarceratedPerson.externalId}</div>
+                  </td>
+                  <td>
+                    <div>${c.familyMember.firstName} ${c.familyMember.lastName}</div>
+                    <div class="text-xs text-muted-foreground">${c.familyMember.phone}</div>
+                  </td>
+                  <td>${new Date(c.startedAt).toLocaleString()}</td>
+                  <td class="font-mono text-sm">${c.durationSeconds ? formatTime(c.durationSeconds) : '—'}</td>
+                  <td>${statusBadge(c.status, c.isLegal)}</td>
+                  <td>
+                    <button class="btn ${c.isLegal ? 'btn-primary' : 'btn-outline'} text-xs px-3 py-1" onclick="toggleLegal('${c.id}', ${!c.isLegal})">${c.isLegal ? '✓ Legal' : 'Mark Legal'}</button>
+                  </td>
+                </tr>
+              `).join('');
+            }
+          }
+
+          async function terminateCall(callId) {
+            if (!confirm('Terminate this call?')) return;
+            const res = await apiPost('/voice/terminate-calls', { callIds: [callId] });
+            console.log('Terminate result:', res);
+            refresh();
+          }
+
+          async function toggleLegal(callId, isLegal) {
+            await apiPatch(`/voice/calls/${callId}/legal`, { isLegal });
+            refresh();
+          }
+
+          function switchTab(tab) {
+            currentTab = tab;
+            document.getElementById('tab-active').className = tab === 'active' ? 'tab active' : 'tab';
+            document.getElementById('tab-history').className = tab === 'history' ? 'tab active' : 'tab';
+            document.getElementById('active-calls-section').className = tab === 'active' ? 'card overflow-hidden' : 'card overflow-hidden hidden';
+            document.getElementById('history-section').className = tab === 'history' ? 'card overflow-hidden' : 'card overflow-hidden hidden';
+            if (tab === 'history') loadHistory();
+          }
+
+          init();
+        </script>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

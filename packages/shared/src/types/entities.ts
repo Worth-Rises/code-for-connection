@@ -48,6 +48,10 @@ export interface IncarceratedPerson {
   admittedAt: Date;
   releasedAt?: Date | null;
   createdAt: Date;
+  /** Short audio of person saying their name; facility-approved for use in announcements */
+  nameAudioBytes?: Buffer | null;
+  nameAudioContentType?: string | null;
+  nameAudioApproved?: boolean;
 }
 
 export interface FamilyMember {
