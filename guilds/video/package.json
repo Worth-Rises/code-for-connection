@@ -5,15 +5,31 @@
   "main": "api/routes.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.32",
     "@openconnect/shared": "*",
+    "lucide-react": "^0.577.0",
     "socket.io-client": "^4.7.4"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/express": "^4.17.21",
     "@types/react": "^18.2.48",
-    "typescript": "^5.3.3"
+    "@types/supertest": "^7.2.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/ui": "^4.0.18",
+    "express": "^4.22.1",
+    "jsdom": "^28.1.0",
+    "msw": "^2.12.10",
+    "supertest": "^7.2.2",
+    "typescript": "^5.3.3",
+    "vite": "^5.4.21",
+    "vitest": "^4.0.18"
   }
 }

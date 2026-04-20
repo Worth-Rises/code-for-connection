@@ -610,6 +610,20 @@ async function main() {
         endedBy: VideoEndedBy.time_limit,
       },
     }),
+    // Dev test call active NOW
+    prisma.videoCall.create({
+      data: {
+        id: 'test-call-123', // Hardcoded ID for easy joining in the family dev stub
+        incarceratedPersonId: incarceratedPersons[0].id,
+        familyMemberId: familyMembers[0].id,
+        facilityId: singSing.id,
+        status: VideoCallStatus.scheduled,
+        scheduledStart: new Date(Date.now() - 5 * 60 * 1000), // Started 5 mins ago
+        scheduledEnd: new Date(Date.now() + 25 * 60 * 1000),  // Ends 25 mins from now
+        requestedBy: familyMembers[0].id,
+        approvedBy: singSingAdmin.id,
+      },
+    }),
     prisma.videoCall.create({
       data: {
         incarceratedPersonId: incarceratedPersons[5].id,

@@ -1,36 +1,122 @@
-import React from 'react';
+import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import { Card } from '@openconnect/ui';
+import { ScheduledCallsList } from './ScheduledCallsList.js';
+import { PastCallsList } from './PastCallsList';
+import { VideoCallRoom } from '../shared/VideoCallRoom.js';
+import { PreCallCheck } from '../shared/PreCallCheck.js';
 
-function VideoHome() {
+const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL ?? 'http://localhost:3001';
+
+type JoinPhase = 'waiting' | 'active';
+
+interface ActiveCall {
+  callId: string;
+  scheduledStart?: string;
+  scheduledEnd: string;
+  initialPhase?: JoinPhase;
+}
+
+function getUserIdFromToken(): string {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return '';
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.userId ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function IncarceratedVideoHome() {
+  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [isPrechecking, setIsPrechecking] = useState(false);
+  const userId = getUserIdFromToken();
+
+  if (activeCall && !isPrechecking) {
+    return (
+      <VideoCallRoom
+        callId={activeCall.callId}
+        userId={userId}
+        userRole="incarcerated"
+        scheduledStart={activeCall.scheduledStart}
+        scheduledEnd={activeCall.scheduledEnd}
+        initialPhase={activeCall.initialPhase}
+        signalingUrl={SIGNALING_URL}
+        onExit={() => setActiveCall(null)}
+      />
+    );
+  }
+
+  if (isPrechecking) {
+    return (
+      <PreCallCheck 
+        onCancel={() => {
+          setIsPrechecking(false);
+          setActiveCall(null);
+        }}
+        onJoin={() => setIsPrechecking(false)}
+      />
+    );
+  }
+
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900">Video Calls</h1>
-      <Card padding="lg">
-        <div className="text-center py-8">
-          <span className="text-6xl mb-4 block">📹</span>
-          <h2 className="text-xl font-semibold mb-2">Video Visits</h2>
-          <p className="text-gray-600 mb-6">
-            This is where the Video Guild will build the video calling interface.
-          </p>
-          <p className="text-sm text-gray-500">Features to implement:</p>
-          <ul className="text-sm text-gray-500 mt-2 space-y-1">
-            <li>View scheduled video visits</li>
-            <li>Join video calls</li>
-            <li>Camera/mic controls</li>
-            <li>Background blur option</li>
-            <li>Call timer with warnings</li>
-          </ul>
+    <div className="min-h-full bg-slate-900 p-4 sm:p-6 lg:p-8 flex flex-col items-center">
+      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
+        {/* Left column — upcoming scheduled calls */}
+        <div className="w-full">
+          <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-6 text-center lg:text-left">
+            Scheduled Calls
+          </h2>
+         <div className="overflow-y-auto max-h-[70vh] rounded-xl border border-white/10 bg-white/5 p-4">
+          <ScheduledCallsList
+            onJoinCall={(callId, scheduledStart, scheduledEnd) => {
+              // First POST to join the call to determine waiting/active phase, then open the room
+              fetch(`/api/video/join/${callId}`, {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${localStorage.getItem('token') ?? ''}`,
+                  'Content-Type': 'application/json',
+                },
+              })
+                .then((r) => r.json())
+                .then((body) => {
+                  if (body.success) {
+                    setActiveCall({
+                      callId,
+                      scheduledStart: body.data?.scheduledStart ?? scheduledStart,
+                      scheduledEnd: body.data?.scheduledEnd ?? scheduledEnd,
+                      initialPhase: body.data?.phase,
+                    });
+                    setIsPrechecking(true);
+                  } else {
+                    alert(`Cannot join: ${body.error?.message ?? 'Unknown error'}`);
+                  }
+                 })
+                .catch(() => alert('Failed to join call. Please try again.'));
+              }}
+            />
+          </div>
         </div>
-      </Card>
+
+        {/* Right column — past calls */}
+        <div className="w-full mt-8 lg:mt-0">
+          <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-6 text-center lg:text-left">
+            Past Calls
+          </h2>
+          <div className="overflow-y-auto max-h-[70vh] rounded-xl border border-white/10 bg-white/5 p-4">
+            <PastCallsList />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-export default function VideoIncarcerated() {
+// Default export for guild-loading conventions
+export default function IncarceratedVideoUI() {
   return (
     <Routes>
-      <Route index element={<VideoHome />} />
+      <Route index element={<IncarceratedVideoHome />} />
     </Routes>
   );
 }
