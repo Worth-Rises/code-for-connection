@@ -1,86 +1,269 @@
-import React from 'react';
+import { useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '@openconnect/ui';
+import { useAuth } from '../../../apps/web/src/context/AuthContext';
+import { usePolling } from '../../../apps/web/src/hooks/usePolling';
+import { StatCard } from '../../../packages/ui/src/admin/StatCard';
 
+import { fetchVoiceStats, fetchVoiceCallLogs } from './voice/api';
+import { fetchVideoStats, fetchVideoPendingRequests, fetchVideoCallLogs } from './video/api';
+import { fetchMessagingStats, fetchPendingMessages, fetchMessageLogs, approveMessage, rejectMessage, blockConversation } from './messaging/api';
+
+import { VoiceCallHistoryTable } from './voice/components';
+import { VideoPendingRequestsTable, VideoCallHistoryTable } from './video/components';
+import { MessagingPendingReviewTable, MessagingHistoryTable } from './messaging/components';
+
+import type { VoiceCallLogResponse } from './voice/types';
+import type { VideoCallLogResponse } from './video/types';
+import type { MessageLogResponse } from './messaging/types';
+
+import { useState } from 'react';
+
+/**
+ * Unified overview dashboard — shows stats, pending items, and mini-histories
+ * for voice, video, and messaging in one place.
+ */
 export default function AdminDashboard() {
+  const { token } = useAuth();
+  const navigate = useNavigate();
+  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+
+  // ── Stats ──────────────────────────────────────────
+  const voiceStats = usePolling(
+    useCallback(() => fetchVoiceStats(token!), [token]),
+    15_000
+  );
+  const videoStats = usePolling(
+    useCallback(() => fetchVideoStats(token!), [token]),
+    15_000
+  );
+  const messagingStats = usePolling(
+    useCallback(() => fetchMessagingStats(token!), [token]),
+    15_000
+  );
+
+  // ── Pending items ──────────────────────────────────
+  const videoPending = usePolling(
+    useCallback(() => fetchVideoPendingRequests(token!), [token]),
+    15_000
+  );
+  const messagingPending = usePolling(
+    useCallback(() => fetchPendingMessages(token!), [token]),
+    15_000
+  );
+
+  // ── Mini-histories (first page only, small page size) ──
+  const voiceLogs = usePolling(
+    useCallback(() => fetchVoiceCallLogs(token!, 1, 5), [token]),
+    30_000
+  );
+  const videoLogs = usePolling(
+    useCallback(() => fetchVideoCallLogs(token!, 1, 5), [token]),
+    30_000
+  );
+  const messagingLogs = usePolling(
+    useCallback(() => fetchMessageLogs(token!, 1, 5), [token]),
+    30_000
+  );
+
+  // ── Video pending actions ──────────────────────────
+  const handleVideoApprove = async (callId: string) => {
+    setActionInProgress(callId);
+    try {
+      const { approveVideoRequest } = await import('./video/api');
+      await approveVideoRequest(token!, callId);
+      videoPending.refresh();
+      videoStats.refresh();
+    } catch (e) {
+      console.error('Error approving video request:', e);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleVideoDeny = async (callId: string) => {
+    setActionInProgress(callId);
+    try {
+      const { denyVideoRequest } = await import('./video/api');
+      await denyVideoRequest(token!, callId);
+      videoPending.refresh();
+      videoStats.refresh();
+    } catch (e) {
+      console.error('Error denying video request:', e);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  // ── Messaging pending actions ──────────────────────
+  const handleMsgApprove = async (messageId: string) => {
+    setActionInProgress(messageId);
+    try {
+      await approveMessage(token!, messageId);
+      messagingPending.refresh();
+      messagingStats.refresh();
+    } catch (e) {
+      console.error('Error approving message:', e);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleMsgReject = async (messageId: string) => {
+    setActionInProgress(messageId);
+    try {
+      await rejectMessage(token!, messageId);
+      messagingPending.refresh();
+      messagingStats.refresh();
+    } catch (e) {
+      console.error('Error rejecting message:', e);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleMsgBlock = async (conversationId: string) => {
+    try {
+      await blockConversation(token!, conversationId);
+      messagingPending.refresh();
+    } catch (e) {
+      console.error('Error blocking conversation:', e);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600">Welcome to the Open Connect Admin Portal</p>
+        <p className="text-gray-600">Overview of all communications</p>
       </div>
 
+      {/* ── Stats Cards ───────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card padding="md">
-          <div className="text-center">
-            <p className="text-3xl font-bold text-blue-600">0</p>
-            <p className="text-sm text-gray-600">Active Voice Calls</p>
-          </div>
-        </Card>
-        <Card padding="md">
-          <div className="text-center">
-            <p className="text-3xl font-bold text-green-600">0</p>
-            <p className="text-sm text-gray-600">Active Video Calls</p>
-          </div>
-        </Card>
-        <Card padding="md">
-          <div className="text-center">
-            <p className="text-3xl font-bold text-yellow-600">0</p>
-            <p className="text-sm text-gray-600">Pending Messages</p>
-          </div>
-        </Card>
-        <Card padding="md">
-          <div className="text-center">
-            <p className="text-3xl font-bold text-purple-600">0</p>
-            <p className="text-sm text-gray-600">Video Requests</p>
-          </div>
-        </Card>
+        <StatCard
+          label="Active Voice Calls"
+          value={voiceStats.data?.activeCalls ?? 0}
+          loading={voiceStats.loading}
+          color="blue"
+          pulse={(voiceStats.data?.activeCalls ?? 0) > 0}
+        />
+        <StatCard
+          label="Active Video Calls"
+          value={videoStats.data?.activeCalls ?? 0}
+          loading={videoStats.loading}
+          color="green"
+          pulse={(videoStats.data?.activeCalls ?? 0) > 0}
+        />
+        <StatCard
+          label="Video Requests"
+          value={videoStats.data?.pendingRequests ?? 0}
+          loading={videoStats.loading}
+          color="yellow"
+          pulse={(videoStats.data?.pendingRequests ?? 0) > 0}
+        />
+        <StatCard
+          label="Pending Messages"
+          value={messagingStats.data?.pendingReview ?? 0}
+          loading={messagingStats.loading}
+          color="yellow"
+          pulse={(messagingStats.data?.pendingReview ?? 0) > 0}
+        />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card padding="lg">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h2>
-          <div className="text-center py-8 text-gray-500">
-            <p>Admin Guild will implement the activity feed here.</p>
-            <p className="text-sm mt-2">Shows recent calls, messages, and events.</p>
-          </div>
-        </Card>
-
-        <Card padding="lg">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-          <div className="space-y-3">
-            <button className="w-full p-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-              <p className="font-medium">Manage Contacts</p>
-              <p className="text-sm text-gray-500">Review and approve contact requests</p>
-            </button>
-            <button className="w-full p-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-              <p className="font-medium">View Reports</p>
-              <p className="text-sm text-gray-500">Generate communication reports</p>
-            </button>
-            <button className="w-full p-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-              <p className="font-medium">Manage Blocked Numbers</p>
-              <p className="text-sm text-gray-500">View and modify blocked phone numbers</p>
-            </button>
-          </div>
-        </Card>
-      </div>
+      {/* ── Pending Requests (all types) ──────────────── */}
+      <Card padding="lg">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Pending Video Requests</h2>
+          <button
+            onClick={() => navigate('/admin/video')}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
+            View all →
+          </button>
+        </div>
+        <VideoPendingRequestsTable
+          requests={videoPending.data ?? []}
+          loading={videoPending.loading}
+          actionInProgress={actionInProgress}
+          onApprove={handleVideoApprove}
+          onDeny={handleVideoDeny}
+          onRefresh={videoPending.refresh}
+        />
+      </Card>
 
       <Card padding="lg">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">System Status</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-            <span className="text-sm text-gray-600">Database: Connected</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-            <span className="text-sm text-gray-600">Signaling Server: Online</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-            <span className="text-sm text-gray-600">API Gateway: Running</span>
-          </div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">Messages Pending Review</h2>
+          <button
+            onClick={() => navigate('/admin/messaging')}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
+            View all →
+          </button>
         </div>
+        <MessagingPendingReviewTable
+          messages={messagingPending.data ?? []}
+          loading={messagingPending.loading}
+          actionInProgress={actionInProgress}
+          onApprove={handleMsgApprove}
+          onReject={handleMsgReject}
+          onBlockConversation={handleMsgBlock}
+        />
       </Card>
+
+      {/* ── Mini-Histories ────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Voice mini-history */}
+        <Card padding="lg">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">📞 Voice</h2>
+            <button
+              onClick={() => navigate('/admin/voice')}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              View all →
+            </button>
+          </div>
+          <VoiceCallHistoryTable
+            calls={voiceLogs.data?.data ?? []}
+            loading={voiceLogs.loading}
+          />
+        </Card>
+
+        {/* Video mini-history */}
+        <Card padding="lg">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">📹 Video</h2>
+            <button
+              onClick={() => navigate('/admin/video')}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              View all →
+            </button>
+          </div>
+          <VideoCallHistoryTable
+            calls={videoLogs.data?.data ?? []}
+            loading={videoLogs.loading}
+          />
+        </Card>
+
+        {/* Messaging mini-history */}
+        <Card padding="lg">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">💬 Messages</h2>
+            <button
+              onClick={() => navigate('/admin/messaging')}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              View all →
+            </button>
+          </div>
+          <MessagingHistoryTable
+            messages={messagingLogs.data?.data ?? []}
+            loading={messagingLogs.loading}
+          />
+        </Card>
+      </div>
     </div>
   );
 }

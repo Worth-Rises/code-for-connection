@@ -5,9 +5,25 @@ import {
   createSuccessResponse,
   createErrorResponse,
   prisma,
+  hashPin,
 } from '@openconnect/shared';
+// Admin guild's keyword-alerts and flagged-content routes are disabled.
+// The messaging guild (AmberAbreu/code-for-connection, guild-message branch)
+// built a working content moderation system using a simpler FlaggedKeyword model
+// with screening wired into POST /messaging/send. These admin routes used a
+// different model (KeywordAlert) with tiered severity + regex + pg_trgm fuzzy
+// matching that was never integrated into the message pipeline.
+// See: doc/explore-content-moderation-guild-conflict.md
+//
+// import { keywordAlertsRouter } from './keyword-alerts.routes.js';
+// import { flaggedContentRouter } from './flagged-content.routes.js';
+import { sessionLimitsRouter } from './session-limits.routes.js';
 
 export const adminRouter = Router();
+
+// adminRouter.use('/keyword-alerts', keywordAlertsRouter);
+// adminRouter.use('/flagged-content', flaggedContentRouter);
+adminRouter.use('/session-limits', sessionLimitsRouter);
 
 adminRouter.get('/contacts/:incarceratedPersonId', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -107,7 +123,7 @@ adminRouter.get('/facility/:facilityId', requireAuth, async (req: Request, res: 
   }
 });
 
-adminRouter.get('/facilities', async (_req: Request, res: Response) => {
+adminRouter.get('/facilities', requireAuth, async (_req: Request, res: Response) => {
   try {
     const facilities = await prisma.facility.findMany({
       select: {
@@ -166,7 +182,8 @@ adminRouter.get('/user/:userId', requireAuth, async (req: Request, res: Response
     });
 
     if (incarceratedPerson) {
-      res.json(createSuccessResponse({ type: 'incarcerated', user: incarceratedPerson }));
+      const { pin, ...safeUser } = incarceratedPerson;
+      res.json(createSuccessResponse({ type: 'incarcerated', user: safeUser }));
       return;
     }
 
@@ -190,6 +207,453 @@ adminRouter.get('/user/:userId', requireAuth, async (req: Request, res: Response
       code: 'INTERNAL_ERROR',
       message: 'Failed to fetch user',
     }));
+  }
+});
+
+adminRouter.get('/residents', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const user = req.user!;
+    const where: any = {};
+
+    if (user.role === 'facility_admin') {
+      where.facilityId = user.facilityId;
+    } else if (user.role === 'agency_admin') {
+      where.agencyId = user.agencyId;
+    }
+
+    const status = req.query.status as string | undefined;
+    if (status) {
+      where.status = status;
+    }
+
+    const search = req.query.search as string | undefined;
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { externalId: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const residents = await prisma.incarceratedPerson.findMany({
+      where,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        externalId: true,
+        status: true,
+        admittedAt: true,
+        facility: { select: { id: true, name: true } },
+        housingUnit: { select: { id: true, name: true } },
+      },
+      orderBy: { lastName: 'asc' },
+    });
+
+    res.json(createSuccessResponse(residents));
+  } catch (error) {
+    console.error('Error fetching residents:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch residents',
+    }));
+  }
+});
+
+adminRouter.get('/residents/:id', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const resident = await prisma.incarceratedPerson.findUnique({
+      where: { id: req.params.id },
+      include: {
+        facility: { select: { id: true, name: true } },
+        housingUnit: {
+          select: { id: true, name: true, unitType: true },
+        },
+      },
+    });
+
+    if (!resident) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Resident not found',
+      }));
+      return;
+    }
+
+    const user = req.user!;
+    if (user.role === 'facility_admin' && user.facilityId !== resident.facilityId) {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'No access to this resident',
+      }));
+      return;
+    }
+
+    // Never expose the PIN hash
+    const { pin, ...safeResident } = resident;
+    res.json(createSuccessResponse(safeResident));
+  } catch (error) {
+    console.error('Error fetching resident:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch resident',
+    }));
+  }
+});
+
+adminRouter.get('/contact-requests', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = req.user!;
+
+    if (user.role !== 'facility_admin' && user.role !== 'agency_admin') {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'Insufficient permissions',
+      }));
+      return;
+    }
+
+    const where: any = {};
+
+    const status = req.query.status as string | undefined;
+    if (status) {
+      where.status = status;
+    } else {
+      where.status = 'pending';
+    }
+
+    // Scope by facility: join through incarceratedPerson
+    if (user.role === 'facility_admin') {
+      where.incarceratedPerson = { facilityId: user.facilityId };
+    } else if (user.role === 'agency_admin') {
+      where.incarceratedPerson = { agencyId: user.agencyId };
+    }
+
+    const contacts = await prisma.approvedContact.findMany({
+      where,
+      include: {
+        incarceratedPerson: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            externalId: true,
+            facilityId: true,
+            facility: { select: { id: true, name: true } },
+          },
+        },
+        familyMember: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: { requestedAt: 'desc' },
+    });
+
+    res.json(createSuccessResponse(contacts));
+  } catch (error) {
+    console.error('Error fetching contact requests:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch contact requests',
+    }));
+  }
+});
+
+adminRouter.post('/contact-requests/:id/approve', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = req.user!;
+
+    if (user.role !== 'facility_admin' && user.role !== 'agency_admin') {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'Insufficient permissions',
+      }));
+      return;
+    }
+
+    const contact = await prisma.approvedContact.findUnique({
+      where: { id: req.params.id },
+      include: { incarceratedPerson: { select: { facilityId: true } } },
+    });
+
+    if (!contact) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Contact request not found',
+      }));
+      return;
+    }
+
+    if (user.role === 'facility_admin' && user.facilityId !== contact.incarceratedPerson.facilityId) {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'No access to this contact request',
+      }));
+      return;
+    }
+
+    if (contact.status !== 'pending') {
+      res.status(400).json(createErrorResponse({
+        code: 'INVALID_STATUS',
+        message: `Contact request is already ${contact.status}`,
+      }));
+      return;
+    }
+
+    const updated = await prisma.approvedContact.update({
+      where: { id: contact.id },
+      data: {
+        status: 'approved',
+        reviewedAt: new Date(),
+        reviewedBy: user.id,
+      },
+    });
+
+    res.json(createSuccessResponse(updated));
+  } catch (error) {
+    console.error('Error approving contact:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to approve contact',
+    }));
+  }
+});
+
+adminRouter.post('/contact-requests/:id/deny', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = req.user!;
+
+    if (user.role !== 'facility_admin' && user.role !== 'agency_admin') {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'Insufficient permissions',
+      }));
+      return;
+    }
+
+    const { reason } = req.body;
+    if (!reason || typeof reason !== 'string' || !reason.trim()) {
+      res.status(400).json(createErrorResponse({
+        code: 'VALIDATION_ERROR',
+        message: 'Reason is required',
+      }));
+      return;
+    }
+
+    const contact = await prisma.approvedContact.findUnique({
+      where: { id: req.params.id },
+      include: { incarceratedPerson: { select: { facilityId: true } } },
+    });
+
+    if (!contact) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Contact request not found',
+      }));
+      return;
+    }
+
+    if (user.role === 'facility_admin' && user.facilityId !== contact.incarceratedPerson.facilityId) {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'No access to this contact request',
+      }));
+      return;
+    }
+
+    if (contact.status !== 'pending') {
+      res.status(400).json(createErrorResponse({
+        code: 'INVALID_STATUS',
+        message: `Contact request is already ${contact.status}`,
+      }));
+      return;
+    }
+
+    const updated = await prisma.approvedContact.update({
+      where: { id: contact.id },
+      data: {
+        status: 'denied',
+        reviewedAt: new Date(),
+        reviewedBy: user.id,
+      },
+    });
+
+    res.json(createSuccessResponse(updated));
+  } catch (error) {
+    console.error('Error denying contact:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to deny contact',
+    }));
+  }
+});
+
+adminRouter.post('/residents/:id/reset-pin', requireAuth, async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json(createErrorResponse({
+        code: 'UNAUTHORIZED',
+        message: 'Not authenticated',
+      }));
+      return;
+    }
+
+    if (req.user.role !== 'facility_admin' && req.user.role !== 'agency_admin') {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'Insufficient permissions',
+      }));
+      return;
+    }
+
+    const resident = await prisma.incarceratedPerson.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!resident) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Resident not found',
+      }));
+      return;
+    }
+
+    if (req.user.role === 'facility_admin' && req.user.facilityId !== resident.facilityId) {
+      res.status(403).json(createErrorResponse({
+        code: 'FORBIDDEN',
+        message: 'No access to this resident',
+      }));
+      return;
+    }
+
+    const newPin = String(Math.floor(1000 + Math.random() * 9000));
+    const hashedPin = await hashPin(newPin);
+
+    await prisma.incarceratedPerson.update({
+      where: { id: resident.id },
+      data: { pin: hashedPin },
+    });
+
+    res.json(createSuccessResponse({ newPin }));
+  } catch (error) {
+    console.error('Error resetting PIN:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to reset PIN',
+    }));
+  }
+});
+
+function requireResidentAdmin(req: Request, res: Response, next: () => void): void {
+  if (!req.user) {
+    res.status(401).json(createErrorResponse({ code: 'UNAUTHORIZED', message: 'Not authenticated' }));
+    return;
+  }
+  if (req.user.role !== 'facility_admin' && req.user.role !== 'agency_admin') {
+    res.status(403).json(createErrorResponse({ code: 'FORBIDDEN', message: 'Insufficient permissions' }));
+    return;
+  }
+  next();
+}
+
+adminRouter.post('/residents/:id/release', requireAuth, requireResidentAdmin, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const body = req.body as { reason?: string; releaseDate?: string };
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    if (!reason) {
+      res.status(400).json(createErrorResponse({ code: 'VALIDATION_ERROR', message: 'Reason is required' }));
+      return;
+    }
+
+    const resident = await prisma.incarceratedPerson.findUnique({
+      where: { id },
+      include: { facility: { select: { id: true, name: true } }, housingUnit: { select: { id: true, name: true, unitType: true } } },
+    });
+    if (!resident) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Resident not found' }));
+      return;
+    }
+    if (resident.status === 'released') {
+      res.status(400).json(createErrorResponse({ code: 'VALIDATION_ERROR', message: 'Resident is already released' }));
+      return;
+    }
+
+    const user = req.user!;
+    if (user.role === 'facility_admin' && user.facilityId !== resident.facilityId) {
+      res.status(403).json(createErrorResponse({ code: 'FORBIDDEN', message: 'No access to this resident' }));
+      return;
+    }
+
+    const releaseDate = body.releaseDate ? new Date(body.releaseDate) : new Date();
+    const _previousStatus = resident.status;
+
+    const updated = await prisma.incarceratedPerson.update({
+      where: { id },
+      data: { status: 'released', releasedAt: releaseDate },
+      include: { facility: { select: { id: true, name: true } }, housingUnit: { select: { id: true, name: true, unitType: true } } },
+    });
+    const { pin: _pin, ...safeResident } = updated;
+
+    // TODO: when AuditLog exists: prisma.auditLog.create({ data: { adminUserId: user.id, action: 'resident_status_changed', entityType: 'incarcerated_person', entityId: id, details: { reason, releaseDate, previousStatus: _previousStatus } } })
+
+    res.json(createSuccessResponse(safeResident));
+  } catch (error) {
+    console.error('Error releasing resident:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to release resident' }));
+  }
+});
+
+adminRouter.post('/residents/:id/deactivate', requireAuth, requireResidentAdmin, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const body = req.body as { reason?: string };
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    if (!reason) {
+      res.status(400).json(createErrorResponse({ code: 'VALIDATION_ERROR', message: 'Reason is required' }));
+      return;
+    }
+
+    const resident = await prisma.incarceratedPerson.findUnique({
+      where: { id },
+      include: { facility: { select: { id: true, name: true } }, housingUnit: { select: { id: true, name: true, unitType: true } } },
+    });
+    if (!resident) {
+      res.status(404).json(createErrorResponse({ code: 'NOT_FOUND', message: 'Resident not found' }));
+      return;
+    }
+    if (resident.status === 'deactivated') {
+      res.status(400).json(createErrorResponse({ code: 'VALIDATION_ERROR', message: 'Resident is already deactivated' }));
+      return;
+    }
+
+    const user = req.user!;
+    if (user.role === 'facility_admin' && user.facilityId !== resident.facilityId) {
+      res.status(403).json(createErrorResponse({ code: 'FORBIDDEN', message: 'No access to this resident' }));
+      return;
+    }
+
+    const _previousStatus = resident.status;
+
+    const updated = await prisma.incarceratedPerson.update({
+      where: { id },
+      data: { status: 'deactivated' },
+      include: { facility: { select: { id: true, name: true } }, housingUnit: { select: { id: true, name: true, unitType: true } } },
+    });
+    const { pin: _pin, ...safeResident } = updated;
+
+    // TODO: when AuditLog exists: prisma.auditLog.create({ data: { adminUserId: user.id, action: 'resident_status_changed', entityType: 'incarcerated_person', entityId: id, details: { reason, previousStatus: _previousStatus } } })
+
+    res.json(createSuccessResponse(safeResident));
+  } catch (error) {
+    console.error('Error deactivating resident:', error);
+    res.status(500).json(createErrorResponse({ code: 'INTERNAL_ERROR', message: 'Failed to deactivate resident' }));
   }
 });
 

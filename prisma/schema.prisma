@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pg_trgm]
 }
 
 // ==========================================
@@ -23,6 +25,7 @@ model Agency {
   adminUsers       AdminUser[]
   blockedNumbers   BlockedNumber[]
   familyMembers    FamilyMember[]     @relation("BlockedAgencyRelation")
+  keywordAlerts    KeywordAlert[]
 
   @@map("agencies")
 }
@@ -43,6 +46,7 @@ model Facility {
   voiceCalls        VoiceCall[]
   videoCalls        VideoCall[]
   videoCallTimeSlots VideoCallTimeSlot[]
+  keywordAlerts      KeywordAlert[]
 
   @@map("facilities")
 }
@@ -51,13 +55,21 @@ model HousingUnitType {
   id                      String @id @default(uuid())
   agencyId                String @map("agency_id")
   name                    String
-  voiceCallDurationMinutes Int    @default(30) @map("voice_call_duration_minutes")
-  videoCallDurationMinutes Int    @default(30) @map("video_call_duration_minutes")
-  callingHoursStart       String @default("08:00") @map("calling_hours_start")
-  callingHoursEnd         String @default("22:00") @map("calling_hours_end")
-  maxContacts             Int    @default(10) @map("max_contacts")
-  videoSlotDurationMinutes Int   @default(30) @map("video_slot_duration_minutes")
-  maxConcurrentVideoCalls Int    @default(5) @map("max_concurrent_video_calls")
+  voiceCallDurationMinutes  Int              @default(30) @map("voice_call_duration_minutes")
+  videoCallDurationMinutes  Int              @default(30) @map("video_call_duration_minutes")
+  callingHoursStart        String           @default("08:00") @map("calling_hours_start")
+  callingHoursEnd          String           @default("22:00") @map("calling_hours_end")
+  maxContacts              Int              @default(10) @map("max_contacts")
+  videoSlotDurationMinutes  Int             @default(30) @map("video_slot_duration_minutes")
+  maxConcurrentVideoCalls   Int             @default(5) @map("max_concurrent_video_calls")
+  clearanceLevel           ClearanceLevel   @default(general) @map("clearance_level")
+  voiceCallsEnabled        Boolean          @default(true) @map("voice_calls_enabled")
+  videoCallsEnabled        Boolean          @default(true) @map("video_calls_enabled")
+  messagingEnabled         Boolean          @default(true) @map("messaging_enabled")
+  maxDailyVoiceCalls       Int?             @map("max_daily_voice_calls")
+  maxDailyMessages         Int?             @map("max_daily_messages")
+  maxWeeklyVideoRequests   Int?             @map("max_weekly_video_requests")
+  contentReviewRequired    Boolean          @default(true) @map("content_review_required")
 
   agency       Agency        @relation(fields: [agencyId], references: [id])
   housingUnits HousingUnit[]
@@ -111,6 +123,7 @@ model IncarceratedPerson {
   voiceCalls       VoiceCall[]
   videoCalls       VideoCall[]
   conversations    Conversation[]
+  dailyUsage       DailyUsage[]
 
   @@map("incarcerated_persons")
 }
@@ -160,6 +173,9 @@ model AdminUser {
   terminatedVideoCalls VideoCall[]       @relation("TerminatedByAdmin")
   blockedConversations Conversation[]    @relation("BlockedByAdmin")
   reviewedMessages     Message[]         @relation("ReviewedByAdmin")
+  createdKeywordAlerts KeywordAlert[]    @relation("KeywordAlertCreatedBy")
+  assignedFlags        FlaggedContent[]  @relation("FlagAssignedTo")
+  reviewedFlags        FlaggedContent[]  @relation("FlagReviewedBy")
 
   @@map("admin_users")
 }
@@ -396,4 +412,120 @@ model MessageAttachment {
   message Message @relation(fields: [messageId], references: [id])
 
   @@map("message_attachments")
+}
+
+
+// ==========================================
+// ADMIN PLATFORM (Admin Guild Owned)
+// ==========================================
+
+enum ClearanceLevel {
+  minimum
+  general
+  restricted
+  segregated
+}
+
+enum WordTier {
+  blacklist
+  greylist
+  watchlist
+}
+
+enum WordCategory {
+  drug
+  violence
+  gang
+  coded_threat
+  contraband
+  escape
+  other
+}
+
+enum AlertSeverity {
+  high
+  medium
+  low
+}
+
+enum FlaggedContentType {
+  message
+  voice_call
+  video_call
+  attachment
+}
+
+enum FlagReason {
+  keyword_match
+  manual
+  pattern_alert
+}
+
+enum FlagStatus {
+  pending
+  in_review
+  dismissed
+  escalated
+  resolved
+}
+
+model KeywordAlert {
+  id            String         @id @default(uuid())
+  keyword       String
+  isRegex       Boolean        @default(false) @map("is_regex")
+  severity      AlertSeverity
+  tier          WordTier       @default(greylist)
+  category      WordCategory
+  facilityId    String?        @map("facility_id")
+  agencyId      String         @map("agency_id")
+  createdBy     String         @map("created_by")
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at")
+
+  facility       Facility?      @relation(fields: [facilityId], references: [id])
+  agency         Agency         @relation(fields: [agencyId], references: [id])
+  creator        AdminUser      @relation("KeywordAlertCreatedBy", fields: [createdBy], references: [id])
+  flaggedContent FlaggedContent[]
+
+  @@map("keyword_alerts")
+}
+
+model FlaggedContent {
+  id              String             @id @default(uuid())
+  contentType     FlaggedContentType @map("content_type")
+  contentId       String             @map("content_id")
+  flagReason      FlagReason         @map("flag_reason")
+  keywordAlertId  String?            @map("keyword_alert_id")
+  matchedText     String?            @map("matched_text")
+  severity        AlertSeverity
+  status          FlagStatus         @default(pending)
+  assignedTo      String?            @map("assigned_to")
+  reviewedBy      String?            @map("reviewed_by")
+  reviewedAt      DateTime?          @map("reviewed_at")
+  resolutionNotes String?            @map("resolution_notes")
+  createdAt       DateTime           @default(now()) @map("created_at")
+
+  keywordAlert    KeywordAlert?      @relation(fields: [keywordAlertId], references: [id])
+  assignedAdmin   AdminUser?         @relation("FlagAssignedTo", fields: [assignedTo], references: [id])
+  reviewer        AdminUser?         @relation("FlagReviewedBy", fields: [reviewedBy], references: [id])
+
+  @@index([contentType, contentId])
+  @@index([status])
+  @@index([severity])
+  @@map("flagged_content")
+}
+
+model DailyUsage {
+  id                   String             @id @default(uuid())
+  incarceratedPersonId String             @map("incarcerated_person_id")
+  date                 DateTime           @db.Date
+  voiceCallCount       Int                @default(0) @map("voice_call_count")
+  voiceCallMinutes     Int                @default(0) @map("voice_call_minutes")
+  videoCallCount       Int                @default(0) @map("video_call_count")
+  messagesSent         Int                @default(0) @map("messages_sent")
+
+  incarceratedPerson   IncarceratedPerson @relation(fields: [incarceratedPersonId], references: [id])
+
+  @@unique([incarceratedPersonId, date])
+  @@map("daily_usage")
 }

@@ -9,29 +9,52 @@ import {
 
 export const messagingRouter = Router();
 
-messagingRouter.get('/logs', requireAuth, async (req: Request, res: Response) => {
+messagingRouter.get('/logs', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const { facilityId, startDate, endDate, userId, page = '1', pageSize = '20' } = req.query;
     
     const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize));
     const take = parseInt(String(pageSize));
 
-    const messages = await prisma.message.findMany({
-      where: {},
-      include: {
-        conversation: {
-          include: {
-            incarceratedPerson: true,
-            familyMember: true,
+    const where: Record<string, unknown> = {};
+    if (userId) {
+      where.conversation = {
+        OR: [
+          { incarceratedPersonId: String(userId) },
+          { familyMemberId: String(userId) },
+        ],
+      };
+    }
+    if (facilityId) {
+      where.conversation = {
+        ...((where.conversation as Record<string, unknown>) || {}),
+        incarceratedPerson: { facilityId: String(facilityId) },
+      };
+    }
+    if (startDate || endDate) {
+      where.createdAt = {
+        ...(startDate ? { gte: new Date(String(startDate)) } : {}),
+        ...(endDate ? { lte: new Date(String(endDate)) } : {}),
+      };
+    }
+
+    const [messages, total] = await Promise.all([
+      prisma.message.findMany({
+        where,
+        include: {
+          conversation: {
+            include: {
+              incarceratedPerson: true,
+              familyMember: true,
+            },
           },
         },
-      },
-      skip,
-      take,
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const total = await prisma.message.count();
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.message.count({ where }),
+    ]);
 
     res.json({
       success: true,
@@ -104,6 +127,28 @@ messagingRouter.post('/approve/:messageId', requireAuth, requireRole('facility_a
   }
 });
 
+messagingRouter.post('/reject/:messageId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { messageId } = req.params;
+
+    const message = await prisma.message.update({
+      where: { id: messageId },
+      data: {
+        status: 'blocked',
+        reviewedBy: req.user!.id,
+      },
+    });
+
+    res.json(createSuccessResponse({ success: true, message }));
+  } catch (error) {
+    console.error('Error rejecting message:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to reject message',
+    }));
+  }
+});
+
 messagingRouter.post('/block-conversation/:conversationId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
   try {
     const { conversationId } = req.params;
@@ -135,14 +180,21 @@ messagingRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
 
+    const facilityFilter = facilityId ? {
+      conversation: {
+        incarceratedPerson: { facilityId: String(facilityId) },
+      },
+    } : {};
+
     const [todayTotal, pendingReview] = await Promise.all([
       prisma.message.count({
         where: {
           createdAt: { gte: startOfDay, lte: endOfDay },
+          ...facilityFilter,
         },
       }),
       prisma.message.count({
-        where: { status: 'pending_review' },
+        where: { status: 'pending_review', ...facilityFilter },
       }),
     ]);
 
@@ -156,4 +208,113 @@ messagingRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency
   }
 });
 
+// Session limit check — can this person send a message?
+messagingRouter.get('/check-limit/:incarceratedPersonId', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { incarceratedPersonId } = req.params;
+
+    const person = await prisma.incarceratedPerson.findUnique({
+      where: { id: incarceratedPersonId },
+      include: {
+        housingUnit: { include: { unitType: true } },
+      },
+    });
+
+    if (!person) {
+      res.status(404).json(createErrorResponse({
+        code: 'NOT_FOUND',
+        message: 'Person not found',
+      }));
+      return;
+    }
+
+    const unitType = person.housingUnit.unitType;
+
+    if (!unitType.messagingEnabled) {
+      res.json(createSuccessResponse({
+        allowed: false,
+        reason: 'Messaging is disabled for this housing unit type',
+        limits: { messagingEnabled: false, maxDailyMessages: unitType.maxDailyMessages },
+      }));
+      return;
+    }
+
+    if (unitType.maxDailyMessages !== null) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const usage = await prisma.dailyUsage.findUnique({
+        where: {
+          incarceratedPersonId_date: {
+            incarceratedPersonId,
+            date: today,
+          },
+        },
+      });
+
+      const currentCount = usage?.messagesSent ?? 0;
+      const remaining = unitType.maxDailyMessages - currentCount;
+
+      if (remaining <= 0) {
+        res.json(createSuccessResponse({
+          allowed: false,
+          reason: `Daily message limit reached (${unitType.maxDailyMessages} per day)`,
+          limits: { messagingEnabled: true, maxDailyMessages: unitType.maxDailyMessages, usedToday: currentCount, remaining: 0 },
+        }));
+        return;
+      }
+
+      res.json(createSuccessResponse({
+        allowed: true,
+        limits: { messagingEnabled: true, maxDailyMessages: unitType.maxDailyMessages, usedToday: currentCount, remaining },
+      }));
+      return;
+    }
+
+    res.json(createSuccessResponse({
+      allowed: true,
+      limits: { messagingEnabled: true, maxDailyMessages: null },
+    }));
+  } catch (error) {
+    console.error('Error checking message limit:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to check message limit',
+    }));
+  }
+});
+
+// Increment daily message usage
+messagingRouter.post('/record-usage/:incarceratedPersonId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
+  try {
+    const { incarceratedPersonId } = req.params;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const usage = await prisma.dailyUsage.upsert({
+      where: {
+        incarceratedPersonId_date: {
+          incarceratedPersonId,
+          date: today,
+        },
+      },
+      update: {
+        messagesSent: { increment: 1 },
+      },
+      create: {
+        incarceratedPersonId,
+        date: today,
+        messagesSent: 1,
+      },
+    });
+
+    res.json(createSuccessResponse({ success: true, usage }));
+  } catch (error) {
+    console.error('Error recording message usage:', error);
+    res.status(500).json(createErrorResponse({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to record usage',
+    }));
+  }
+});
 export default messagingRouter;

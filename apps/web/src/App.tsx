@@ -11,17 +11,22 @@ import RegisterPage from './pages/RegisterPage';
 
 const VoiceIncarcerated = lazy(() => import('../../../guilds/voice/ui/incarcerated'));
 const VoiceFamily = lazy(() => import('../../../guilds/voice/ui/family'));
-const VoiceAdmin = lazy(() => import('../../../guilds/voice/ui/admin'));
+const VoiceAdmin = lazy(() => import('../../../guilds/admin/ui/voice'));
 
 const VideoIncarcerated = lazy(() => import('../../../guilds/video/ui/incarcerated'));
 const VideoFamily = lazy(() => import('../../../guilds/video/ui/family'));
-const VideoAdmin = lazy(() => import('../../../guilds/video/ui/admin'));
+const VideoAdmin = lazy(() => import('../../../guilds/admin/ui/video'));
 
 const MessagingIncarcerated = lazy(() => import('../../../guilds/messaging/ui/incarcerated'));
 const MessagingFamily = lazy(() => import('../../../guilds/messaging/ui/family'));
-const MessagingAdmin = lazy(() => import('../../../guilds/messaging/ui/admin'));
+const MessagingAdmin = lazy(() => import('../../../guilds/admin/ui/messaging'));
 
 const AdminDashboard = lazy(() => import('../../../guilds/admin/ui'));
+const ResidentListPage = lazy(() => import('../../../guilds/admin/ui/residents/ResidentListPage'));
+const ResidentProfilePage = lazy(() => import('../../../guilds/admin/ui/residents/ResidentProfilePage'));
+const SearchPage = lazy(() => import('../../../guilds/admin/ui/SearchPage'));
+const HousingConfigPage = lazy(() => import('../../../guilds/admin/ui/HousingConfigPage'));
+const ContactListPage = lazy(() => import('../../../guilds/admin/ui/contacts/ContactListPage'));
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
   const { user, loading } = useAuth();
@@ -128,6 +133,11 @@ function App() {
           }
         >
           <Route index element={<AdminDashboard />} />
+          <Route path="housing" element={<HousingConfigPage />} />
+          <Route path="search" element={<SearchPage />} />
+          <Route path="residents" element={<ResidentListPage />} />
+          <Route path="residents/:id" element={<ResidentProfilePage />} />
+          <Route path="contacts" element={<ContactListPage />} />
           <Route path="voice/*" element={<VoiceAdmin />} />
           <Route path="video/*" element={<VideoAdmin />} />
           <Route path="messaging/*" element={<MessagingAdmin />} />

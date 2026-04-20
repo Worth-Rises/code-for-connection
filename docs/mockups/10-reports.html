@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports & Analytics — Admin Portal Mockup</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            border: '#e4e4e7',
+            input: '#e4e4e7',
+            ring: '#18181b',
+            background: '#ffffff',
+            foreground: '#09090b',
+            primary: { DEFAULT: '#18181b', foreground: '#fafafa' },
+            secondary: { DEFAULT: '#f4f4f5', foreground: '#18181b' },
+            destructive: { DEFAULT: '#ef4444', foreground: '#fafafa' },
+            muted: { DEFAULT: '#f4f4f5', foreground: '#71717a' },
+            accent: { DEFAULT: '#f4f4f5', foreground: '#18181b' },
+            card: { DEFAULT: '#ffffff', foreground: '#09090b' },
+          },
+          borderRadius: { lg: '0.5rem', md: 'calc(0.5rem - 2px)', sm: 'calc(0.5rem - 4px)' },
+          fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'] },
+        }
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Inter, system-ui, -apple-system, sans-serif; background: #f4f4f5; }
+    .sidebar-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 0.375rem; font-size: 0.875rem; color: #71717a; cursor: pointer; text-decoration: none; }
+    .sidebar-item:hover { background: #f4f4f5; color: #09090b; }
+    .sidebar-item.active { background: #f4f4f5; color: #09090b; font-weight: 600; }
+    .sidebar-label { font-size: 0.75rem; font-weight: 600; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; padding: 1rem 0.75rem 0.25rem; }
+    .card { background: white; border: 1px solid #e4e4e7; border-radius: 0.5rem; }
+    .badge { display: inline-flex; align-items: center; padding: 0.125rem 0.625rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+    .badge-default { background: #f4f4f5; color: #18181b; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.5rem 1rem; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .btn-primary { background: #18181b; color: #fafafa; border: none; }
+    .btn-outline { background: white; color: #18181b; border: 1px solid #e4e4e7; }
+    .btn-ghost { background: transparent; color: #71717a; border: none; }
+    .input { padding: 0.5rem 0.75rem; border: 1px solid #e4e4e7; border-radius: 0.375rem; font-size: 0.875rem; outline: none; }
+    .select { padding: 0.5rem 2rem 0.5rem 0.75rem; border: 1px solid #e4e4e7; border-radius: 0.375rem; font-size: 0.875rem; background: white url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") right 0.5rem center/1.25rem no-repeat; appearance: none; }
+    .tab { padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500; color: #71717a; border-bottom: 2px solid transparent; cursor: pointer; display: inline-block; }
+    .tab.active { color: #09090b; border-bottom-color: #18181b; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 0.75rem 1rem; font-size: 0.75rem; font-weight: 500; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e4e4e7; }
+    td { padding: 0.75rem 1rem; font-size: 0.875rem; color: #09090b; border-bottom: 1px solid #f4f4f5; }
+    tr:hover td { background: #fafafa; }
+  </style>
+</head>
+<body>
+  <div class="flex h-screen">
+    <aside class="w-56 bg-white border-r border-border flex flex-col shrink-0">
+      <div class="p-4 border-b border-border">
+        <h1 class="text-sm font-bold tracking-tight">Open Connect</h1>
+        <p class="text-xs text-muted-foreground">Admin Portal</p>
+      </div>
+      <nav class="flex-1 p-2 space-y-0.5 overflow-y-auto">
+        <a href="01-dashboard.html" class="sidebar-item">📊 Dashboard</a>
+        <div class="sidebar-label">Management</div>
+        <a href="02-residents.html" class="sidebar-item">👥 Residents</a>
+        <a href="03-contacts.html" class="sidebar-item">🤝 Contacts<span class="ml-auto badge badge-destructive text-xs">7</span></a>
+        <a href="04-visitors.html" class="sidebar-item">🚪 Visitors<span class="ml-auto badge badge-destructive text-xs">4</span></a>
+        <div class="sidebar-label">Monitoring</div>
+        <a href="05-voice-monitoring.html" class="sidebar-item">📞 Voice Calls</a>
+        <a href="06-video-monitoring.html" class="sidebar-item">📹 Video Calls</a>
+        <a href="07-message-review.html" class="sidebar-item">💬 Messages<span class="ml-auto badge badge-destructive text-xs">23</span></a>
+        <div class="sidebar-label">Intelligence</div>
+        <a href="08-search-alerts.html" class="sidebar-item">🔍 Search &amp; Alerts</a>
+        <div class="sidebar-label">Operations</div>
+        <a href="09-housing.html" class="sidebar-item">🏠 Housing</a>
+        <a href="10-reports.html" class="sidebar-item active">📈 Reports</a>
+        <a href="11-audit-log.html" class="sidebar-item">📋 Audit Log</a>
+        <a href="12-settings.html" class="sidebar-item">⚙️ Settings</a>
+      </nav>
+    </aside>
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <header class="h-14 bg-white border-b border-border flex items-center px-6 shrink-0 justify-between">
+        <div></div>
+        <div class="flex items-center gap-4">
+          <select class="select text-sm"><option>Sing Sing Correctional Facility</option><option>Bedford Hills Correctional Facility</option><option>All Facilities</option></select>
+          <button class="btn-ghost relative p-2 rounded-md">🔔<span class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">3</span></button>
+          <div class="flex items-center gap-2 text-sm"><span class="w-8 h-8 bg-zinc-200 rounded-full flex items-center justify-center text-xs font-medium">JR</span>J. Rivera ▾</div>
+        </div>
+      </header>
+      <main class="flex-1 overflow-y-auto p-6">
+        <div class="mb-6">
+          <h2 class="text-2xl font-semibold tracking-tight text-foreground">Reports & Analytics</h2>
+        </div>
+
+        <!-- Date Range -->
+        <div class="flex items-center gap-3 mb-6">
+          <label class="text-sm text-muted-foreground">Date Range:</label>
+          <input type="date" class="input" value="2026-03-01" style="width:auto">
+          <span class="text-sm text-muted-foreground">to</span>
+          <input type="date" class="input" value="2026-03-07" style="width:auto">
+          <button class="btn btn-primary">Apply</button>
+          <button class="btn btn-outline">Export CSV</button>
+          <button class="btn btn-outline">Export PDF</button>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex border-b border-border mb-6">
+          <span class="tab active">Communication Volume</span>
+          <span class="tab">Moderation</span>
+          <span class="tab">Flags &amp; Alerts</span>
+          <span class="tab">Visitors</span>
+        </div>
+
+        <!-- Voice Calls Chart -->
+        <div class="card shadow-sm p-5 mb-6">
+          <h3 class="text-sm font-semibold text-foreground mb-4">Voice Calls — Last 7 Days</h3>
+          <div class="space-y-2">
+            <div class="flex items-center gap-3"><span class="text-xs text-muted-foreground w-8">Mon</span><div class="h-6 rounded bg-zinc-800" style="width:74.6%"></div><span class="text-xs font-medium ml-2">47</span></div>
+            <div class="flex items-center gap-3"><span class="text-xs text-muted-foreground w-8">Tue</span><div class="h-6 rounded bg-zinc-800" style="width:82.5%"></div><span class="text-xs font-medium ml-2">52</span></div>
+            <div class="flex items-center gap-3"><span class="text-xs text-muted-foreground w-8">Wed</span><div class="h-6 rounded bg-zinc-800" style="width:65.1%"></div><span class="text-xs font-medium ml-2">41</span></div>
+            <div class="flex items-center gap-3"><span class="text-xs text-muted-foreground w-8">Thu</span><div class="h-6 rounded bg-zinc-800" style="width:100%"></div><span class="text-xs font-medium ml-2">63</span></div>
+            <div class="flex items-center gap-3"><span class="text-xs text-muted-foreground w-8">Fri</span><div class="h-6 rounded bg-zinc-800" style="width:92.1%"></div><span class="text-xs font-medium ml-2">58</span></div>
+            <div class="flex items-center gap-3"><span class="text-xs text-muted-foreground w-8">Sat</span><div class="h-6 rounded bg-zinc-800" style="width:44.4%"></div><span class="text-xs font-medium ml-2">28</span></div>
+            <div class="flex items-center gap-3"><span class="text-xs text-muted-foreground w-8">Sun</span><div class="h-6 rounded bg-zinc-800" style="width:34.9%"></div><span class="text-xs font-medium ml-2">22</span></div>
+          </div>
+          <p class="text-xs text-muted-foreground mt-3">Total Calls: 311 &nbsp;|&nbsp; Avg Duration: 14m &nbsp;|&nbsp; Peak Hour: 2-3 PM</p>
+        </div>
+
+        <!-- Breakdown by Facility -->
+        <div class="card shadow-sm mb-6">
+          <div class="p-5 pb-3">
+            <h3 class="text-sm font-semibold text-foreground">Breakdown by Facility</h3>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Facility</th><th>Voice Calls</th><th>Video Sessions</th><th>Messages</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Sing Sing</td><td>187</td><td>74</td><td>301</td></tr>
+              <tr><td>Bedford Hills</td><td>124</td><td>51</td><td>200</td></tr>
+              <tr class="font-semibold"><td>Total</td><td>311</td><td>125</td><td>501</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Breakdown by Unit Type -->
+        <div class="card shadow-sm mb-6">
+          <div class="p-5 pb-3">
+            <h3 class="text-sm font-semibold text-foreground">Breakdown by Unit Type</h3>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Unit Type</th><th>Voice Calls</th><th>Video Sessions</th><th>Messages</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>General Population</td><td>198</td><td>89</td><td>342</td></tr>
+              <tr><td>Minimum Security</td><td>67</td><td>28</td><td>112</td></tr>
+              <tr><td>Restricted</td><td>38</td><td>8</td><td>41</td></tr>
+              <tr><td>Segregated</td><td>8</td><td>0</td><td>6</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

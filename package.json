@@ -25,17 +25,21 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
     "db:studio": "prisma studio",
+    "test:admin": "vitest run guilds/admin",
     "clean": "rm -rf node_modules **/node_modules **/dist **/.turbo"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "concurrently": "^8.2.2",
-    "eslint": "^8.56.0",
+    "@types/supertest": "^7.2.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.56.0",
     "prisma": "^5.8.0",
+    "supertest": "^7.2.2",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "@prisma/client": "^5.8.0"

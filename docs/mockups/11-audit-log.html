@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audit Log — Admin Portal Mockup</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            border: '#e4e4e7',
+            input: '#e4e4e7',
+            ring: '#18181b',
+            background: '#ffffff',
+            foreground: '#09090b',
+            primary: { DEFAULT: '#18181b', foreground: '#fafafa' },
+            secondary: { DEFAULT: '#f4f4f5', foreground: '#18181b' },
+            destructive: { DEFAULT: '#ef4444', foreground: '#fafafa' },
+            muted: { DEFAULT: '#f4f4f5', foreground: '#71717a' },
+            accent: { DEFAULT: '#f4f4f5', foreground: '#18181b' },
+            card: { DEFAULT: '#ffffff', foreground: '#09090b' },
+          },
+          borderRadius: { lg: '0.5rem', md: 'calc(0.5rem - 2px)', sm: 'calc(0.5rem - 4px)' },
+          fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'] },
+        }
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Inter, system-ui, -apple-system, sans-serif; background: #f4f4f5; }
+    .sidebar-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border-radius: 0.375rem; font-size: 0.875rem; color: #71717a; cursor: pointer; text-decoration: none; }
+    .sidebar-item:hover { background: #f4f4f5; color: #09090b; }
+    .sidebar-item.active { background: #f4f4f5; color: #09090b; font-weight: 600; }
+    .sidebar-label { font-size: 0.75rem; font-weight: 600; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; padding: 1rem 0.75rem 0.25rem; }
+    .card { background: white; border: 1px solid #e4e4e7; border-radius: 0.5rem; }
+    .badge { display: inline-flex; align-items: center; padding: 0.125rem 0.625rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+    .badge-default { background: #f4f4f5; color: #18181b; }
+    .badge-destructive { background: #fef2f2; color: #dc2626; }
+    .badge-warning { background: #fffbeb; color: #d97706; }
+    .badge-success { background: #f0fdf4; color: #16a34a; }
+    .badge-blue { background: #eff6ff; color: #2563eb; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.5rem 1rem; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .btn-primary { background: #18181b; color: #fafafa; border: none; }
+    .btn-outline { background: white; color: #18181b; border: 1px solid #e4e4e7; }
+    .btn-destructive { background: #ef4444; color: white; border: none; }
+    .btn-ghost { background: transparent; color: #71717a; border: none; }
+    .input { padding: 0.5rem 0.75rem; border: 1px solid #e4e4e7; border-radius: 0.375rem; font-size: 0.875rem; outline: none; width: 100%; }
+    .select { padding: 0.5rem 2rem 0.5rem 0.75rem; border: 1px solid #e4e4e7; border-radius: 0.375rem; font-size: 0.875rem; background: white url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") right 0.5rem center/1.25rem no-repeat; appearance: none; }
+    .tab { padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500; color: #71717a; border-bottom: 2px solid transparent; cursor: pointer; display: inline-block; }
+    .tab.active { color: #09090b; border-bottom-color: #18181b; }
+    .tab .count { background: #ef4444; color: white; font-size: 0.625rem; padding: 0.125rem 0.375rem; border-radius: 9999px; margin-left: 0.375rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 0.75rem 1rem; font-size: 0.75rem; font-weight: 500; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e4e4e7; }
+    td { padding: 0.75rem 1rem; font-size: 0.875rem; color: #09090b; border-bottom: 1px solid #f4f4f5; }
+    tr:hover td { background: #fafafa; }
+    .toggle { width: 2.25rem; height: 1.25rem; border-radius: 9999px; background: #e4e4e7; position: relative; cursor: pointer; display: inline-block; }
+    .toggle.on { background: #18181b; }
+    .toggle::after { content: ''; position: absolute; width: 1rem; height: 1rem; border-radius: 9999px; background: white; top: 0.125rem; left: 0.125rem; transition: transform 0.2s; }
+    .toggle.on::after { transform: translateX(1rem); }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 50; }
+    .modal { background: white; border-radius: 0.5rem; padding: 1.5rem; width: 28rem; max-width: 90vw; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+  </style>
+</head>
+<body>
+  <div class="flex h-screen">
+    <aside class="w-56 bg-white border-r border-border flex flex-col shrink-0">
+      <div class="p-4 border-b border-border">
+        <h1 class="text-sm font-bold tracking-tight">Open Connect</h1>
+        <p class="text-xs text-muted-foreground">Admin Portal</p>
+      </div>
+      <nav class="flex-1 p-2 space-y-0.5 overflow-y-auto">
+        <a href="01-dashboard.html" class="sidebar-item">📊 Dashboard</a>
+        <div class="sidebar-label">Management</div>
+        <a href="02-residents.html" class="sidebar-item">👥 Residents</a>
+        <a href="03-contacts.html" class="sidebar-item">🤝 Contacts<span class="ml-auto badge badge-destructive text-xs">7</span></a>
+        <a href="04-visitors.html" class="sidebar-item">🚪 Visitors<span class="ml-auto badge badge-destructive text-xs">4</span></a>
+        <div class="sidebar-label">Monitoring</div>
+        <a href="05-voice-monitoring.html" class="sidebar-item">📞 Voice Calls</a>
+        <a href="06-video-monitoring.html" class="sidebar-item">📹 Video Calls</a>
+        <a href="07-message-review.html" class="sidebar-item">💬 Messages<span class="ml-auto badge badge-destructive text-xs">23</span></a>
+        <div class="sidebar-label">Intelligence</div>
+        <a href="08-search-alerts.html" class="sidebar-item">🔍 Search &amp; Alerts</a>
+        <div class="sidebar-label">Operations</div>
+        <a href="09-housing.html" class="sidebar-item">🏠 Housing</a>
+        <a href="10-reports.html" class="sidebar-item">📈 Reports</a>
+        <a href="11-audit-log.html" class="sidebar-item active">📋 Audit Log</a>
+        <a href="12-settings.html" class="sidebar-item">⚙️ Settings</a>
+      </nav>
+    </aside>
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <header class="h-14 bg-white border-b border-border flex items-center px-6 shrink-0 justify-between">
+        <div></div>
+        <div class="flex items-center gap-4">
+          <select class="select text-sm"><option>Sing Sing Correctional Facility</option><option>Bedford Hills Correctional Facility</option><option>All Facilities</option></select>
+          <button class="btn-ghost relative p-2 rounded-md">🔔<span class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">3</span></button>
+          <div class="flex items-center gap-2 text-sm"><span class="w-8 h-8 bg-zinc-200 rounded-full flex items-center justify-center text-xs font-medium">JR</span>J. Rivera ▾</div>
+        </div>
+      </header>
+      <main class="flex-1 overflow-y-auto p-6">
+
+        <!-- Page Header -->
+        <div class="mb-6">
+          <h2 class="text-2xl font-semibold text-foreground">Audit Log</h2>
+          <p class="text-sm text-muted-foreground mt-1">Complete record of all administrative actions across the system.</p>
+        </div>
+
+        <!-- Filters -->
+        <div class="card p-4 mb-6">
+          <div class="flex flex-wrap items-end gap-3">
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-muted-foreground">Date From</label>
+              <input type="date" value="2026-03-01" class="input w-40" />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-muted-foreground">Date To</label>
+              <input type="date" value="2026-03-07" class="input w-40" />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-muted-foreground">Admin User</label>
+              <select class="select w-48">
+                <option>All Admins</option>
+                <option>admin@nydocs.gov</option>
+                <option>admin@singsingcf.gov</option>
+                <option>admin@bedfordhillscf.gov</option>
+              </select>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-muted-foreground">Action Type</label>
+              <select class="select w-48">
+                <option>All Actions</option>
+                <option>Contact Approved</option>
+                <option>Contact Denied</option>
+                <option>Call Terminated</option>
+                <option>Message Blocked</option>
+                <option>Keyword Alert Created</option>
+                <option>Resident Transferred</option>
+                <option>Visitor Denied</option>
+                <option>Video Request Approved</option>
+                <option>Admin Permission Updated</option>
+                <option>Blocked Number Added</option>
+                <option>Blocked Number Removed</option>
+              </select>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-muted-foreground">Entity Type</label>
+              <select class="select w-44">
+                <option>All Entities</option>
+                <option>Contact</option>
+                <option>Voice Call</option>
+                <option>Video Call</option>
+                <option>Message</option>
+                <option>Keyword Alert</option>
+                <option>Resident</option>
+                <option>Visitor</option>
+                <option>Video Request</option>
+                <option>Admin User</option>
+                <option>Blocked Number</option>
+              </select>
+            </div>
+            <button class="btn btn-primary h-9">Apply Filters</button>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="card overflow-hidden">
+          <div class="overflow-x-auto">
+            <table>
+              <thead>
+                <tr>
+                  <th class="w-44">Date / Time</th>
+                  <th class="w-52">Admin</th>
+                  <th class="w-44">Action</th>
+                  <th class="w-28">Entity Type</th>
+                  <th class="w-24">Entity ID</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- Row 1 — Expanded row -->
+                <tr class="cursor-pointer" style="background: #fafafa;">
+                  <td class="font-medium text-xs text-muted-foreground whitespace-nowrap">
+                    <div class="text-sm text-foreground">Mar 7, 2026</div>
+                    <div>14:32</div>
+                  </td>
+                  <td>
+                    <div class="text-sm">admin@singsingcf.gov</div>
+                    <div class="text-xs text-muted-foreground">Sing Sing Facility Admin</div>
+                  </td>
+                  <td><span class="badge badge-success">Contact Approved</span></td>
+                  <td><span class="text-sm text-muted-foreground">Contact</span></td>
+                  <td><span class="text-xs font-mono text-muted-foreground">#c-4521</span></td>
+                  <td><span class="text-sm">Approved Alice Johnson for John Doe</span></td>
+                </tr>
+                <!-- Expanded Detail Panel -->
+                <tr>
+                  <td colspan="6" class="p-0" style="background: #fafafa;">
+                    <div class="mx-4 mb-4 p-4 rounded-md border border-zinc-200 bg-white">
+                      <div class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Detail</div>
+                      <div class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-sm">
+                        <span class="text-muted-foreground">Action:</span>
+                        <span class="font-mono text-xs">contact_approved</span>
+                        <span class="text-muted-foreground">Admin:</span>
+                        <span>admin@singsingcf.gov <span class="text-muted-foreground">(Sing Sing Facility Admin)</span></span>
+                        <span class="text-muted-foreground">IP Address:</span>
+                        <span class="font-mono text-xs">10.0.1.45</span>
+                      </div>
+                      <div class="mt-3 pt-3 border-t border-zinc-100">
+                        <div class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Changes</div>
+                        <div class="space-y-1 font-mono text-xs">
+                          <div class="flex items-center gap-2">
+                            <span class="text-muted-foreground w-24">status:</span>
+                            <span class="bg-red-50 text-red-700 px-1.5 py-0.5 rounded">"pending"</span>
+                            <span class="text-muted-foreground">→</span>
+                            <span class="bg-green-50 text-green-700 px-1.5 py-0.5 rounded">"approved"</span>
+                          </div>
+                          <div class="flex items-center gap-2">
+                            <span class="text-muted-foreground w-24">reviewedAt:</span>
+                            <span class="bg-red-50 text-red-700 px-1.5 py-0.5 rounded">null</span>
+                            <span class="text-muted-foreground">→</span>
+                            <span class="bg-green-50 text-green-700 px-1.5 py-0.5 rounded">"2026-03-07T14:32:00Z"</span>
+                          </div>
+                          <div class="flex items-center gap-2">
+                            <span class="text-muted-foreground w-24">approvedBy:</span>
+                            <span class="bg-red-50 text-red-700 px-1.5 py-0.5 rounded">null</span>
+                            <span class="text-muted-foreground">→</span>
+                            <span class="bg-green-50 text-green-700 px-1.5 py-0.5 rounded">"admin-user-id-123"</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Row 2 -->
+                <tr class="cursor-pointer">
+                  <td class="font-medium text-xs text-muted-foreground whitespace-nowrap">
+                    <div class="text-sm text-foreground">Mar 7, 2026</div>
+                    <div>14:28</div>
+                  </td>
+                  <td>
+                    <div class="text-sm">admin@singsingcf.gov</div>
+                    <div class="text-xs text-muted-foreground">Sing Sing Facility Admin</div>
+                  </td>
+                  <td><span class="badge badge-destructive">Call Terminated</span></td>
+                  <td><span class="text-sm text-muted-foreground">Voice Call</span></td>
+                  <td><span class="text-xs font-mono text-muted-foreground">#vc-892</span></td>
+                  <td><span class="text-sm">Terminated: suspicious activity</span></td>
+                </tr>
+
+                <!-- Row 3 -->
+                <tr class="cursor-pointer">
+                  <td class="font-medium text-xs text-muted-foreground whitespace-nowrap">
+                    <div class="text-sm text-foreground">Mar 7, 2026</div>
+                    <div>14:15</div>
+                  </td>
+                  <td>
+                    <div class="text-sm">admin@nydocs.gov</div>
+                    <div class="text-xs text-muted-foreground">Agency Admin</div>
+                  </td>
+                  <td><span class="badge badge-blue">Keyword Alert Created</span></td>
+                  <td><span class="text-sm text-muted-foreground">Keyword Alert</span></td>
+                  <td><span class="text-xs font-mono text-muted-foreground">#ka-103</span></td>
+                  <td><span class="text-sm">Added 'fentanyl' (blacklist/drug)</span></td>
+                </tr>
+
+                <!-- Row 4 -->
+                <tr class="cursor-pointer">
+                  <td class="font-medium text-xs text-muted-foreground whitespace-nowrap">
+                    <div class="text-sm text-foreground">Mar 7, 2026</div>
+                    <div>13:55</div>
+                  </td>
+                  <td>
+                    <div class="text-sm">admin@singsingcf.gov</div>
+                    <div class="text-xs text-muted-foreground">Sing Sing Facility Admin</div>
+                  </td>
+                  <td><span class="badge badge-destructive">Message Blocked</span></td>
+                  <td><span class="text-sm text-muted-foreground">Message</span></td>
+                  <td><span class="text-xs font-mono text-muted-foreground">#m-7764</span></td>
+                  <td><span class="text-sm">Keyword match: 'shank'</span></td>
+                </tr>
+
+                <!-- Row 5 -->
+                <tr class="cursor-pointer">
+                  <td class="font-medium text-xs text-muted-foreground whitespace-nowrap">
+                    <div class="text-sm text-foreground">Mar 7, 2026</div>
+                    <div>13:40</div>
+                  </td>
+                  <td>
+                    <div class="text-sm">admin@bedfordhillscf.gov</div>
+                    <div class="text-xs text-muted-foreground">Bedford Hills Facility Admin</div>
+                  </td>
+                  <td><span class="badge badge-warning">Resident Transferred</span></td>
+                  <td><span class="text-sm text-muted-foreground">Resident</span></td>
+                  <td><span class="text-xs font-mono text-muted-foreground">#r-2231</span></td>
+                  <td><span class="text-sm">Block A → Block C</span></td>
+                </tr>
+
+                <!-- Row 6 -->
+                <tr class="cursor-pointer">
+                  <td class="font-medium text-xs text-muted-foreground whitespace-nowrap">
+                    <div class="text-sm text-foreground">Mar 7, 2026</div>
+                    <div>13:22</div>
+                  </td>
+                  <td>
+                    <div class="text-sm">admin@nydocs.gov</div>
+                    <div class="text-xs text-muted-foreground">Agency Admin</div>
+                  </td>
+                  <td><span class="badge badge-default">Permission Changed</span></td>
+                  <td><span class="text-sm text-muted-foreground">Admin User</span></td>
+                  <td><span class="text-xs font-mono text-muted-foreground">#a-007</span></td>
+                  <td><span class="text-sm">Removed 'Manage Settings' from admin@singsingcf.gov</span></td>
+                </tr>
+
+                <!-- Row 7 -->
+                <tr class="cursor-pointer">
+                  <td class="font-medium text-xs text-muted-foreground whitespace-nowrap">
+                    <div class="text-sm text-foreground">Mar 7, 2026</div>
+                    <div>12:58</div>
+                  </td>
+                  <td>
+                    <div class="text-sm">admin@singsingcf.gov</div>
+                    <div class="text-xs text-muted-foreground">Sing Sing Facility Admin</div>
+                  </td>
+                  <td><span class="badge badge-destructive">Visitor Denied</span></td>
+                  <td><span class="text-sm text-muted-foreground">Visitor</span></td>
+                  <td><span class="text-xs font-mono text-muted-foreground">#v-3310</span></td>
+                  <td><span class="text-sm">Denied: prior incident on record</span></td>
+                </tr>
+
+                <!-- Row 8 -->
+                <tr class="cursor-pointer">
+                  <td class="font-medium text-xs text-muted-foreground whitespace-nowrap">
+                    <div class="text-sm text-foreground">Mar 7, 2026</div>
+                    <div>12:44</div>
+                  </td>
+                  <td>
+                    <div class="text-sm">admin@bedfordhillscf.gov</div>
+                    <div class="text-xs text-muted-foreground">Bedford Hills Facility Admin</div>
+                  </td>
+                  <td><span class="badge badge-success">Video Request Approved</span></td>
+                  <td><span class="text-sm text-muted-foreground">Video Request</span></td>
+                  <td><span class="text-xs font-mono text-muted-foreground">#vr-551</span></td>
+                  <td><span class="text-sm">Approved for Emily Miller</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div class="flex items-center justify-between px-4 py-3 border-t border-border">
+            <span class="text-sm text-muted-foreground">Showing 1–50 of 2,847 entries</span>
+            <div class="flex items-center gap-1">
+              <button class="btn btn-outline px-3 py-1.5 text-sm opacity-50 cursor-not-allowed">← Prev</button>
+              <button class="btn btn-primary px-3 py-1.5 text-sm">1</button>
+              <button class="btn btn-outline px-3 py-1.5 text-sm">2</button>
+              <button class="btn btn-outline px-3 py-1.5 text-sm">3</button>
+              <span class="text-muted-foreground px-1">…</span>
+              <button class="btn btn-outline px-3 py-1.5 text-sm">57</button>
+              <button class="btn btn-outline px-3 py-1.5 text-sm">Next →</button>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { Toaster } from '@/components/ui/sonner';
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
@@ -17,6 +18,20 @@ export default function AdminLayout() {
       title: 'Dashboard',
       items: [
         { path: '/admin', label: 'Overview', icon: '📊', end: true },
+      ],
+    },
+    {
+      title: 'Management',
+      items: [
+        { path: '/admin/residents', label: 'Residents', icon: '👤' },
+        { path: '/admin/search', label: 'Search', icon: '🔍', roles: ['agency_admin'] },
+        { path: '/admin/contacts', label: 'Contacts', icon: '🤝' },
+      ],
+    },
+    {
+      title: 'Administration',
+      items: [
+        { path: '/admin/housing', label: 'Housing Config', icon: '🏢', roles: ['agency_admin'] },
       ],
     },
     {
@@ -46,14 +61,19 @@ export default function AdminLayout() {
         </div>
 
         <nav className="flex-1 py-4 overflow-y-auto">
-          {navSections.map((section) => (
+          {navSections.map((section) => {
+            const visibleItems = section.items.filter(
+              (item) => !item.roles || item.roles.includes(user?.role ?? '')
+            );
+            if (visibleItems.length === 0) return null;
+            return (
             <div key={section.title} className="mb-6">
               {sidebarOpen && (
                 <h2 className="px-4 mb-2 text-xs font-semibold text-gray-500 uppercase">
                   {section.title}
                 </h2>
               )}
-              {section.items.map((item) => (
+              {visibleItems.map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}
@@ -71,7 +91,8 @@ export default function AdminLayout() {
                 </NavLink>
               ))}
             </div>
-          ))}
+            );
+          })}
         </nav>
 
         <button
@@ -108,6 +129,7 @@ export default function AdminLayout() {
           <Outlet />
         </main>
       </div>
+      <Toaster />
     </div>
   );
 }
