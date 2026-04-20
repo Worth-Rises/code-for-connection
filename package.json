@@ -29,16 +29,20 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "concurrently": "^8.2.2",
-    "eslint": "^8.56.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.56.0",
     "prisma": "^5.8.0",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "@prisma/client": "^5.8.0"
+    "@emoji-mart/data": "^1.2.1",
+    "@emoji-mart/react": "^1.1.1",
+    "@prisma/client": "^5.8.0",
+    "multer": "^2.1.1",
+    "react-icons": "^5.6.0"
   },
   "engines": {
     "node": ">=20.0.0"

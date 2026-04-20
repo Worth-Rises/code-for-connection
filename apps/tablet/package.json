@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@emoji-mart/data": "^1.2.1",
+    "@emoji-mart/react": "^1.1.1",
     "@openconnect/ui": "*",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

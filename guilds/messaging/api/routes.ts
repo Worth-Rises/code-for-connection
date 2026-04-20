@@ -1,159 +1,1296 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response } from "express"
 import {
   requireAuth,
   requireRole,
   createSuccessResponse,
   createErrorResponse,
   prisma,
-} from '@openconnect/shared';
+} from "@openconnect/shared"
+import multer from "multer"
+import path from "path"
+import { v4 as uuidv4 } from "uuid"
 
-export const messagingRouter = Router();
+export const messagingRouter = Router()
 
-messagingRouter.get('/logs', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const { facilityId, startDate, endDate, userId, page = '1', pageSize = '20' } = req.query;
-    
-    const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize));
-    const take = parseInt(String(pageSize));
+const storage = multer.diskStorage({
+  destination: "uploads/",
+  filename: (_req, file, cb) => {
+    cb(null, `${uuidv4()}${path.extname(file.originalname)}`)
+  },
+})
 
-    const messages = await prisma.message.findMany({
-      where: {},
-      include: {
-        conversation: {
-          include: {
-            incarceratedPerson: true,
-            familyMember: true,
-          },
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"]
+    allowed.includes(file.mimetype)
+      ? cb(null, true)
+      : cb(new Error("Invalid file type"))
+  },
+})
+
+const DEFAULT_FLAGGED_PHRASES = [
+  "escape",
+  "weapon",
+  "contraband",
+  "drugs",
+  "smuggle",
+  "threat",
+  "kill",
+  "hurt you",
+  "money drop",
+  "coordinates",
+]
+
+async function screenMessage(
+  body: string,
+  facilityId: string,
+): Promise<string | null> {
+  const keywords = await prisma.flaggedKeyword.findMany({
+    where: { facilityId },
+    select: { phrase: true },
+  })
+  const lower = body.toLowerCase()
+  const match = keywords.find((k) => lower.includes(k.phrase.toLowerCase()))
+  return match ? match.phrase : null
+}
+
+messagingRouter.post(
+  "/send",
+  requireAuth,
+  requireRole("incarcerated", "family"),
+  upload.array("images", 10),
+  async (req: Request, res: Response) => {
+    try {
+      const { conversationId, body } = req.body
+      const hasBody = body != null && String(body).trim().length > 0
+      const hasFiles = Array.isArray(req.files) && req.files.length > 0
+
+      if (!conversationId || (!hasBody && !hasFiles)) {
+        res.status(400).json(
+          createErrorResponse({
+            code: "VALIDATION_ERROR",
+            message:
+              "conversationId is required; provide either message body or at least one image",
+          }),
+        )
+        return
+      }
+
+      const bodyText = body != null ? String(body).trim() : ""
+
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        include: { incarceratedPerson: { select: { facilityId: true } } },
+      })
+
+      if (!conversation) {
+        res.status(404).json(
+          createErrorResponse({
+            code: "NOT_FOUND",
+            message: "Conversation not found",
+          }),
+        )
+        return
+      }
+
+      if (conversation.isBlocked) {
+        res.status(403).json(
+          createErrorResponse({
+            code: "FORBIDDEN",
+            message: "This conversation has been blocked",
+          }),
+        )
+        return
+      }
+
+      const facilityId = conversation.incarceratedPerson.facilityId
+      const matchedKeyword = await screenMessage(bodyText, facilityId)
+      const status = (matchedKeyword || hasFiles) ? "pending_review" : "sent"
+
+      const message = await prisma.message.create({
+        data: {
+          conversationId,
+          senderType: req.user!.role as "incarcerated" | "family",
+          senderId: req.user!.id,
+          body: bodyText,
+          status,
+          ...(req.files?.length && {
+            attachments: {
+              create: (req.files as Express.Multer.File[]).map((file) => ({
+                fileUrl: `/uploads/${file.filename}`,
+                fileType: "image",
+                fileSizeBytes: file.size,
+                status: "pending_review",
+              })),
+            },
+          }),
         },
-      },
-      skip,
-      take,
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const total = await prisma.message.count();
-
-    res.json({
-      success: true,
-      data: messages,
-      pagination: {
-        page: parseInt(String(page)),
-        pageSize: take,
-        total,
-        totalPages: Math.ceil(total / take),
-      },
-    });
-  } catch (error) {
-    console.error('Error fetching message logs:', error);
-    res.status(500).json(createErrorResponse({
-      code: 'INTERNAL_ERROR',
-      message: 'Failed to fetch message logs',
-    }));
-  }
-});
-
-messagingRouter.get('/pending', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
-  try {
-    const { facilityId } = req.query;
-    
-    const pendingMessages = await prisma.message.findMany({
-      where: {
-        status: 'pending_review',
-      },
-      include: {
-        conversation: {
-          include: {
-            incarceratedPerson: true,
-            familyMember: true,
-          },
+        include: {
+          attachments: true,
         },
-        attachments: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+      })
 
-    res.json(createSuccessResponse(pendingMessages));
-  } catch (error) {
-    console.error('Error fetching pending messages:', error);
-    res.status(500).json(createErrorResponse({
-      code: 'INTERNAL_ERROR',
-      message: 'Failed to fetch pending messages',
-    }));
-  }
-});
+      res.json(createSuccessResponse({ message, flagged: !!matchedKeyword }))
+    } catch (error) {
+      console.error("Error sending message:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to send message",
+        }),
+      )
+    }
+  },
+)
 
-messagingRouter.post('/approve/:messageId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
-  try {
-    const { messageId } = req.params;
-    
-    const message = await prisma.message.update({
-      where: { id: messageId },
-      data: {
-        status: 'approved',
-        reviewedBy: req.user!.id,
-      },
-    });
+messagingRouter.get(
+  "/keywords",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const facilityId =
+        (req.query.facilityId as string) || req.user!.facilityId
 
-    res.json(createSuccessResponse({ success: true, message }));
-  } catch (error) {
-    console.error('Error approving message:', error);
-    res.status(500).json(createErrorResponse({
-      code: 'INTERNAL_ERROR',
-      message: 'Failed to approve message',
-    }));
-  }
-});
+      const where: Record<string, unknown> = {}
+      if (facilityId) {
+        where.facilityId = facilityId
+      }
 
-messagingRouter.post('/block-conversation/:conversationId', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
-  try {
-    const { conversationId } = req.params;
-    
-    const conversation = await prisma.conversation.update({
-      where: { id: conversationId },
-      data: {
-        isBlocked: true,
-        blockedBy: req.user!.id,
-      },
-    });
+      // Seed default flagged phrases when a facility has no keywords
+      const facilitiesToSeed: string[] = []
+      if (facilityId) {
+        const count = await prisma.flaggedKeyword.count({
+          where: { facilityId },
+        })
+        if (count === 0) facilitiesToSeed.push(facilityId)
+      } else if (req.user!.agencyId) {
+        const facilities = await prisma.facility.findMany({
+          where: { agencyId: req.user!.agencyId },
+          select: { id: true },
+        })
+        for (const f of facilities) {
+          const count = await prisma.flaggedKeyword.count({
+            where: { facilityId: f.id },
+          })
+          if (count === 0) facilitiesToSeed.push(f.id)
+        }
+      }
 
-    res.json(createSuccessResponse({ success: true, conversation }));
-  } catch (error) {
-    console.error('Error blocking conversation:', error);
-    res.status(500).json(createErrorResponse({
-      code: 'INTERNAL_ERROR',
-      message: 'Failed to block conversation',
-    }));
-  }
-});
+      for (const fid of facilitiesToSeed) {
+        await prisma.flaggedKeyword.createMany({
+          data: DEFAULT_FLAGGED_PHRASES.map((phrase) => ({
+            facilityId: fid,
+            phrase,
+            createdBy: req.user!.id,
+          })),
+          skipDuplicates: true,
+        })
+      }
 
-messagingRouter.get('/stats', requireAuth, requireRole('facility_admin', 'agency_admin'), async (req: Request, res: Response) => {
-  try {
-    const { facilityId, date } = req.query;
-    const targetDate = date ? new Date(String(date)) : new Date();
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
+      const keywords = await prisma.flaggedKeyword.findMany({
+        where,
+        orderBy: { createdAt: "asc" },
+      })
 
-    const [todayTotal, pendingReview] = await Promise.all([
-      prisma.message.count({
+      res.json(createSuccessResponse(keywords))
+    } catch (error) {
+      console.error("Error fetching keywords:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch keywords",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.post(
+  "/keywords",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const { facilityId, phrase } = req.body
+      const resolvedFacilityId = facilityId || req.user!.facilityId
+
+      if (!phrase?.trim()) {
+        res.status(400).json(
+          createErrorResponse({
+            code: "VALIDATION_ERROR",
+            message: "phrase is required",
+          }),
+        )
+        return
+      }
+
+      const trimmedPhrase = phrase.trim().toLowerCase();
+
+      // If agency admin with no facility, add keyword to all facilities
+      if (!resolvedFacilityId) {
+        const facilities = await prisma.facility.findMany({
+          where: { agencyId: req.user!.agencyId },
+          select: { id: true },
+        });
+
+        const keywords = await Promise.all(
+          facilities.map((f) =>
+            prisma.flaggedKeyword
+              .create({
+                data: {
+                  facilityId: f.id,
+                  phrase: trimmedPhrase,
+                  createdBy: req.user!.id,
+                },
+              })
+              .catch((err: any) => {
+                // Skip duplicates
+                if (err?.code === "P2002") return null;
+                throw err;
+              }),
+          ),
+        );
+
+        const created = keywords.filter(Boolean);
+        res.json(
+          createSuccessResponse(created[0] ?? { phrase: trimmedPhrase }),
+        );
+        return;
+      }
+
+      const keyword = await prisma.flaggedKeyword.create({
+        data: {
+          facilityId: resolvedFacilityId,
+          phrase: trimmedPhrase,
+          createdBy: req.user!.id,
+        },
+      })
+
+      res.json(createSuccessResponse(keyword))
+    } catch (error: any) {
+      if (error?.code === "P2002") {
+        res.status(409).json(
+          createErrorResponse({
+            code: "CONFLICT",
+            message: "Keyword already exists for this facility",
+          }),
+        )
+        return
+      }
+      console.error("Error creating keyword:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to create keyword",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.put(
+  "/keywords/:keywordId",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const { keywordId } = req.params
+      const { phrase } = req.body
+
+      if (!phrase?.trim()) {
+        res.status(400).json(
+          createErrorResponse({
+            code: "VALIDATION_ERROR",
+            message: "phrase is required",
+          }),
+        )
+        return
+      }
+
+      const keyword = await prisma.flaggedKeyword.update({
+        where: { id: keywordId },
+        data: { phrase: phrase.trim().toLowerCase() },
+      })
+
+      res.json(createSuccessResponse(keyword))
+    } catch (error: any) {
+      if (error?.code === "P2002") {
+        res.status(409).json(
+          createErrorResponse({
+            code: "CONFLICT",
+            message: "Keyword already exists for this facility",
+          }),
+        )
+        return
+      }
+      console.error("Error updating keyword:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to update keyword",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.delete(
+  "/keywords/:keywordId",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const { keywordId } = req.params
+
+      await prisma.flaggedKeyword.delete({ where: { id: keywordId } })
+
+      res.json(createSuccessResponse({ success: true }))
+    } catch (error) {
+      console.error("Error deleting keyword:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to delete keyword",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.get(
+  "/logs",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const {
+        startDate,
+        endDate,
+        userId,
+        status,
+        search,
+        page = "1",
+        pageSize = "20",
+      } = req.query
+
+      const facilityId =
+        (req.query.facilityId as string) || req.user!.facilityId
+
+      const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize))
+      const take = parseInt(String(pageSize))
+
+      const where: Record<string, unknown> = {}
+
+      if (facilityId) {
+        where.conversation = {
+          incarceratedPerson: { facilityId: String(facilityId) },
+        }
+      }
+      if (startDate || endDate) {
+        where.createdAt = {
+          ...(startDate ? { gte: new Date(String(startDate)) } : {}),
+          ...(endDate ? { lte: new Date(String(endDate)) } : {}),
+        }
+      }
+      if (userId) {
+        where.senderId = String(userId)
+      }
+      if (status) {
+        where.status = String(status)
+      }
+      if (search) {
+        where.body = { contains: String(search), mode: "insensitive" }
+      }
+
+      const [messages, total] = await Promise.all([
+        prisma.message.findMany({
+          where,
+          include: {
+            conversation: {
+              include: {
+                incarceratedPerson: {
+                  select: { id: true, firstName: true, lastName: true },
+                },
+                familyMember: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+          },
+          skip,
+          take,
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.message.count({ where }),
+      ])
+
+      res.json({
+        success: true,
+        data: messages,
+        pagination: {
+          page: parseInt(String(page)),
+          pageSize: take,
+          total,
+          totalPages: Math.ceil(total / take),
+        },
+      })
+    } catch (error) {
+      console.error("Error fetching message logs:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch message logs",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.get(
+  "/pending",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const facilityId =
+        (req.query.facilityId as string) || req.user!.facilityId
+
+      const where: Record<string, unknown> = {
+        status: "pending_review",
+      }
+
+      if (facilityId) {
+        where.conversation = {
+          incarceratedPerson: { facilityId },
+        }
+      }
+
+      const pendingMessages = await prisma.message.findMany({
+        where,
+        include: {
+          conversation: {
+            include: {
+              incarceratedPerson: true,
+              familyMember: true,
+            },
+          },
+          attachments: true,
+        },
+        orderBy: { createdAt: "asc" },
+      })
+
+      res.json(createSuccessResponse(pendingMessages))
+    } catch (error) {
+      console.error("Error fetching pending messages:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch pending messages",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.post(
+  "/approve/:messageId",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const { messageId } = req.params
+
+      const message = await prisma.message.update({
+        where: { id: messageId },
+        data: {
+          status: "sent",
+          reviewedBy: req.user!.id,
+        },
+      })
+
+      await prisma.messageAttachment.updateMany({
+        where: { messageId },
+        data: { status: "approved" },
+      })
+
+      res.json(createSuccessResponse({ success: true, message }))
+    } catch (error) {
+      console.error("Error approving message:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to approve message",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.post(
+  "/block-conversation",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const { incarceratedPersonId, familyMemberId } = req.body
+
+      if (!incarceratedPersonId || !familyMemberId) {
+        res.status(400).json(
+          createErrorResponse({
+            code: "VALIDATION_ERROR",
+            message: "incarceratedPersonId and familyMemberId are required",
+          }),
+        )
+        return
+      }
+
+      // Block the conversation
+      const conversation = await prisma.conversation.upsert({
         where: {
-          createdAt: { gte: startOfDay, lte: endOfDay },
+          incarceratedPersonId_familyMemberId: {
+            incarceratedPersonId,
+            familyMemberId,
+          },
         },
-      }),
-      prisma.message.count({
-        where: { status: 'pending_review' },
-      }),
-    ]);
+        create: {
+          incarceratedPersonId,
+          familyMemberId,
+          isBlocked: true,
+          blockedBy: req.user!.id,
+        },
+        update: { isBlocked: true, blockedBy: req.user!.id },
+        include: {
+          incarceratedPerson: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          familyMember: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+        },
+      })
 
-    res.json(createSuccessResponse({ todayTotal, pendingReview }));
-  } catch (error) {
-    console.error('Error fetching messaging stats:', error);
-    res.status(500).json(createErrorResponse({
-      code: 'INTERNAL_ERROR',
-      message: 'Failed to fetch stats',
-    }));
-  }
-});
+      // Also set the approved_contact status to 'removed'
+      await prisma.approvedContact.updateMany({
+        where: { incarceratedPersonId, familyMemberId, status: "approved" },
+        data: {
+          status: "removed",
+          reviewedAt: new Date(),
+          reviewedBy: req.user!.id,
+        },
+      })
 
-export default messagingRouter;
+      res.json(createSuccessResponse({ success: true, conversation }))
+    } catch (error) {
+      console.error("Error blocking conversation:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to block conversation",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.post(
+  "/unblock-conversation/:conversationId",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const { conversationId } = req.params
+
+      const conversation = await prisma.conversation.update({
+        where: { id: conversationId },
+        data: { isBlocked: false, blockedBy: null },
+      })
+
+      // Also restore the approved_contact status back to 'approved'
+      await prisma.approvedContact.updateMany({
+        where: {
+          incarceratedPersonId: conversation.incarceratedPersonId,
+          familyMemberId: conversation.familyMemberId,
+          status: "removed",
+        },
+        data: {
+          status: "approved",
+          reviewedAt: new Date(),
+          reviewedBy: req.user!.id,
+        },
+      })
+
+      res.json(createSuccessResponse({ success: true, conversation }))
+    } catch (error) {
+      console.error("Error unblocking conversation:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to unblock conversation",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.get(
+  "/blocked-conversations",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const facilityId =
+        (req.query.facilityId as string) || req.user!.facilityId
+
+      const where: Record<string, unknown> = { isBlocked: true }
+      if (facilityId) {
+        where.incarceratedPerson = { facilityId }
+      }
+
+      const conversations = await prisma.conversation.findMany({
+        where,
+        include: {
+          incarceratedPerson: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          familyMember: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      })
+
+      res.json(createSuccessResponse(conversations))
+    } catch (error) {
+      console.error("Error fetching blocked conversations:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch blocked conversations",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.get(
+  "/incarcerated-persons",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const facilityId =
+        (req.query.facilityId as string) || req.user!.facilityId
+
+      const where: Record<string, unknown> = { status: "active" }
+      if (facilityId) {
+        where.facilityId = facilityId
+      }
+
+      const persons = await prisma.incarceratedPerson.findMany({
+        where,
+        select: { id: true, firstName: true, lastName: true },
+        orderBy: { lastName: "asc" },
+      })
+
+      res.json(createSuccessResponse(persons))
+    } catch (error) {
+      console.error("Error fetching incarcerated persons:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch incarcerated persons",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.get(
+  "/incarcerated-persons/:personId/contacts",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const { personId } = req.params
+
+      const contacts = await prisma.approvedContact.findMany({
+        where: {
+          incarceratedPersonId: personId,
+          status: "approved",
+        },
+        include: {
+          familyMember: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+        },
+        orderBy: { requestedAt: "asc" },
+      })
+
+      res.json(createSuccessResponse(contacts))
+    } catch (error) {
+      console.error("Error fetching contacts for person:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch contacts",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.post(
+  "/reject/:messageId",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const { messageId } = req.params
+
+      const message = await prisma.message.update({
+        where: { id: messageId },
+        data: { status: "blocked", reviewedBy: req.user!.id },
+      })
+
+      await prisma.messageAttachment.updateMany({
+        where: { messageId },
+        data: { status: "rejected" },
+      })
+
+      res.json(createSuccessResponse({ success: true, message }))
+    } catch (error) {
+      console.error("Error rejecting message:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to reject message",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.get(
+  "/contact-requests",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const facilityId =
+        (req.query.facilityId as string) || req.user!.facilityId
+
+      const where: Record<string, unknown> = { status: "pending" }
+      if (facilityId) {
+        where.incarceratedPerson = { facilityId }
+      }
+
+      const requests = await prisma.approvedContact.findMany({
+        where,
+        include: {
+          incarceratedPerson: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          familyMember: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
+        orderBy: { requestedAt: "asc" },
+      })
+
+      res.json(createSuccessResponse(requests))
+    } catch (error) {
+      console.error("Error fetching contact requests:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch contact requests",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.post(
+  "/contact-requests/:requestId/approve",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const { requestId } = req.params
+
+      const request = await prisma.approvedContact.update({
+        where: { id: requestId },
+        data: {
+          status: "approved",
+          reviewedAt: new Date(),
+          reviewedBy: req.user!.id,
+        },
+      })
+
+      res.json(createSuccessResponse({ success: true, request }))
+    } catch (error) {
+      console.error("Error approving contact request:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to approve contact request",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.post(
+  "/contact-requests/:requestId/deny",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const { requestId } = req.params
+
+      const request = await prisma.approvedContact.update({
+        where: { id: requestId },
+        data: {
+          status: "denied",
+          reviewedAt: new Date(),
+          reviewedBy: req.user!.id,
+        },
+      })
+
+      res.json(createSuccessResponse({ success: true, request }))
+    } catch (error) {
+      console.error("Error denying contact request:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to deny contact request",
+        }),
+      )
+    }
+  },
+)
+
+messagingRouter.get(
+  "/stats",
+  requireAuth,
+  requireRole("facility_admin", "agency_admin"),
+  async (req: Request, res: Response) => {
+    try {
+      const { facilityId, date } = req.query
+      const targetDate = date ? new Date(String(date)) : new Date()
+      const startOfDay = new Date(targetDate)
+      startOfDay.setHours(0, 0, 0, 0)
+      const endOfDay = new Date(targetDate)
+      endOfDay.setHours(23, 59, 59, 999)
+
+      const [todayTotal, pendingReview] = await Promise.all([
+        prisma.message.count({
+          where: {
+            createdAt: { gte: startOfDay, lte: endOfDay },
+          },
+        }),
+        prisma.message.count({
+          where: { status: "pending_review" },
+        }),
+      ])
+
+      res.json(createSuccessResponse({ todayTotal, pendingReview }))
+    } catch (error) {
+      console.error("Error fetching messaging stats:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch stats",
+        }),
+      )
+    }
+  },
+)
+
+// ==========================================
+// CONVERSATION & SEND/RECEIVE ROUTES
+// ==========================================
+
+// Get all media attachments for the logged-in family member's conversations
+messagingRouter.get(
+  "/gallery",
+  requireAuth,
+  requireRole("family"),
+  async (req: Request, res: Response) => {
+    try {
+      const { conversationId } = req.query
+
+      const attachments = await prisma.messageAttachment.findMany({
+        where: {
+          message: {
+            conversation: {
+              familyMemberId: req.user!.id,
+              ...(conversationId ? { id: String(conversationId) } : {}),
+            },
+          },
+        },
+        include: {
+          message: {
+            select: {
+              id: true,
+              status: true,
+              senderType: true,
+              conversationId: true,
+              createdAt: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      })
+
+      res.json(createSuccessResponse(attachments))
+    } catch (error) {
+      console.error("Error fetching gallery:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch gallery",
+        }),
+      )
+    }
+  },
+)
+
+// Get approved contacts for the logged-in user (family or incarcerated)
+messagingRouter.get(
+  "/my-contacts",
+  requireAuth,
+  requireRole("family", "incarcerated"),
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.user!
+      const contacts = user.role === "family"
+        ? await prisma.approvedContact.findMany({
+            where: { familyMemberId: user.id, status: "approved" },
+            include: { incarceratedPerson: { select: { id: true, firstName: true, lastName: true } } },
+          })
+        : await prisma.approvedContact.findMany({
+            where: { incarceratedPersonId: user.id, status: "approved" },
+            include: { familyMember: { select: { id: true, firstName: true, lastName: true } } },
+          })
+
+      res.json(createSuccessResponse(contacts));
+    } catch (error) {
+      console.error("Error fetching contacts:", error);
+      res.status(500).json(createErrorResponse({ code: "INTERNAL_ERROR", message: "Failed to fetch contacts" }));
+    }
+  },
+);
+
+// Get pending contact requests for the logged-in user (family or incarcerated)
+messagingRouter.get(
+  "/pending-contacts",
+  requireAuth,
+  requireRole("family", "incarcerated"),
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.user!
+      const contacts = user.role === "family"
+        ? await prisma.approvedContact.findMany({
+            where: { familyMemberId: user.id, status: "pending" },
+            include: { incarceratedPerson: { select: { id: true, firstName: true, lastName: true, externalId: true } } },
+          })
+        : await prisma.approvedContact.findMany({
+            where: { incarceratedPersonId: user.id, status: "pending" },
+            include: { familyMember: { select: { id: true, firstName: true, lastName: true } } },
+          })
+
+      res.json(createSuccessResponse(contacts));
+    } catch (error) {
+      console.error("Error fetching pending contacts:", error);
+      res.status(500).json(createErrorResponse({ code: "INTERNAL_ERROR", message: "Failed to fetch pending contacts" }));
+    }
+  },
+);
+
+// Submit a contact request to admin for approval
+messagingRouter.post(
+  "/contact-request",
+  requireAuth,
+  requireRole("family"),
+  async (req: Request, res: Response) => {
+    try {
+      const { externalId, relationship, isAttorney = false } = req.body;
+      const user = req.user!;
+
+      if (!externalId || !relationship) {
+        res.status(400).json(
+          createErrorResponse({
+            code: "VALIDATION_ERROR",
+            message: "externalId and relationship are required",
+          }),
+        );
+        return;
+      }
+
+      const person = await prisma.incarceratedPerson.findFirst({
+        where: { externalId },
+      });
+
+      if (!person) {
+        res.status(404).json(
+          createErrorResponse({
+            code: "NOT_FOUND",
+            message:
+              "No person found with that ID. Please check the ID and try again.",
+          }),
+        );
+        return;
+      }
+
+      const request = await prisma.approvedContact.create({
+        data: {
+          incarceratedPersonId: person.id,
+          familyMemberId: user.id,
+          relationship,
+          isAttorney,
+          status: "pending",
+        },
+      });
+
+      res.status(201).json(createSuccessResponse(request));
+    } catch (error: any) {
+      if (error?.code === "P2002") {
+        res.status(409).json(
+          createErrorResponse({
+            code: "ALREADY_REQUESTED",
+            message: "A contact request already exists for this person.",
+          }),
+        );
+        return;
+      }
+      console.error("Error creating contact request:", error);
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to create contact request",
+        }),
+      );
+    }
+  },
+);
+
+// Mark approved messages in a conversation as read
+messagingRouter.patch(
+  "/conversations/:conversationId/read",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const { conversationId } = req.params
+      const user = req.user!
+
+      // Only mark messages sent by the other party
+      const senderType = user.role === "family" ? "incarcerated" : "family"
+
+      await prisma.message.updateMany({
+        where: {
+          conversationId,
+          senderType,
+          status: { in: ["sent", "delivered"] },
+        },
+        data: { status: "read", readAt: new Date() },
+      })
+
+      res.json(createSuccessResponse({ success: true }))
+    } catch (error) {
+      console.error("Error marking messages as read:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to mark messages as read",
+        }),
+      )
+    }
+  },
+)
+
+// Get or create a conversation between an incarcerated person and family member
+messagingRouter.post(
+  "/conversations",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const { incarceratedPersonId, familyMemberId } = req.body
+
+      if (!incarceratedPersonId || !familyMemberId) {
+        res.status(400).json(
+          createErrorResponse({
+            code: "VALIDATION_ERROR",
+            message: "incarceratedPersonId and familyMemberId are required",
+          }),
+        )
+        return
+      }
+
+      const conversation = await prisma.conversation.upsert({
+        where: {
+          incarceratedPersonId_familyMemberId: {
+            incarceratedPersonId,
+            familyMemberId,
+          },
+        },
+        update: {},
+        create: { incarceratedPersonId, familyMemberId },
+        include: {
+          incarceratedPerson: true,
+          familyMember: true,
+        },
+      })
+
+      res.json(createSuccessResponse(conversation))
+    } catch (error) {
+      console.error("Error getting/creating conversation:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to get conversation",
+        }),
+      )
+    }
+  },
+)
+
+// List all conversations for the authenticated user
+messagingRouter.get(
+  "/conversations",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.user!
+
+      const where =
+        user.role === "incarcerated"
+          ? { incarceratedPersonId: user.id }
+          : { familyMemberId: user.id }
+
+      const conversations = await prisma.conversation.findMany({
+        where,
+        include: {
+          incarceratedPerson: true,
+          familyMember: true,
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      })
+
+      res.json(createSuccessResponse(conversations))
+    } catch (error) {
+      console.error("Error fetching conversations:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch conversations",
+        }),
+      )
+    }
+  },
+)
+
+// Get messages in a conversation
+messagingRouter.get(
+  "/conversations/:conversationId/messages",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const { conversationId } = req.params
+      const { page = "1", pageSize = "20" } = req.query
+      const skip = (parseInt(String(page)) - 1) * parseInt(String(pageSize))
+      const take = parseInt(String(pageSize))
+
+      const [messages, total] = await Promise.all([
+        prisma.message.findMany({
+          where: { conversationId },
+          orderBy: { createdAt: "asc" },
+          include: { attachments: true },
+          skip,
+          take,
+        }),
+        prisma.message.count({ where: { conversationId } }),
+      ])
+
+      res.json({
+        success: true,
+        data: messages,
+        pagination: {
+          page: parseInt(String(page)),
+          pageSize: take,
+          total,
+          totalPages: Math.ceil(total / take),
+        },
+      })
+    } catch (error) {
+      console.error("Error fetching messages:", error)
+      res.status(500).json(
+        createErrorResponse({
+          code: "INTERNAL_ERROR",
+          message: "Failed to fetch messages",
+        }),
+      )
+    }
+  },
+)
+
+// Get the notepad for a conversation
+messagingRouter.get(
+  "/conversations/:conversationId/note",
+  requireAuth,
+  requireRole("incarcerated", "family"),
+  async (req: Request, res: Response) => {
+    try {
+      const { conversationId } = req.params
+      const note = await prisma.conversationNote.findUnique({
+        where: { conversationId },
+      })
+      res.json(createSuccessResponse({ content: note?.content ?? "" }))
+    } catch (error) {
+      console.error("Error fetching note:", error)
+      res.status(500).json(createErrorResponse({ code: "INTERNAL_ERROR", message: "Failed to fetch note" }))
+    }
+  },
+)
+
+// Save (upsert) the notepad for a conversation
+messagingRouter.put(
+  "/conversations/:conversationId/note",
+  requireAuth,
+  requireRole("incarcerated", "family"),
+  async (req: Request, res: Response) => {
+    try {
+      const { conversationId } = req.params
+      const { content } = req.body
+      const note = await prisma.conversationNote.upsert({
+        where: { conversationId },
+        create: { conversationId, content: content ?? "" },
+        update: { content: content ?? "" },
+      })
+      res.json(createSuccessResponse({ content: note.content }))
+    } catch (error) {
+      console.error("Error saving note:", error)
+      res.status(500).json(createErrorResponse({ code: "INTERNAL_ERROR", message: "Failed to save note" }))
+    }
+  },
+)
+
+export default messagingRouter
+//
